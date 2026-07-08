@@ -78,7 +78,7 @@ Job candidates preparing for and reviewing video interviews.
 - **Framework:** Electron + TypeScript
 - **UI:** React (renderer process)
 - **Audio Processing:** Web Audio API (AudioContext, AudioWorkletNode)
-- **Audio Format Conversion:** ffmpeg (channel splitting, WAV → FLAC)
+- **Audio Format Conversion:** ffmpeg (channel splitting, WAV → FLAC) — bundled binary via `ffmpeg-static` npm package (no local install required)
 - **Transcription:** Groq API (Whisper Large V3 Turbo)
 - **Storage:** Local filesystem (JSON transcripts, WAV/FLAC audio)
 - **Packaging:** electron-builder
@@ -138,10 +138,10 @@ Both tracks → AudioContext → AudioWorkletNode → IPC → WAV file (disk)
 
 ### Architecture Decision: Renderer-Side Capture
 
-Audio capture APIs (`navigator.mediaDevices`, `AudioContext`, `AudioWorkletNode`) are renderer-side web APIs. The capture pipeline runs in a **dedicated capture window** (renderer process) and streams PCM data to the **main process** via IPC for disk I/O.
+Audio capture APIs (`navigator.mediaDevices`, `AudioContext`, `AudioWorkletNode`) are renderer-side web APIs. The capture pipeline runs in the **control panel window** (renderer process) and streams PCM data to the **main process** via IPC for disk I/O.
 
 ```
-Capture Window (Renderer)                 Main Process
+Control Panel (Renderer)                  Main Process
 ┌─────────────────────────────┐          ┌──────────────────┐
 │ System Audio ──┐            │          │                  │
 │               ├──►AudioContext         │  Receive PCM     │
@@ -163,16 +163,17 @@ Microphone ────┘    (dual-channel)
 ### Recording Format
 
 - **During recording:** WAV 16kHz dual-channel (~100MB for 30 minutes)
-- **Post-recording:** Optional conversion to FLAC (~40MB, ~60% size reduction)
 - **Why WAV during recording:** Near-zero CPU (just appending PCM data), no risk of encoding falling behind during the interview
 
 ### Recording Lifecycle
 
-1. User clicks "Start" in tray menu or control panel
+1. User clicks "Start Recording" button in control panel (visible, focused window with real user gesture)
 2. App requests permissions (screen recording, microphone) if not granted
 3. Audio capture begins, writing to `~/InterviewCopilot/recordings/<timestamp>/audio.wav`
-4. User clicks "Stop" — file is finalized
+4. User clicks "Stop" (control panel button, tray menu, or global shortcut) — file is finalized
 5. If auto-transcribe is enabled, transcription begins immediately
+
+**Note on tray/shortcut start:** The tray menu and global shortcut (`Cmd+Shift+R`) open/focus the control panel — they do NOT start recording directly. Recording must begin from a visible button click in the control panel to satisfy `getDisplayMedia()` user activation requirements. Stop recording can be triggered from any source (tray, shortcut, or control panel).
 
 ---
 
@@ -199,20 +200,41 @@ audio.wav (dual-channel)
 │ (ffmpeg)    │
 └──────┬──────┘
        │
-       ├──► Channel 1 (system) ──► Groq API ──► segments[]
+       ├──► Channel 1 (system.wav)
+       │         │
+       │         ▼
+       │    Convert to 16kHz mono FLAC
+       │    (ffmpeg: -ar 16000 -ac 1 -c:a flac)
+       │         │
+       │         ▼
+       │    Chunk if >25MB (Groq free tier limit)
+       │         │
+       │         ▼
+       │    Groq API ──► segments[]
        │
-       └──► Channel 2 (mic)    ──► Groq API ──► segments[]
-                                                     │
-                                                     ▼
-                                          ┌──────────────────┐
-                                          │ Merge & Sort     │
-                                          │ by timestamp,    │
-                                          │ assign speakers  │
-                                          └────────┬─────────┘
-                                                   │
-                                                   ▼
-                                          transcript.json
+       └──► Channel 2 (mic.wav)
+                 │
+                 ▼
+            Convert to 16kHz mono FLAC
+                 │
+                 ▼
+            Chunk if >25MB
+                 │
+                 ▼
+            Groq API ──► segments[]
+                              │
+                              ▼
+                   ┌──────────────────┐
+                   │ Merge & Sort     │
+                   │ by timestamp,    │
+                   │ assign speakers  │
+                   └────────┬─────────┘
+                            │
+                            ▼
+                   transcript.json
 ```
+
+**FLAC conversion is mandatory for Groq uploads** — 30-min mono WAV files (~50MB) exceed the 25MB free tier limit. Converting to FLAC (~20MB per channel) keeps files under the limit without chunking in most cases.
 
 ### Speaker Labeling (Not True Diarization)
 
@@ -296,6 +318,7 @@ audio.wav (dual-channel)
 - `safeStorage.encryptStringAsync()` returns an encrypted `Buffer` — it does NOT store the value
 - The encrypted buffer is written to `~/InterviewCopilot/secrets.enc`
 - At runtime, read the file and call `safeStorage.decryptStringAsync(buffer)` to retrieve the key
+- `decryptStringAsync()` returns an object `{ result: string, shouldReEncrypt: boolean }` — read `.result` for the key, and re-encrypt if `shouldReEncrypt` is true
 - Use async APIs (`encryptStringAsync` / `decryptStringAsync`) for consistency with async file I/O
 - Never written to plaintext config files
 
@@ -318,8 +341,8 @@ audio.wav (dual-channel)
 - **Transcribing:** Spinner icon, menu shows "Transcribing..."
 
 **Menu items:**
-- Start/Stop Recording
-- Open Control Panel
+- Open Control Panel (to start recording)
+- Stop Recording (only visible during recording)
 - Transcript count (informational)
 - Settings
 - Quit
@@ -335,7 +358,7 @@ audio.wav (dual-channel)
 **Transcript view (click on an interview):**
 - Full transcript with timestamps and speaker labels
 - Search functionality
-- Export button (plain text, SRT)
+- Export button (plain text)
 
 **Settings panel:**
 - Groq API key input
@@ -346,7 +369,7 @@ audio.wav (dual-channel)
 
 ### Keyboard Shortcuts
 
-- `Cmd+Shift+R` — Start/stop recording (global shortcut)
+- `Cmd+Shift+R` — Open/focus control panel (then click button to start recording) or stop recording if already recording
 
 ### UX Decisions
 
