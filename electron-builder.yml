@@ -1,0 +1,21 @@
+appId: com.interview-copilot.app
+productName: Interview Copilot
+directories:
+  output: dist
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+win:
+  target:
+    - nsis
+    - portable
+linux:
+  target:
+    - AppImage
+    - deb
