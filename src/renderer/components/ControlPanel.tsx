@@ -13,6 +13,7 @@ interface ControlPanelProps {
   onStopRecording: () => void;
   onTranscribe: (id: string) => void;
   onSelectRecording: (id: string) => void;
+  onOpenSettings: () => void;
   isRecording: boolean;
   isTranscribing?: boolean;
 }
@@ -23,6 +24,7 @@ export function ControlPanel({
   onStopRecording,
   onTranscribe,
   onSelectRecording,
+  onOpenSettings,
   isRecording,
   isTranscribing,
 }: ControlPanelProps) {
@@ -38,6 +40,9 @@ export function ControlPanel({
             ● Start Recording
           </button>
         )}
+        <button onClick={onOpenSettings} className="settings-btn">
+          ⚙️ Settings
+        </button>
       </div>
 
       <div className="recordings-list">

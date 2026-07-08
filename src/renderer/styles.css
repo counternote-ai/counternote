@@ -38,6 +38,18 @@ button:hover {
   font-size: 16px;
 }
 
+.settings-btn {
+  background: #444;
+  width: 100%;
+  padding: 8px;
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.settings-btn:hover {
+  background: #555;
+}
+
 .recordings-list {
   margin-top: 20px;
 }

@@ -210,6 +210,7 @@ export default function App() {
         onStopRecording={handleStopRecording}
         onTranscribe={handleTranscribe}
         onSelectRecording={handleSelectRecording}
+        onOpenSettings={() => setView('settings')}
         isRecording={isRecording}
         isTranscribing={isTranscribing}
       />
