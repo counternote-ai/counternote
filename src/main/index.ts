@@ -111,8 +111,10 @@ ipcMain.handle('list-recordings', async () => {
           }
 
           // Convert directory name back to ISO format for date parsing
-          // Format: 2026-07-08T14-30-00 -> 2026-07-08T14:30:00
-          const isoDate = entry.name.replace(/T(\d{2})-(\d{2})-(\d{2})$/, 'T$1:$2:$3');
+          // Format: 2026-07-08T05-41-50-570Z -> 2026-07-08T05:41:50.570Z
+          const isoDate = entry.name
+            .replace(/T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/, 'T$1:$2:$3.$4Z')
+            .replace(/T(\d{2})-(\d{2})-(\d{2})$/, 'T$1:$2:$3');
           const date = new Date(isoDate);
 
           return {
