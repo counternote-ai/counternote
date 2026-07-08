@@ -89,22 +89,59 @@ Job candidates preparing for and reviewing video interviews.
 
 ### Dual-Channel Approach
 
-- **Channel 1 (System Audio):** Captures interviewer's voice and any shared audio via Electron's `session.setDisplayMediaRequestHandler()` with `audio: 'loopback'`, then `navigator.mediaDevices.getDisplayMedia()` in the renderer process
+- **Channel 1 (System Audio):** Captures interviewer's voice and any shared audio
 - **Channel 2 (Microphone):** Captures user's voice via `navigator.mediaDevices.getUserMedia({ audio: true })` in the renderer process
 - Both channels recorded simultaneously into a single dual-channel WAV file
 - Sample rate: 16kHz (sufficient for speech recognition, Whisper downsamples to 16kHz anyway)
+
+**System Audio Capture — The Hard Part:**
+
+The W3C Screen Capture spec requires `getDisplayMedia()` to include exactly one video track — audio-only requests are rejected. The workaround:
+
+1. Call `getDisplayMedia({ video: true, audio: { loopback: true } })` to get a screen stream with system audio
+2. Immediately stop/discard the video track (keep only the audio track)
+3. Feed the audio track into `AudioContext` → `AudioWorkletNode` for processing
+
+**Capture Lifecycle — User Activation Requirement:**
+
+`getDisplayMedia()` requires transient user activation (focused document + recent user gesture). Starting from a tray click or global shortcut does NOT satisfy this. The solution:
+
+- **Capture window approach:** When user clicks "Start Recording" (from tray or control panel), the main process opens a small, hidden **capture window** that has focus
+- The capture window immediately calls `getDisplayMedia()` (satisfying user activation), captures the screen+audio stream, stops the video track, and begins recording
+- The capture window remains open (hidden) for the duration of the recording
+- On stop, the capture window closes and audio is finalized
+
+```
+User clicks "Start" (tray or control panel)
+       │
+       ▼
+Main process opens capture window (hidden, focused)
+       │
+       ▼
+Capture window calls getDisplayMedia()
+  → gets screen stream with audio
+  → stops video track, keeps audio track
+       │
+       ▼
+Capture window calls getUserMedia({ audio: true })
+  → gets microphone stream
+       │
+       ▼
+Both tracks → AudioContext → AudioWorkletNode → IPC → WAV file (disk)
+```
 
 **macOS Requirements:**
 - macOS 13+ required for system audio loopback via Electron
 - macOS 14.2+ requires `NSAudioCaptureUsageDescription` in Info.plist
 - macOS 12.7.6 and lower cannot capture system audio through Electron without a virtual audio device (e.g., BlackHole)
+- Screen recording permission will be requested by macOS (indicator appears in menu bar)
 
 ### Architecture Decision: Renderer-Side Capture
 
-Audio capture APIs (`navigator.mediaDevices`, `AudioContext`, `AudioWorkletNode`) are renderer-side web APIs. The capture pipeline runs in the **renderer process** and streams PCM data to the **main process** via IPC for disk I/O.
+Audio capture APIs (`navigator.mediaDevices`, `AudioContext`, `AudioWorkletNode`) are renderer-side web APIs. The capture pipeline runs in a **dedicated capture window** (renderer process) and streams PCM data to the **main process** via IPC for disk I/O.
 
 ```
-Renderer Process                          Main Process
+Capture Window (Renderer)                 Main Process
 ┌─────────────────────────────┐          ┌──────────────────┐
 │ System Audio ──┐            │          │                  │
 │               ├──►AudioContext         │  Receive PCM     │
@@ -177,13 +214,23 @@ audio.wav (dual-channel)
                                           transcript.json
 ```
 
-### Speaker Diarization
+### Speaker Labeling (Not True Diarization)
 
-Since we have dual-channel audio, diarization is straightforward:
-- Channel 1 (system audio) → Speaker: "Interviewer"
-- Channel 2 (microphone) → Speaker: "You"
-- Each channel transcribed separately, merged by timestamp
-- If both channels have audio at the same time, both are kept with speaker labels
+**What this is:** Channel-based labeling, not AI-powered diarization.
+- Channel 1 (system audio) → labeled as "Interviewer"
+- Channel 2 (microphone) → labeled as "You"
+
+**Known limitations (acknowledged for MVP):**
+- Multiple remote speakers (e.g., panel interview) will all be labeled "Interviewer"
+- Audio leaking from speakers into the mic may cause duplicate segments
+- System notifications captured on Channel 1 will be labeled "Interviewer"
+- Overlapping speech across channels will appear as two separate segments
+
+**Why this is acceptable for MVP:**
+- Most interviews are 1:1, so "Interviewer" is usually one person
+- The dual-channel separation is still cleaner than single-channel with AI diarization
+- Users can manually correct speaker labels in the transcript (future feature)
+- True diarization (e.g., pyannote-audio) can be added later as an enhancement
 
 ### Error Handling
 
@@ -246,8 +293,10 @@ Since we have dual-channel audio, diarization is straightforward:
 ```
 
 **Keychain storage** (sensitive data via Electron `safeStorage`):
-- Groq API key stored in macOS Keychain via `safeStorage.encryptString()`
-- Retrieved at runtime via `safeStorage.decryptString()`
+- `safeStorage.encryptString()` returns an encrypted `Buffer` — it does NOT store the value
+- The encrypted buffer is written to `~/InterviewCopilot/secrets.enc` (or similar)
+- At runtime, read the file and call `safeStorage.decryptString(buffer)` to retrieve the key
+- Use async APIs (`safeStorage.encryptString()` is sync, but prefer writing/reading files asynchronously)
 - Never written to plaintext config files
 
 ### Privacy & Consent
@@ -302,8 +351,9 @@ Since we have dual-channel audio, diarization is straightforward:
 ### UX Decisions
 
 - Small window, minimal chrome — feels lightweight
-- Control panel can stay on top but click-through
-- Hidden from screen sharing by default (operates at system level, not app window level)
+- Control panel is a normal interactive window (not click-through)
+- **Overlay mode (future):** Optional always-on-top mini-overlay for quick status — uses `setIgnoreMouseEvents(true)` to be click-through, separate from the main control panel
+- **Screen sharing protection:** `BrowserWindow.setContentProtection(true)` prevents the window from being captured by screen sharing — however, on newer macOS with ScreenCaptureKit, this may not be fully reliable. For MVP, the control panel should be minimized/hidden when screen sharing starts (user responsibility)
 
 ---
 
