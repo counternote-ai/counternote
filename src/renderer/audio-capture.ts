@@ -48,13 +48,37 @@ export class AudioCapture {
     systemSource.connect(this.workletNode);
     micSource.connect(this.workletNode);
 
-    // Listen for audio data
+    // Listen for audio data and send via IPC
     this.workletNode.port.onmessage = (event) => {
       if (event.data.type === 'audio') {
-        // TODO: Send to main process via IPC
-        console.log('Audio data received:', event.data.data.length, 'channels');
+        // Convert Float32Arrays to ArrayBuffer and send to main
+        const channels: Float32Array[] = event.data.data;
+        const buffer = this.pcmToBuffer(channels);
+        window.electronAPI.sendAudioData(buffer);
       }
     };
+  }
+
+  private pcmToBuffer(channels: Float32Array[]): ArrayBuffer {
+    // Assume first channel is system audio, second is mic (if available)
+    const system = channels[0] || new Float32Array(0);
+    const mic = channels[1] || channels[0] || new Float32Array(0);
+    const length = Math.max(system.length, mic.length);
+
+    // Interleave system and mic channels: 2 channels, 2 bytes per sample (16-bit)
+    const buffer = new ArrayBuffer(length * 2 * 2);
+    const view = new Int16Array(buffer);
+
+    for (let i = 0; i < length; i++) {
+      // System audio (channel 1)
+      const systemSample = i < system.length ? system[i] : 0;
+      view[i * 2] = Math.max(-32768, Math.min(32767, systemSample * 32768));
+      // Microphone (channel 2)
+      const micSample = i < mic.length ? mic[i] : 0;
+      view[i * 2 + 1] = Math.max(-32768, Math.min(32767, micSample * 32768));
+    }
+
+    return buffer;
   }
 
   stop(): void {

@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, session, desktopCapturer } from 'electron'
 import * as path from 'path';
 
 let mainWindow: BrowserWindow | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let recordingStream: any = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -16,6 +18,26 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 }
+
+// IPC handlers for recording
+ipcMain.handle('start-recording', async () => {
+  // TODO: Create WAV file and return write stream
+  console.log('Recording started');
+  return { success: true };
+});
+
+ipcMain.handle('stop-recording', async () => {
+  // TODO: Finalize WAV file
+  console.log('Recording stopped');
+  return { success: true };
+});
+
+ipcMain.on('audio-data', (event, data: ArrayBuffer) => {
+  // TODO: Write PCM data to file
+  if (recordingStream) {
+    recordingStream.write(Buffer.from(data));
+  }
+});
 
 app.whenReady().then(() => {
   // Configure loopback audio capture
