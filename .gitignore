@@ -1,5 +1,6 @@
 node_modules/
 dist/
+release/
 .DS_Store
 *.log
 .env
@@ -15,3 +16,5 @@ yarn-error.log*
 *.swp
 *.swo
 out/
+coverage/
+.superpowers/
