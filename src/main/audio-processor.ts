@@ -51,12 +51,28 @@ export async function convertToFlac(wavPath: string): Promise<string> {
 }
 
 export async function getAudioDuration(audioPath: string): Promise<number> {
-  const { stdout } = await execFileAsync(ffmpegPath, [
-    '-i', audioPath,
-    '-show_entries', 'format=duration',
-    '-v', 'quiet',
-    '-of', 'csv=p=0',
-  ]);
+  const buffer = Buffer.alloc(44);
+  const fd = await fs.promises.open(audioPath, 'r');
 
-  return parseFloat(stdout.trim());
+  try {
+    await fd.read(buffer, 0, 44, 0);
+  } finally {
+    await fd.close();
+  }
+
+  // WAV header fields (little-endian)
+  // Bytes 22-23: Number of channels
+  const channels = buffer.readUInt16LE(22);
+  // Bytes 24-27: Sample rate
+  const sampleRate = buffer.readUInt32LE(24);
+  // Bytes 28-31: Byte rate (sampleRate * channels * bytesPerSample)
+  const byteRate = buffer.readUInt32LE(28);
+  // Bytes 40-43: Data chunk size
+  const dataSize = buffer.readUInt32LE(40);
+
+  if (byteRate === 0) {
+    throw new Error(`Invalid WAV file: byte rate is zero in ${audioPath}`);
+  }
+
+  return dataSize / byteRate;
 }
