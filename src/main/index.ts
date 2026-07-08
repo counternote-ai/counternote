@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { WavWriter } from './wav-writer';
+import { transcribeRecording } from './transcription';
 
 let mainWindow: BrowserWindow | null = null;
 let wavWriter: WavWriter | null = null;
@@ -85,6 +86,15 @@ ipcMain.handle('list-recordings', async () => {
       .filter(Boolean);
 
     return { success: true, recordings };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+});
+
+ipcMain.handle('transcribe', async (event, audioPath: string) => {
+  try {
+    const transcript = await transcribeRecording(audioPath);
+    return { success: true, transcript };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
