@@ -63,12 +63,13 @@ Job candidates preparing for and reviewing video interviews.
 
 ### Key Layers
 
-1. **Main Process** — owns audio capture, recording lifecycle, transcription, and file I/O
-2. **Menu Bar (Tray)** — always visible, quick controls: record, play, transcript count
-3. **Control Panel** — renderer window for viewing transcripts, managing recordings, settings
-4. **Audio Capture** — system audio (loopback) + microphone, dual-channel
-5. **Transcription** — post-interview via Groq Whisper API, per-channel with speaker labels
-6. **Storage** — local filesystem, one folder per interview with audio + transcript JSON
+1. **Main Process** — owns recording lifecycle, transcription orchestration, file I/O, IPC hub
+2. **Renderer Process** — owns audio capture (AudioContext, AudioWorkletNode), streams PCM to main via IPC
+3. **Menu Bar (Tray)** — always visible, quick controls: record, play, transcript count
+4. **Control Panel** — renderer window for viewing transcripts, managing recordings, settings
+5. **Audio Capture** — system audio (loopback) + microphone, dual-channel, captured in renderer
+6. **Transcription** — post-interview via Groq Whisper API, per-channel with speaker labels
+7. **Storage** — local filesystem, one folder per interview with audio + transcript JSON
 
 ---
 
@@ -88,16 +89,37 @@ Job candidates preparing for and reviewing video interviews.
 
 ### Dual-Channel Approach
 
-- **Channel 1 (System Audio):** Captures interviewer's voice and any shared audio via `desktopCapturer.getSources({ types: ['screen'] })` with `audio: true`
-- **Channel 2 (Microphone):** Captures user's voice via `navigator.mediaDevices.getUserMedia({ audio: true })`
+- **Channel 1 (System Audio):** Captures interviewer's voice and any shared audio via Electron's `session.setDisplayMediaRequestHandler()` with `audio: 'loopback'`, then `navigator.mediaDevices.getDisplayMedia()` in the renderer process
+- **Channel 2 (Microphone):** Captures user's voice via `navigator.mediaDevices.getUserMedia({ audio: true })` in the renderer process
 - Both channels recorded simultaneously into a single dual-channel WAV file
 - Sample rate: 16kHz (sufficient for speech recognition, Whisper downsamples to 16kHz anyway)
+
+**macOS Requirements:**
+- macOS 13+ required for system audio loopback via Electron
+- macOS 14.2+ requires `NSAudioCaptureUsageDescription` in Info.plist
+- macOS 12.7.6 and lower cannot capture system audio through Electron without a virtual audio device (e.g., BlackHole)
+
+### Architecture Decision: Renderer-Side Capture
+
+Audio capture APIs (`navigator.mediaDevices`, `AudioContext`, `AudioWorkletNode`) are renderer-side web APIs. The capture pipeline runs in the **renderer process** and streams PCM data to the **main process** via IPC for disk I/O.
+
+```
+Renderer Process                          Main Process
+┌─────────────────────────────┐          ┌──────────────────┐
+│ System Audio ──┐            │          │                  │
+│               ├──►AudioContext         │  Receive PCM     │
+│ Microphone ────┘    │       │   IPC    │  chunks, write   │
+│                     ▼       │ ───────► │  to WAV file     │
+│              AudioWorkletNode          │  on disk         │
+│              (PCM chunks)   │          │                  │
+└─────────────────────────────┘          └──────────────────┘
+```
 
 ### Audio Pipeline
 
 ```
 System Audio ──┐
-               ├──► AudioContext ──► AudioWorkletNode ──► PCM Buffer ──► WAV file
+               ├──► AudioContext ──► AudioWorkletNode ──► IPC ──► WAV file (disk)
 Microphone ────┘    (dual-channel)
 ```
 
@@ -122,10 +144,11 @@ Microphone ────┘    (dual-channel)
 ### Provider
 
 **Groq API** (Whisper Large V3 Turbo)
-- Cost: ~$0.04/hour of audio (~$0.02 per 30-min interview)
+- Cost: ~$0.04/hour of audio (~$0.04 per 30-min interview, since both channels are transcribed separately = ~60 min billed)
 - Speed: 189-216x real-time (30-min interview transcribes in ~8 seconds)
 - API: OpenAI-compatible (easy to swap providers later)
 - Timestamps: Segment-level and word-level in `verbose_json` format
+- Upload limits: 25MB (free tier), 100MB (dev tier) — 30-min mono WAV channel files (~50MB) may exceed free tier limits, so FLAC conversion before upload is standard practice, not just an error edge case
 
 ### Pipeline
 
@@ -213,14 +236,26 @@ Since we have dual-channel audio, diarization is straightforward:
 
 ### Config Format
 
+**`config.json`** (non-sensitive settings):
 ```json
 {
-  "groqApiKey": "gsk_...",
   "groqModel": "whisper-large-v3-turbo",
-  "autoTranscribe": true,
+  "autoTranscribe": false,
   "outputDir": "~/InterviewCopilot/recordings"
 }
 ```
+
+**Keychain storage** (sensitive data via Electron `safeStorage`):
+- Groq API key stored in macOS Keychain via `safeStorage.encryptString()`
+- Retrieved at runtime via `safeStorage.decryptString()`
+- Never written to plaintext config files
+
+### Privacy & Consent
+
+- **`autoTranscribe` defaults to `false`** — user must explicitly enable auto-transcription
+- When auto-transcribe is off, user manually triggers transcription after reviewing the recording
+- Audio sent to Groq API only when transcription is triggered (not during recording)
+- Settings panel includes a disclosure: "Transcription sends audio to Groq's servers for processing"
 
 ---
 
@@ -346,7 +381,7 @@ Since we have dual-channel audio, diarization is straightforward:
 ## MVP Scope Summary
 
 **In scope:**
-- Electron app, Mac-first
+- Electron app, Mac-first (macOS 13+ required for system audio loopback)
 - Menu bar + control panel UI
 - Dual-channel audio capture (system + mic) as WAV 16kHz
 - Post-interview transcription via Groq API (Whisper V3 Turbo)
