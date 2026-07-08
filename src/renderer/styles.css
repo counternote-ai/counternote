@@ -1,0 +1,105 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #1e1e1e;
+  color: #fff;
+  padding: 16px;
+}
+
+button {
+  background: #007aff;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #0056b3;
+}
+
+.start-btn {
+  background: #ff3b30;
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+}
+
+.stop-btn {
+  background: #666;
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+}
+
+.recordings-list {
+  margin-top: 20px;
+}
+
+.recording-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #2a2a2a;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.recording-item:hover {
+  background: #333;
+}
+
+.transcript-view .segments {
+  margin-top: 16px;
+}
+
+.segment {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #2a2a2a;
+  border-radius: 8px;
+}
+
+.segment .speaker {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.segment .time {
+  float: right;
+  color: #888;
+  font-size: 12px;
+}
+
+.settings .form-group {
+  margin-bottom: 16px;
+}
+
+.settings label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.settings input[type="password"],
+.settings select {
+  width: 100%;
+  padding: 8px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: white;
+}
+
+.settings .hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #888;
+}

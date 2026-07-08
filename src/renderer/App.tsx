@@ -1,48 +1,105 @@
-import React, { useState } from 'react';
-import { AudioCapture } from './audio-capture';
+import React, { useState, useEffect } from 'react';
+import { ControlPanel } from './components/ControlPanel';
+import { TranscriptView } from './components/TranscriptView';
+import { Settings } from './components/Settings';
+import './styles.css';
 
-const audioCapture = new AudioCapture();
+type View = 'recordings' | 'transcript' | 'settings';
 
 export default function App() {
-  const [status, setStatus] = useState('idle');
-  const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<View>('recordings');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordings, setRecordings] = useState<any[]>([]);
+  const [selectedRecording, setSelectedRecording] = useState<any>(null);
+  const [settings, setSettings] = useState({ apiKey: '', model: 'whisper-large-v3-turbo', autoTranscribe: false });
 
-  const startCapture = async () => {
-    try {
-      setError(null);
-      setStatus('requesting');
-
-      // Start recording on main process
-      const result = await window.electronAPI.startRecording();
-      if (!result.success) {
-        throw new Error('Failed to start recording');
+  // Load recordings on mount
+  useEffect(() => {
+    const loadRecordings = async () => {
+      const result = await window.electronAPI.listRecordings();
+      if (result.success) {
+        setRecordings(result.recordings);
       }
+    };
+    loadRecordings();
+  }, []);
 
-      // Start audio capture
-      await audioCapture.start();
-      setStatus('capturing');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      setStatus('error');
+  const handleStartRecording = async () => {
+    const result = await window.electronAPI.startRecording();
+    if (result.success) {
+      setIsRecording(true);
     }
   };
 
-  const stopCapture = async () => {
-    audioCapture.stop();
-    await window.electronAPI.stopRecording();
-    setStatus('idle');
+  const handleStopRecording = async () => {
+    const result = await window.electronAPI.stopRecording();
+    if (result.success) {
+      setIsRecording(false);
+      // Refresh recordings list
+      const recordingsResult = await window.electronAPI.listRecordings();
+      if (recordingsResult.success) {
+        setRecordings(recordingsResult.recordings);
+      }
+    }
   };
 
+  const handleTranscribe = async (id: string) => {
+    const recording = recordings.find((r) => r.id === id);
+    if (recording) {
+      const result = await window.electronAPI.transcribe(recording.audioPath);
+      if (result.success) {
+        // Refresh recordings list
+        const recordingsResult = await window.electronAPI.listRecordings();
+        if (recordingsResult.success) {
+          setRecordings(recordingsResult.recordings);
+        }
+      }
+    }
+  };
+
+  const handleExport = async () => {
+    if (selectedRecording) {
+      await window.electronAPI.exportTranscript(selectedRecording.transcriptPath, 'txt');
+    }
+  };
+
+  if (view === 'settings') {
+    return (
+      <Settings
+        apiKey={settings.apiKey}
+        model={settings.model}
+        autoTranscribe={settings.autoTranscribe}
+        onSave={(newSettings) => {
+          setSettings(newSettings);
+          setView('recordings');
+        }}
+        onBack={() => setView('recordings')}
+      />
+    );
+  }
+
+  if (view === 'transcript' && selectedRecording) {
+    return (
+      <TranscriptView
+        title={selectedRecording.title}
+        segments={selectedRecording.segments}
+        onBack={() => setView('recordings')}
+        onExport={handleExport}
+      />
+    );
+  }
+
   return (
-    <div>
-      <h1>Interview Copilot</h1>
-      <p>Status: {status}</p>
-      {error && <p style={{ color: 'red' }}>Error: {error}</p>}
-      {status === 'idle' || status === 'error' ? (
-        <button onClick={startCapture}>Start Capture Test</button>
-      ) : (
-        <button onClick={stopCapture}>Stop Capture</button>
-      )}
-    </div>
+    <ControlPanel
+      recordings={recordings}
+      onStartRecording={handleStartRecording}
+      onStopRecording={handleStopRecording}
+      onTranscribe={handleTranscribe}
+      onSelectRecording={(id) => {
+        setSelectedRecording(recordings.find((r) => r.id === id));
+        setView('transcript');
+      }}
+      isRecording={isRecording}
+    />
   );
 }
