@@ -5,6 +5,7 @@ import * as os from 'os';
 import { WavWriter } from './wav-writer';
 import { transcribeRecording } from './transcription';
 import { TrayManager } from './tray';
+import { saveExport } from './export';
 
 let mainWindow: BrowserWindow | null = null;
 let wavWriter: WavWriter | null = null;
@@ -105,6 +106,16 @@ ipcMain.handle('transcribe', async (event, audioPath: string) => {
   try {
     const transcript = await transcribeRecording(audioPath);
     return { success: true, transcript };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+});
+
+ipcMain.handle('export-transcript', async (event, transcriptPath: string, format: 'txt') => {
+  try {
+    const transcript = JSON.parse(fs.readFileSync(transcriptPath, 'utf-8'));
+    const exportPath = saveExport(transcript, format, transcriptPath);
+    return { success: true, path: exportPath };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
