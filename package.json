@@ -1,7 +1,8 @@
 {
   "name": "interview-copilot",
+  "productName": "Interview Copilot",
   "version": "1.0.0",
-  "description": "",
+  "description": "A lightweight Mac menu bar app that records audio from video interviews, transcribes them, and provides readable transcripts with speaker labels.",
   "main": "dist/main/index.js",
   "directories": {
     "doc": "docs"
@@ -10,7 +11,21 @@
     "dev": "webpack --mode development --watch",
     "build": "webpack --mode production",
     "start": "electron .",
-    "test": "jest --verbose"
+    "test": "jest --verbose",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "com.interview-copilot.app",
+    "productName": "Interview Copilot",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "src/assets/icon.png",
+      "target": "dmg"
+    },
+    "directories": {
+      "output": "release"
+    }
   },
   "keywords": [],
   "author": "",

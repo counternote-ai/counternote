@@ -13,10 +13,14 @@ let mainWindow: BrowserWindow | null = null;
 let wavWriter: WavWriter | null = null;
 let trayManager: TrayManager | null = null;
 
+// Set app name for macOS menu bar and Activity Monitor
+app.name = 'Interview Copilot';
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 400,
     height: 600,
+    title: 'Interview Copilot',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
