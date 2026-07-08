@@ -1,36 +1,18 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
+import { AudioCapture } from './audio-capture';
+
+const audioCapture = new AudioCapture();
 
 export default function App() {
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState<string | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
 
   const startCapture = async () => {
     try {
       setError(null);
       setStatus('requesting');
-
-      // Request display media with audio
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: true,
-      });
-
-      // Stop video track immediately (keep only audio)
-      displayStream.getVideoTracks().forEach((track) => track.stop());
-
-      // Get microphone
-      const micStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-
-      streamRef.current = new MediaStream([
-        ...displayStream.getAudioTracks(),
-        ...micStream.getAudioTracks(),
-      ]);
-
+      await audioCapture.start();
       setStatus('capturing');
-      console.log('Audio tracks:', streamRef.current.getAudioTracks().length);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       setStatus('error');
@@ -38,8 +20,7 @@ export default function App() {
   };
 
   const stopCapture = () => {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
+    audioCapture.stop();
     setStatus('idle');
   };
 
