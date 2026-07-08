@@ -193,7 +193,7 @@ app.whenReady().then(() => {
         if (sources.length > 0) {
           callback({ video: sources[0], audio: 'loopback' });
         } else {
-          callback({ video: sources[0] });
+          throw new Error('No screen sources available for display media capture');
         }
       });
     }

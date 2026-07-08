@@ -41,12 +41,15 @@ export class AudioCapture {
       'audio-capture-processor'
     );
 
-    // Connect streams to worklet
+    // Use a ChannelMergerNode to route system audio to channel 0 and mic to channel 1
     const systemSource = this.audioContext.createMediaStreamSource(displayStream);
     const micSource = this.audioContext.createMediaStreamSource(micStream);
 
-    systemSource.connect(this.workletNode);
-    micSource.connect(this.workletNode);
+    const merger = this.audioContext.createChannelMerger(2);
+    systemSource.connect(merger, 0, 0); // system -> channel 0
+    micSource.connect(merger, 0, 1);    // mic -> channel 1
+
+    merger.connect(this.workletNode);
 
     // Listen for audio data and send via IPC
     this.workletNode.port.onmessage = (event) => {
