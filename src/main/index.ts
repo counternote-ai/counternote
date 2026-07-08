@@ -4,9 +4,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { WavWriter } from './wav-writer';
 import { transcribeRecording } from './transcription';
+import { TrayManager } from './tray';
 
 let mainWindow: BrowserWindow | null = null;
 let wavWriter: WavWriter | null = null;
+let trayManager: TrayManager | null = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -20,6 +22,14 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+
+  // Create tray
+  trayManager = new TrayManager(mainWindow);
+
+  // Update tray when recording state changes
+  ipcMain.on('recording-state-changed', (event, isRecording: boolean) => {
+    trayManager?.setRecording(isRecording);
+  });
 }
 
 // IPC handlers for recording
