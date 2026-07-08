@@ -30,10 +30,10 @@ export class AudioCapture {
     // Create audio context
     this.audioContext = new AudioContext({ sampleRate: 16000 });
 
-    // Load worklet
-    await this.audioContext.audioWorklet.addModule(
-      new URL('./audio-processor.worklet.ts', import.meta.url)
-    );
+    // Load worklet - use file:// URL for Electron
+    // In Electron renderer, we can use the path relative to the app
+    const workletUrl = new URL('./audio-processor.worklet.js', window.location.href).href;
+    await this.audioContext.audioWorklet.addModule(workletUrl);
 
     // Create worklet node
     this.workletNode = new AudioWorkletNode(

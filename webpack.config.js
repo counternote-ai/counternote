@@ -35,6 +35,27 @@ module.exports = [
   },
   {
     mode: 'development',
+    entry: './src/renderer/audio-processor.worklet.ts',
+    target: 'web',
+    output: {
+      path: path.resolve(__dirname, 'dist/renderer'),
+      filename: 'audio-processor.worklet.js',
+    },
+    resolve: {
+      extensions: ['.ts', '.js'],
+    },
+    module: {
+      rules: [
+        {
+          test: /\.ts$/,
+          use: 'ts-loader',
+          exclude: /node_modules/,
+        },
+      ],
+    },
+  },
+  {
+    mode: 'development',
     entry: './src/main/index.ts',
     target: 'electron-main',
     output: {
