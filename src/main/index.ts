@@ -1,9 +1,11 @@
 import { app, BrowserWindow, ipcMain, session, desktopCapturer } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
+import { WavWriter } from './wav-writer';
 
 let mainWindow: BrowserWindow | null = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let recordingStream: any = null;
+let wavWriter: WavWriter | null = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -21,21 +23,70 @@ function createWindow() {
 
 // IPC handlers for recording
 ipcMain.handle('start-recording', async () => {
-  // TODO: Create WAV file and return write stream
-  console.log('Recording started');
-  return { success: true };
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const recordingsDir = path.join(os.homedir(), 'InterviewCopilot', 'recordings', timestamp);
+
+  // Create directory
+  fs.mkdirSync(recordingsDir, { recursive: true });
+
+  const audioPath = path.join(recordingsDir, 'audio.wav');
+  wavWriter = new WavWriter(audioPath, 16000, 2);
+
+  console.log('Recording started:', audioPath);
+  return { success: true, path: audioPath };
 });
 
 ipcMain.handle('stop-recording', async () => {
-  // TODO: Finalize WAV file
-  console.log('Recording stopped');
+  if (wavWriter) {
+    await wavWriter.close();
+    wavWriter = null;
+    console.log('Recording stopped');
+  }
   return { success: true };
 });
 
 ipcMain.on('audio-data', (event, data: ArrayBuffer) => {
-  // TODO: Write PCM data to file
-  if (recordingStream) {
-    recordingStream.write(Buffer.from(data));
+  if (wavWriter) {
+    wavWriter.write(Buffer.from(data));
+  }
+});
+
+ipcMain.handle('list-recordings', async () => {
+  try {
+    const recordingsDir = path.join(os.homedir(), 'InterviewCopilot', 'recordings');
+    if (!fs.existsSync(recordingsDir)) {
+      return { success: true, recordings: [] };
+    }
+
+    const entries = fs.readdirSync(recordingsDir, { withFileTypes: true });
+    const recordings = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => {
+        const dirPath = path.join(recordingsDir, entry.name);
+        const audioPath = path.join(dirPath, 'audio.wav');
+        const transcriptPath = path.join(dirPath, 'transcript.json');
+
+        if (!fs.existsSync(audioPath)) {
+          return null;
+        }
+
+        const stat = fs.statSync(audioPath);
+        const hasTranscript = fs.existsSync(transcriptPath);
+
+        return {
+          id: entry.name,
+          title: `Interview — ${new Date(entry.name).toLocaleDateString()}`,
+          duration: 0, // Will be calculated from audio file
+          audioPath,
+          transcriptPath,
+          transcribed: hasTranscript,
+        };
+      })
+      .filter(Boolean);
+
+    return { success: true, recordings };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
 });
 

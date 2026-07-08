@@ -11,6 +11,14 @@ export default function App() {
     try {
       setError(null);
       setStatus('requesting');
+
+      // Start recording on main process
+      const result = await window.electronAPI.startRecording();
+      if (!result.success) {
+        throw new Error('Failed to start recording');
+      }
+
+      // Start audio capture
       await audioCapture.start();
       setStatus('capturing');
     } catch (err) {
@@ -19,8 +27,9 @@ export default function App() {
     }
   };
 
-  const stopCapture = () => {
+  const stopCapture = async () => {
     audioCapture.stop();
+    await window.electronAPI.stopRecording();
     setStatus('idle');
   };
 
