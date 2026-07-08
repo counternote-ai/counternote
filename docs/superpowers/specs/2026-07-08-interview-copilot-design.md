@@ -8,7 +8,7 @@
 
 ## Overview
 
-Interview Copilot is a lightweight Mac desktop app that records video interviews (Google Meet, Zoom, MS Teams), transcribes them post-interview, and provides readable transcripts with speaker labels for review and self-improvement.
+Interview Copilot is a lightweight Mac desktop app that records audio from video interviews (Google Meet, Zoom, MS Teams), transcribes them post-interview, and provides readable transcripts with speaker labels for review and self-improvement.
 
 ### Problem
 
@@ -96,39 +96,39 @@ Job candidates preparing for and reviewing video interviews.
 
 **System Audio Capture — The Hard Part:**
 
-The W3C Screen Capture spec requires `getDisplayMedia()` to include exactly one video track — audio-only requests are rejected. The workaround:
+The W3C Screen Capture spec requires `getDisplayMedia()` to include exactly one video track — audio-only requests are rejected. The Electron-specific approach:
 
-1. Call `getDisplayMedia({ video: true, audio: { loopback: true } })` to get a screen stream with system audio
-2. Immediately stop/discard the video track (keep only the audio track)
-3. Feed the audio track into `AudioContext` → `AudioWorkletNode` for processing
+1. **Main process:** `session.setDisplayMediaRequestHandler()` configures the handler to provide `{ video: source, audio: 'loopback' }` when the renderer requests display media
+2. **Renderer:** Call `getDisplayMedia({ video: true, audio: true })` — Electron intercepts and injects the loopback audio
+3. Immediately stop/discard the video track (keep only the audio track)
+4. Feed the audio track into `AudioContext` → `AudioWorkletNode` for processing
 
 **Capture Lifecycle — User Activation Requirement:**
 
-`getDisplayMedia()` requires transient user activation (focused document + recent user gesture). Starting from a tray click or global shortcut does NOT satisfy this. The solution:
+`getDisplayMedia()` requires transient user activation (focused document + recent user gesture). A hidden window or tray-triggered IPC does NOT satisfy this. The solution:
 
-- **Capture window approach:** When user clicks "Start Recording" (from tray or control panel), the main process opens a small, hidden **capture window** that has focus
-- The capture window immediately calls `getDisplayMedia()` (satisfying user activation), captures the screen+audio stream, stops the video track, and begins recording
-- The capture window remains open (hidden) for the duration of the recording
-- On stop, the capture window closes and audio is finalized
+- **Visible start button:** When user clicks "Start Recording" in the control panel (a visible, focused window with a real button click), the renderer calls `getDisplayMedia()` directly
+- This satisfies the user activation requirement naturally — no workarounds needed
+- The tray menu can also trigger recording, but must open/focus the control panel first so the user clicks the button there
 
 ```
-User clicks "Start" (tray or control panel)
+User clicks "Start Recording" button in control panel (visible, focused window)
        │
        ▼
-Main process opens capture window (hidden, focused)
-       │
-       ▼
-Capture window calls getDisplayMedia()
-  → gets screen stream with audio
+Renderer calls getDisplayMedia({ video: true, audio: true })
+  → Electron handler provides screen source + loopback audio
+  → gets screen stream with system audio
   → stops video track, keeps audio track
        │
        ▼
-Capture window calls getUserMedia({ audio: true })
+Renderer calls getUserMedia({ audio: true })
   → gets microphone stream
        │
        ▼
 Both tracks → AudioContext → AudioWorkletNode → IPC → WAV file (disk)
 ```
+
+**Important:** Before building the full app, prototype this capture flow as a **spike** to verify Electron loopback + user activation works as expected on macOS.
 
 **macOS Requirements:**
 - macOS 13+ required for system audio loopback via Electron
@@ -182,7 +182,7 @@ Microphone ────┘    (dual-channel)
 
 **Groq API** (Whisper Large V3 Turbo)
 - Cost: ~$0.04/hour of audio (~$0.04 per 30-min interview, since both channels are transcribed separately = ~60 min billed)
-- Speed: 189-216x real-time (30-min interview transcribes in ~8 seconds)
+- Speed: Provider-dependent, will measure actual latency in MVP (Groq advertises 189-216x real-time, but two-channel upload/chunk/merge adds overhead)
 - API: OpenAI-compatible (easy to swap providers later)
 - Timestamps: Segment-level and word-level in `verbose_json` format
 - Upload limits: 25MB (free tier), 100MB (dev tier) — 30-min mono WAV channel files (~50MB) may exceed free tier limits, so FLAC conversion before upload is standard practice, not just an error edge case
@@ -292,11 +292,11 @@ audio.wav (dual-channel)
 }
 ```
 
-**Keychain storage** (sensitive data via Electron `safeStorage`):
-- `safeStorage.encryptString()` returns an encrypted `Buffer` — it does NOT store the value
-- The encrypted buffer is written to `~/InterviewCopilot/secrets.enc` (or similar)
-- At runtime, read the file and call `safeStorage.decryptString(buffer)` to retrieve the key
-- Use async APIs (`safeStorage.encryptString()` is sync, but prefer writing/reading files asynchronously)
+**Secret storage** (sensitive data via Electron `safeStorage`):
+- `safeStorage.encryptStringAsync()` returns an encrypted `Buffer` — it does NOT store the value
+- The encrypted buffer is written to `~/InterviewCopilot/secrets.enc`
+- At runtime, read the file and call `safeStorage.decryptStringAsync(buffer)` to retrieve the key
+- Use async APIs (`encryptStringAsync` / `decryptStringAsync`) for consistency with async file I/O
 - Never written to plaintext config files
 
 ### Privacy & Consent
@@ -396,7 +396,7 @@ audio.wav (dual-channel)
 
 ### Our Differentiators
 
-1. **Dual-channel audio capture** — no existing product captures separate audio channels per participant
+1. **Dual-channel audio capture** — captures separate audio channels for cleaner speaker separation (most competitors rely on AI diarization on single-channel audio)
 2. **Post-interview review focus** — not real-time assistance, not general meetings
 3. **Menu bar UX** — lightweight, always accessible
 4. **Local-first privacy** — audio stays on machine until transcription
