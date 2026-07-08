@@ -19,8 +19,12 @@ interface ElectronAPI {
   startRecording: () => Promise<{ success: boolean; path?: string }>;
   stopRecording: () => Promise<{ success: boolean }>;
   listRecordings: () => Promise<{ success: boolean; recordings: Recording[] }>;
-  transcribe: (audioPath: string) => Promise<{ success: boolean }>;
-  exportTranscript: (transcriptPath: string, format: string) => Promise<{ success: boolean }>;
+  transcribe: (audioPath: string) => Promise<{ success: boolean; transcript?: any; error?: string }>;
+  exportTranscript: (transcriptPath: string, format: string) => Promise<{ success: boolean; path?: string; error?: string }>;
+  saveConfig: (config: { apiKey?: string; model?: string; autoTranscribe?: boolean }) => Promise<{ success: boolean }>;
+  loadConfig: () => Promise<{ success: boolean; config?: { apiKey: string; model: string; autoTranscribe: boolean } }>;
+  onStopRecording: (callback: () => void) => void;
+  onOpenSettings: (callback: () => void) => void;
 }
 
 interface Window {

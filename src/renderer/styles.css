@@ -103,3 +103,26 @@ button:hover {
   font-size: 12px;
   color: #888;
 }
+
+.error-banner {
+  background: #ff3b30;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+.error-banner button {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

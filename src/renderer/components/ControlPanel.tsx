@@ -14,6 +14,7 @@ interface ControlPanelProps {
   onTranscribe: (id: string) => void;
   onSelectRecording: (id: string) => void;
   isRecording: boolean;
+  isTranscribing?: boolean;
 }
 
 export function ControlPanel({
@@ -23,6 +24,7 @@ export function ControlPanel({
   onTranscribe,
   onSelectRecording,
   isRecording,
+  isTranscribing,
 }: ControlPanelProps) {
   return (
     <div className="control-panel">
@@ -50,7 +52,9 @@ export function ControlPanel({
                 <span>{Math.floor(rec.duration / 60)}:{(rec.duration % 60).toString().padStart(2, '0')}</span>
               </div>
               {!rec.transcribed && (
-                <button onClick={() => onTranscribe(rec.id)}>Transcribe</button>
+                <button onClick={() => onTranscribe(rec.id)} disabled={isTranscribing}>
+                  {isTranscribing ? 'Transcribing...' : 'Transcribe'}
+                </button>
               )}
             </div>
           ))

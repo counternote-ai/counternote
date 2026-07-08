@@ -37,7 +37,7 @@ export class TrayManager {
       menuTemplate.push({
         label: '⏹ Stop Recording',
         click: () => {
-          this.mainWindow?.webContents.send('stop-recording');
+          this.mainWindow?.webContents.send('stop-recording-from-tray');
         },
       });
     }

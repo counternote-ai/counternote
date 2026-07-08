@@ -8,4 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listRecordings: () => ipcRenderer.invoke('list-recordings'),
   transcribe: (audioPath: string) => ipcRenderer.invoke('transcribe', audioPath),
   exportTranscript: (transcriptPath: string, format: string) => ipcRenderer.invoke('export-transcript', transcriptPath, format),
+  saveConfig: (config: { apiKey?: string; model?: string; autoTranscribe?: boolean }) => ipcRenderer.invoke('save-config', config),
+  loadConfig: () => ipcRenderer.invoke('load-config'),
+  onStopRecording: (callback: () => void) => ipcRenderer.on('stop-recording-from-tray', callback),
+  onOpenSettings: (callback: () => void) => ipcRenderer.on('open-settings', callback),
 });

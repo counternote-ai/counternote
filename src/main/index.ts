@@ -6,6 +6,8 @@ import { WavWriter } from './wav-writer';
 import { transcribeRecording } from './transcription';
 import { TrayManager } from './tray';
 import { saveExport } from './export';
+import { loadConfig, saveConfig, getGroqApiKey, setGroqApiKey } from './config';
+import { getAudioDuration } from './audio-processor';
 
 let mainWindow: BrowserWindow | null = null;
 let wavWriter: WavWriter | null = null;
@@ -44,6 +46,9 @@ ipcMain.handle('start-recording', async () => {
   const audioPath = path.join(recordingsDir, 'audio.wav');
   wavWriter = new WavWriter(audioPath, 16000, 2);
 
+  // Update tray to show recording state
+  trayManager?.setRecording(true);
+
   console.log('Recording started:', audioPath);
   return { success: true, path: audioPath };
 });
@@ -54,6 +59,8 @@ ipcMain.handle('stop-recording', async () => {
     wavWriter = null;
     console.log('Recording stopped');
   }
+  // Update tray to hide recording state
+  trayManager?.setRecording(false);
   return { success: true };
 });
 
@@ -71,32 +78,51 @@ ipcMain.handle('list-recordings', async () => {
     }
 
     const entries = fs.readdirSync(recordingsDir, { withFileTypes: true });
-    const recordings = entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => {
-        const dirPath = path.join(recordingsDir, entry.name);
-        const audioPath = path.join(dirPath, 'audio.wav');
-        const transcriptPath = path.join(dirPath, 'transcript.json');
+    const recordings = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map(async (entry) => {
+          const dirPath = path.join(recordingsDir, entry.name);
+          const audioPath = path.join(dirPath, 'audio.wav');
+          const transcriptPath = path.join(dirPath, 'transcript.json');
 
-        if (!fs.existsSync(audioPath)) {
-          return null;
-        }
+          if (!fs.existsSync(audioPath)) {
+            return null;
+          }
 
-        const stat = fs.statSync(audioPath);
-        const hasTranscript = fs.existsSync(transcriptPath);
+          let duration = 0;
+          try {
+            duration = await getAudioDuration(audioPath);
+          } catch (err) {
+            console.error('Failed to get audio duration:', err);
+          }
 
-        return {
-          id: entry.name,
-          title: `Interview — ${new Date(entry.name).toLocaleDateString()}`,
-          duration: 0, // Will be calculated from audio file
-          audioPath,
-          transcriptPath,
-          transcribed: hasTranscript,
-        };
-      })
-      .filter(Boolean);
+          const hasTranscript = fs.existsSync(transcriptPath);
 
-    return { success: true, recordings };
+          // Load transcript segments if available
+          let segments: any[] | undefined;
+          if (hasTranscript) {
+            try {
+              const transcript = JSON.parse(fs.readFileSync(transcriptPath, 'utf-8'));
+              segments = transcript.segments;
+            } catch (err) {
+              console.error('Failed to read transcript:', err);
+            }
+          }
+
+          return {
+            id: entry.name,
+            title: `Interview — ${new Date(entry.name).toLocaleDateString()}`,
+            duration,
+            audioPath,
+            transcriptPath,
+            transcribed: hasTranscript,
+            segments,
+          };
+        })
+    );
+
+    return { success: true, recordings: recordings.filter(Boolean) };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
@@ -116,6 +142,43 @@ ipcMain.handle('export-transcript', async (event, transcriptPath: string, format
     const transcript = JSON.parse(fs.readFileSync(transcriptPath, 'utf-8'));
     const exportPath = saveExport(transcript, format, transcriptPath);
     return { success: true, path: exportPath };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+});
+
+// Settings IPC handlers
+ipcMain.handle('save-config', async (event, config: { apiKey?: string; model?: string; autoTranscribe?: boolean }) => {
+  try {
+    // Save API key via safeStorage if provided
+    if (config.apiKey !== undefined) {
+      await setGroqApiKey(config.apiKey);
+    }
+    // Save other config fields
+    const currentConfig = loadConfig();
+    saveConfig({
+      ...currentConfig,
+      ...(config.model !== undefined && { groqModel: config.model }),
+      ...(config.autoTranscribe !== undefined && { autoTranscribe: config.autoTranscribe }),
+    });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+});
+
+ipcMain.handle('load-config', async () => {
+  try {
+    const config = loadConfig();
+    const apiKey = await getGroqApiKey();
+    return {
+      success: true,
+      config: {
+        apiKey: apiKey || '',
+        model: config.groqModel,
+        autoTranscribe: config.autoTranscribe,
+      },
+    };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
   }
