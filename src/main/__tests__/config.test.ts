@@ -1,11 +1,29 @@
-import { loadConfig, saveConfig } from '../config';
+jest.mock('fs', () => {
+  const actual = jest.requireActual('fs');
+  return {
+    ...actual,
+    existsSync: jest.fn(actual.existsSync),
+    readFileSync: jest.fn(actual.readFileSync),
+  };
+});
+
+import { loadConfig, saveConfig, getGroqApiKey } from '../config';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { safeStorage } from 'electron';
 
 // Mock the config directory to use a temp directory
 const TEST_CONFIG_DIR = path.join(os.tmpdir(), 'interview-copilot-test');
 const TEST_CONFIG_FILE = path.join(TEST_CONFIG_DIR, 'config.json');
+const fsMock = fs as unknown as {
+  existsSync: jest.Mock;
+  readFileSync: jest.Mock;
+};
+const safeStorageMock = safeStorage as unknown as {
+  decryptStringAsync: jest.Mock;
+  encryptStringAsync: jest.Mock;
+};
 
 describe('Config', () => {
   beforeEach(() => {
@@ -13,6 +31,13 @@ describe('Config', () => {
   });
 
   afterEach(() => {
+    jest.restoreAllMocks();
+    safeStorageMock.decryptStringAsync.mockReset();
+    safeStorageMock.decryptStringAsync.mockResolvedValue({ result: 'decrypted', shouldReEncrypt: false });
+    safeStorageMock.encryptStringAsync.mockReset();
+    safeStorageMock.encryptStringAsync.mockResolvedValue(Buffer.from('encrypted'));
+    fsMock.existsSync.mockImplementation(jest.requireActual('fs').existsSync);
+    fsMock.readFileSync.mockImplementation(jest.requireActual('fs').readFileSync);
     fs.rmSync(TEST_CONFIG_DIR, { recursive: true, force: true });
   });
 
@@ -46,5 +71,31 @@ describe('Config', () => {
     expect(typeof config.groqModel).toBe('string');
     expect(typeof config.autoTranscribe).toBe('boolean');
     expect(typeof config.outputDir).toBe('string');
+  });
+
+  it('should load the Groq API key when the stored secret decrypts', async () => {
+    fsMock.existsSync.mockReturnValue(true);
+    fsMock.readFileSync.mockReturnValue(Buffer.from('stored ciphertext') as any);
+    safeStorageMock.decryptStringAsync.mockResolvedValue({
+      result: 'provider-secret-value',
+      shouldReEncrypt: false,
+    });
+
+    await expect(getGroqApiKey()).resolves.toBe('provider-secret-value');
+  });
+
+  it('should return null with a concise warning when the stored API key cannot be decrypted', async () => {
+    fsMock.existsSync.mockReturnValue(true);
+    fsMock.readFileSync.mockReturnValue(Buffer.from('stored ciphertext') as any);
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    safeStorageMock.decryptStringAsync.mockRejectedValue(new Error('bad ciphertext'));
+
+    await expect(getGroqApiKey()).resolves.toBeNull();
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Stored Groq API key could not be decrypted. Re-enter it in Settings to replace the old key.'
+    );
   });
 });

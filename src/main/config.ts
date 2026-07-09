@@ -42,8 +42,8 @@ export async function getGroqApiKey(): Promise<string | null> {
       const { result } = await safeStorage.decryptStringAsync(encrypted);
       return result;
     }
-  } catch (err) {
-    console.error('Failed to decrypt API key:', err);
+  } catch {
+    console.warn('Stored Groq API key could not be decrypted. Re-enter it in Settings to replace the old key.');
   }
   return null;
 }
