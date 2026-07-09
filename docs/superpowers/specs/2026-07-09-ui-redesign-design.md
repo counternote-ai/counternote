@@ -57,11 +57,12 @@ Expected package additions:
 - Radix primitive dependencies installed by shadcn for selected components such as select, switch, tooltip, and scroll area
 
 Use the shadcn CLI through `npx shadcn@latest` or an equivalent one-off package runner during implementation. The CLI itself does not need to become a runtime dependency.
+`tw-animate-css` provides animation utilities used by generated shadcn components and should be imported in the renderer stylesheet when required by the generated setup.
 
 Expected config additions or changes:
 
 - Tailwind v4 global CSS setup in `src/renderer/styles.css`.
-- `postcss.config.mjs` with the `@tailwindcss/postcss` plugin.
+- `postcss.config.cjs` with the `@tailwindcss/postcss` plugin.
 - PostCSS loader support in the Webpack renderer CSS pipeline.
 - A `components.json` compatible with shadcn/ui.
 - A `cn` helper under `src/renderer/lib/utils.ts`.
@@ -87,12 +88,14 @@ Tailwind v4 should use CSS-based setup rather than a Tailwind v3 `tailwind.confi
 @import "shadcn/tailwind.css";
 ```
 
-Tailwind v4 scans source files automatically from the configured source root. Use complete static class names or static variant maps so Tailwind can detect the classes used by React components.
+`@import "shadcn/tailwind.css"` is the package import shown by the current shadcn manual install guide. If the CLI output for the installed version generates a different local import, follow the generated output and document the deviation in the implementation summary.
 
-Create `postcss.config.mjs`:
+Tailwind v4 scans source files automatically from the configured source root. In `src/renderer/styles.css`, `source("./")` should scan `src/renderer/`; after the first build, verify that Tailwind utilities used in `.tsx` renderer files are present. If they are not, adjust the `source(...)` path before proceeding. Use complete static class names or static variant maps so Tailwind can detect the classes used by React components.
+
+Create `postcss.config.cjs` using CommonJS to match the existing CommonJS Webpack config:
 
 ```js
-export default {
+module.exports = {
   plugins: {
     "@tailwindcss/postcss": {},
   },
@@ -106,7 +109,7 @@ Create a root `components.json` with renderer-scoped aliases:
 ```json
 {
   "$schema": "https://ui.shadcn.com/schema.json",
-  "style": "base-nova",
+  "style": "new-york",
   "rsc": false,
   "tsx": true,
   "tailwind": {
@@ -126,6 +129,8 @@ Create a root `components.json` with renderer-scoped aliases:
   "iconLibrary": "lucide"
 }
 ```
+
+Use `new-york` because the current shadcn docs mark `default` as deprecated. Keep `baseColor` as `taupe`; the current shadcn `components.json` docs list `taupe` as a supported base color. The concrete palette still comes from the custom CSS variables below, not from the preset alone.
 
 Add TypeScript and Webpack alias support so generated shadcn imports resolve:
 
@@ -150,6 +155,19 @@ resolve: {
 ```
 
 Use renderer-scoped aliases rather than project-root aliases so `@/components/ui/button` resolves to `src/renderer/components/ui/button`.
+Because the root `tsconfig.json` also covers main-process files, reserve `@/...` imports for renderer code. Do not use the renderer alias from `src/main/`. If alias usage begins to affect main-process compilation, split renderer-specific settings into a dedicated renderer tsconfig.
+
+### HTML Shell
+
+Keep `src/renderer/index.html` as the HtmlWebpackPlugin template. No `public/` directory is needed for this pass.
+
+Add a light-only color scheme hint:
+
+```html
+<meta name="color-scheme" content="light">
+```
+
+No body class is required for the warm theme. The theme is applied through `src/renderer/styles.css`.
 
 ## Theme Mode
 
@@ -189,6 +207,39 @@ Avoid a one-note beige UI by using small accents:
 - Amber-taupe for needs-transcript status.
 - Muted red only for recording/stop/error.
 - Slate/ink for primary text and committed actions.
+
+Reference light-theme CSS variables:
+
+```css
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.973 0.012 83);
+  --foreground: oklch(0.235 0.018 75);
+  --card: oklch(0.992 0.006 85);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.235 0.018 75);
+  --primary-foreground: oklch(0.985 0.008 84);
+  --secondary: oklch(0.941 0.018 82);
+  --secondary-foreground: oklch(0.32 0.02 75);
+  --muted: oklch(0.941 0.018 82);
+  --muted-foreground: oklch(0.51 0.025 75);
+  --accent: oklch(0.925 0.021 84);
+  --accent-foreground: oklch(0.29 0.02 75);
+  --destructive: oklch(0.56 0.15 28);
+  --destructive-foreground: oklch(0.985 0.006 84);
+  --border: oklch(0.885 0.018 82);
+  --input: oklch(0.885 0.018 82);
+  --ring: oklch(0.63 0.04 78);
+  --status-ready: oklch(0.44 0.07 145);
+  --status-ready-bg: oklch(0.93 0.035 145);
+  --status-pending: oklch(0.48 0.07 72);
+  --status-pending-bg: oklch(0.94 0.035 78);
+}
+```
+
+These values are the starting palette. Implementation can make small contrast adjustments, but should preserve the same warm neutral direction and avoid reintroducing the old dark MVP palette.
 
 ## Component Inventory
 
@@ -366,19 +417,21 @@ Out of scope:
 
 1. Add Tailwind v4, PostCSS, shadcn/ui dependencies, renderer aliases, and Webpack CSS pipeline support.
 2. Create `components.json`, `src/renderer/lib/utils.ts`, and initial shadcn theme tokens in `src/renderer/styles.css`.
+   - Replace the existing dark MVP CSS rules instead of appending the new theme beneath them.
 3. Add the minimal shadcn component inventory needed for the pass.
-4. Redesign `ControlPanel` first because it is the highest-impact home surface.
-5. Change transcription loading state to `transcribingId: string | null`.
-6. Redesign `TranscriptView` with metadata header, speaker styling, and scrollable segment list.
-7. Redesign `Settings` with grouped form sections and a calm privacy note.
-8. Replace emoji labels with lucide icons and accessible labels.
-9. Polish error, loading, and empty states across all screens.
+4. Change transcription loading state to `transcribingId: string | null` while redesigning `ControlPanel`, because the home surface consumes that state.
+5. Redesign `TranscriptView` with metadata header, speaker styling, and scrollable segment list.
+6. Redesign `Settings` with grouped form sections and a calm privacy note.
+7. Replace emoji labels with lucide icons and accessible labels.
+8. Polish error, loading, and empty states across all screens.
 
 ## Testing And Verification
 
 Because this is mainly a renderer/UI change, verification should include:
 
 - `npm run build`
+  - Confirm Tailwind utilities used in renderer `.tsx` files are emitted.
+  - Confirm the shadcn style import resolves.
 - `npm test`
 - Existing main-process unit tests should remain unchanged unless TypeScript or build wiring requires updates.
 - No new unit tests are required for shadcn primitives themselves.
