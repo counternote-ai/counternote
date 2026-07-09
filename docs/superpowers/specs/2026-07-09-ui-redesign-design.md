@@ -41,26 +41,125 @@ shadcn/ui is the best fit because it is Tailwind-first, uses editable component 
 
 ## Dependencies And Tooling
 
-Add Tailwind and shadcn/ui support to the existing React + Webpack renderer.
+Add Tailwind v4 and shadcn/ui support to the existing React + Webpack renderer.
 
 Expected package additions:
 
 - `tailwindcss`
-- `@tailwindcss/postcss` or the Tailwind integration required by the current Tailwind version
+- `@tailwindcss/postcss`
 - `postcss`
+- `postcss-loader`
 - `class-variance-authority`
 - `clsx`
 - `tailwind-merge`
 - `lucide-react`
-- shadcn component dependencies as needed, likely Radix primitives for select, switch, tooltip, and scroll area
+- `tw-animate-css`
+- Radix primitive dependencies installed by shadcn for selected components such as select, switch, tooltip, and scroll area
+
+Use the shadcn CLI through `npx shadcn@latest` or an equivalent one-off package runner during implementation. The CLI itself does not need to become a runtime dependency.
 
 Expected config additions or changes:
 
-- Tailwind global CSS setup in the renderer stylesheet path.
-- PostCSS loader support in the Webpack CSS pipeline.
+- Tailwind v4 global CSS setup in `src/renderer/styles.css`.
+- `postcss.config.mjs` with the `@tailwindcss/postcss` plugin.
+- PostCSS loader support in the Webpack renderer CSS pipeline.
 - A `components.json` compatible with shadcn/ui.
 - A `cn` helper under `src/renderer/lib/utils.ts`.
 - Reusable UI components under `src/renderer/components/ui/`.
+
+Webpack renderer CSS rule should change from:
+
+```js
+{ test: /\.css$/, use: ['style-loader', 'css-loader'] }
+```
+
+to:
+
+```js
+{ test: /\.css$/, use: ['style-loader', 'css-loader', 'postcss-loader'] }
+```
+
+Tailwind v4 should use CSS-based setup rather than a Tailwind v3 `tailwind.config.js` content array. The renderer stylesheet should import Tailwind and shadcn styles:
+
+```css
+@import "tailwindcss" source("./");
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+```
+
+Tailwind v4 scans source files automatically from the configured source root. Use complete static class names or static variant maps so Tailwind can detect the classes used by React components.
+
+Create `postcss.config.mjs`:
+
+```js
+export default {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+```
+
+### shadcn Configuration
+
+Create a root `components.json` with renderer-scoped aliases:
+
+```json
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "base-nova",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/renderer/styles.css",
+    "baseColor": "taupe",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "iconLibrary": "lucide"
+}
+```
+
+Add TypeScript and Webpack alias support so generated shadcn imports resolve:
+
+```json
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/renderer/*"]
+    }
+  }
+}
+```
+
+```js
+resolve: {
+  extensions: ['.tsx', '.ts', '.js'],
+  alias: {
+    '@': path.resolve(__dirname, 'src/renderer'),
+  },
+}
+```
+
+Use renderer-scoped aliases rather than project-root aliases so `@/components/ui/button` resolves to `src/renderer/components/ui/button`.
+
+## Theme Mode
+
+This redesign intentionally replaces the current dark MVP UI with a warm light Review Desk theme.
+
+Dark mode is deferred and out of scope for this pass:
+
+- Do not add a dark-mode toggle.
+- Do not QA dark colors as part of this implementation.
+- If shadcn generated styles include a `.dark` token block or `@custom-variant dark`, keep the scaffolding harmlessly in place, but only the light Review Desk theme is considered designed and supported in this pass.
 
 ## Theme Tokens
 
@@ -107,7 +206,7 @@ Start with a small component set:
 - `Tooltip`
 - `Alert` or app-level error banner
 
-Use `lucide-react` icons instead of emoji. Likely icons:
+Use `lucide-react` icons instead of emoji. Icon mapping:
 
 - `Plus` for new recording
 - `Square` or `CircleStop` for stop recording
@@ -117,6 +216,47 @@ Use `lucide-react` icons instead of emoji. Likely icons:
 - `FileText`
 - `LoaderCircle`
 - `Mic`
+
+## Layout Details
+
+The app keeps the existing 400 x 600 Electron window constraint. Header layouts must avoid forcing app name, screen title, primary action, and secondary action onto one crowded row.
+
+### Recordings Header
+
+Use a compact two-row header:
+
+```text
+Interview Copilot                         [Settings]
+Past Interviews                           [+ Record]
+```
+
+Rules:
+
+- The app label is small metadata text.
+- The screen title is the primary heading.
+- Settings is an icon button with an accessible label.
+- `+ Record` is a small outline pill.
+- At narrow content widths, title text truncates before actions shrink.
+
+### Transcript Header
+
+Use a utility toolbar plus title metadata:
+
+```text
+[Back]                                  [Export]
+Product Manager Screen
+31 min - 42 segments - transcript ready
+```
+
+### Settings Header
+
+Use a simple utility toolbar:
+
+```text
+[Back]                                  Settings
+```
+
+Save remains at the bottom of the settings content, not in the header.
 
 ## Screen Designs
 
@@ -133,6 +273,7 @@ Structure:
 - Ready recordings are clickable and open the transcript.
 - Untranscribed recordings show a quiet `Transcribe` action inside the card.
 - While transcription is running, show a spinner state and disable duplicate transcribe actions.
+- Replace the current global `isTranscribing` renderer state with per-recording state such as `transcribingId: string | null`. This keeps loading UI localized to the recording being transcribed and avoids disabling unrelated cards unnecessarily.
 
 Empty state:
 
@@ -194,17 +335,21 @@ Rules:
 - Buttons must keep stable dimensions when labels change between idle and loading.
 - Text must fit within the 400 px window width without overlap.
 - Maintain scrollable content where recordings or transcript segments exceed the window height.
+- Use shadcn `ScrollArea` for the recordings list and transcript segment list when content exceeds the available height.
+- Scrollbars should stay quiet: use overlay or thin warm-neutral styling so they do not consume meaningful horizontal space inside the 400 px window.
 
 ## Implementation Boundaries
 
 In scope:
 
 - Add Tailwind + shadcn/ui foundation.
+- Add renderer path alias support required by shadcn imports.
 - Replace hand-styled controls with reusable UI components.
 - Redesign the three existing renderer screens.
 - Add small UX improvements for empty, loading, status, and metadata states.
 - Replace emoji with lucide icons.
 - Keep current IPC contracts and recording/transcription behavior.
+- Change renderer-only transcription loading state from a global boolean to per-recording state.
 
 Out of scope:
 
@@ -214,6 +359,20 @@ Out of scope:
 - True speaker diarization.
 - New export formats.
 - Window resizing changes unless required by layout correctness.
+- Dark mode or theme switching.
+- Visual regression infrastructure.
+
+## Implementation Sequence
+
+1. Add Tailwind v4, PostCSS, shadcn/ui dependencies, renderer aliases, and Webpack CSS pipeline support.
+2. Create `components.json`, `src/renderer/lib/utils.ts`, and initial shadcn theme tokens in `src/renderer/styles.css`.
+3. Add the minimal shadcn component inventory needed for the pass.
+4. Redesign `ControlPanel` first because it is the highest-impact home surface.
+5. Change transcription loading state to `transcribingId: string | null`.
+6. Redesign `TranscriptView` with metadata header, speaker styling, and scrollable segment list.
+7. Redesign `Settings` with grouped form sections and a calm privacy note.
+8. Replace emoji labels with lucide icons and accessible labels.
+9. Polish error, loading, and empty states across all screens.
 
 ## Testing And Verification
 
@@ -221,14 +380,19 @@ Because this is mainly a renderer/UI change, verification should include:
 
 - `npm run build`
 - `npm test`
-- Manual run with Electron if practical:
+- Existing main-process unit tests should remain unchanged unless TypeScript or build wiring requires updates.
+- No new unit tests are required for shadcn primitives themselves.
+- No new visual regression test framework is required in this pass.
+- Manual run with Electron after a successful build. If Electron cannot launch on the current machine, document the blocker in the implementation summary:
   - Recordings screen with zero recordings.
   - Recordings screen with mixed ready and untranscribed recordings.
   - Recording active state.
   - Transcription loading state.
+  - Confirm only the active recording card shows transcription loading.
   - Transcript screen with segments.
   - Transcript empty state.
   - Settings screen form controls and save.
 - Visual inspection at the existing 400 x 600 window size.
+- Visual inspection should include scrollbar behavior on recordings and transcript lists.
 
 If a browser-based preview is practical during implementation, use screenshots to verify that text does not overflow and controls remain aligned.
