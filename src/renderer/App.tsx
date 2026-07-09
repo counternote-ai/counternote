@@ -1,20 +1,36 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { TranscriptView } from './components/TranscriptView';
 import { Settings } from './components/Settings';
+import { Alert, AlertDescription } from './components/ui/alert';
+import { Button } from './components/ui/button';
 import { AudioCapture } from './audio-capture';
 import './styles.css';
 
 type View = 'recordings' | 'transcript' | 'settings';
 
+interface AppRecording {
+  id: string;
+  title: string;
+  duration: number;
+  transcribed: boolean;
+  audioPath: string;
+  transcriptPath?: string;
+  segments?: Array<{ start: number; end: number; text: string; speaker: string }>;
+}
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
 export default function App() {
   const [view, setView] = useState<View>('recordings');
   const [isRecording, setIsRecording] = useState(false);
-  const [recordings, setRecordings] = useState<any[]>([]);
-  const [selectedRecording, setSelectedRecording] = useState<any>(null);
+  const [recordings, setRecordings] = useState<AppRecording[]>([]);
+  const [selectedRecording, setSelectedRecording] = useState<AppRecording | null>(null);
   const [settings, setSettings] = useState({ apiKey: '', model: 'whisper-large-v3-turbo', autoTranscribe: false });
   const [error, setError] = useState<string | null>(null);
-  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcribingId, setTranscribingId] = useState<string | null>(null);
 
   const audioCaptureRef = useRef<AudioCapture | null>(null);
 
@@ -79,10 +95,9 @@ export default function App() {
         audioCaptureRef.current = null;
         setError('Failed to start recording');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // User may have denied media permissions
-      const message = err?.message || 'Failed to start audio capture';
-      setError(message);
+      setError(getErrorMessage(err, 'Failed to start audio capture'));
       // Clean up if partially started
       audioCaptureRef.current?.stop();
       audioCaptureRef.current = null;
@@ -103,8 +118,8 @@ export default function App() {
         // Refresh recordings list
         await loadRecordings();
       }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to stop recording');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to stop recording'));
       // Still mark as not recording even if error
       setIsRecording(false);
     }
@@ -115,7 +130,7 @@ export default function App() {
     if (!recording) return;
 
     setError(null);
-    setIsTranscribing(true);
+    setTranscribingId(id);
     try {
       const result = await window.electronAPI.transcribe(recording.audioPath);
       if (result.success) {
@@ -124,10 +139,10 @@ export default function App() {
       } else {
         setError(result.error || 'Transcription failed');
       }
-    } catch (err: any) {
-      setError(err?.message || 'Transcription failed');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Transcription failed'));
     } finally {
-      setIsTranscribing(false);
+      setTranscribingId(null);
     }
   };
 
@@ -135,13 +150,18 @@ export default function App() {
     if (!selectedRecording) return;
 
     setError(null);
+    if (!selectedRecording.transcriptPath) {
+      setError('No transcript available to export');
+      return;
+    }
+
     try {
       const result = await window.electronAPI.exportTranscript(selectedRecording.transcriptPath, 'txt');
       if (!result.success) {
         setError(result.error || 'Export failed');
       }
-    } catch (err: any) {
-      setError(err?.message || 'Export failed');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Export failed'));
     }
   };
 
@@ -151,8 +171,8 @@ export default function App() {
       await window.electronAPI.saveConfig(newSettings);
       setSettings(newSettings);
       setView('recordings');
-    } catch (err: any) {
-      setError(err?.message || 'Failed to save settings');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to save settings'));
     }
   };
 
@@ -166,10 +186,14 @@ export default function App() {
 
   // Error banner component
   const ErrorBanner = error ? (
-    <div className="error-banner">
-      <span>{error}</span>
-      <button onClick={() => setError(null)}>Dismiss</button>
-    </div>
+    <Alert variant="destructive" className="fixed left-4 right-4 top-4 z-50 shadow-md">
+      <AlertDescription className="flex items-center justify-between gap-3">
+        <span>{error}</span>
+        <Button variant="ghost" size="sm" onClick={() => setError(null)}>
+          Dismiss
+        </Button>
+      </AlertDescription>
+    </Alert>
   ) : null;
 
   if (view === 'settings') {
@@ -193,6 +217,7 @@ export default function App() {
         {ErrorBanner}
         <TranscriptView
           title={selectedRecording.title}
+          duration={selectedRecording.duration}
           segments={selectedRecording.segments || []}
           onBack={() => setView('recordings')}
           onExport={handleExport}
@@ -212,7 +237,7 @@ export default function App() {
         onSelectRecording={handleSelectRecording}
         onOpenSettings={() => setView('settings')}
         isRecording={isRecording}
-        isTranscribing={isTranscribing}
+        transcribingId={transcribingId}
       />
     </>
   );

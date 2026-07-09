@@ -1,140 +1,116 @@
+@import "tailwindcss" source("./");
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.973 0.012 83);
+  --foreground: oklch(0.235 0.018 75);
+  --card: oklch(0.992 0.006 85);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.235 0.018 75);
+  --primary-foreground: oklch(0.985 0.008 84);
+  --secondary: oklch(0.941 0.018 82);
+  --secondary-foreground: oklch(0.32 0.02 75);
+  --muted: oklch(0.941 0.018 82);
+  --muted-foreground: oklch(0.51 0.025 75);
+  --accent: oklch(0.925 0.021 84);
+  --accent-foreground: oklch(0.29 0.02 75);
+  --destructive: oklch(0.56 0.15 28);
+  --destructive-foreground: oklch(0.985 0.006 84);
+  --border: oklch(0.885 0.018 82);
+  --input: oklch(0.885 0.018 82);
+  --ring: oklch(0.63 0.04 78);
+  --status-ready: oklch(0.44 0.07 145);
+  --status-ready-bg: oklch(0.93 0.035 145);
+  --status-pending: oklch(0.48 0.07 72);
+  --status-pending-bg: oklch(0.94 0.035 78);
+}
+
 * {
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #1e1e1e;
-  color: #fff;
-  padding: 16px;
+  margin: 0;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  font-feature-settings: "kern";
+  -webkit-font-smoothing: antialiased;
 }
 
-button {
-  background: #007aff;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
+button,
+input,
+select {
+  font: inherit;
 }
 
-button:hover {
-  background: #0056b3;
-}
-
-.start-btn {
-  background: #ff3b30;
-  width: 100%;
-  padding: 12px;
-  font-size: 16px;
-}
-
-.stop-btn {
-  background: #666;
-  width: 100%;
-  padding: 12px;
-  font-size: 16px;
-}
-
-.settings-btn {
-  background: #444;
-  width: 100%;
-  padding: 8px;
-  font-size: 14px;
-  margin-top: 8px;
-}
-
-.settings-btn:hover {
-  background: #555;
-}
-
-.recordings-list {
-  margin-top: 20px;
-}
-
-.recording-item {
+.app-shell {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  background: #2a2a2a;
-  border-radius: 8px;
-  margin-bottom: 8px;
-  cursor: pointer;
+  height: 100vh;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+  padding: 18px;
 }
 
-.recording-item:hover {
-  background: #333;
+.app-scroll-shadow {
+  mask-image: linear-gradient(to bottom, transparent, black 12px, black calc(100% - 12px), transparent);
 }
 
-.transcript-view .segments {
-  margin-top: 16px;
+::selection {
+  background: color-mix(in oklch, var(--accent) 75%, var(--foreground));
 }
 
-.segment {
-  margin-bottom: 16px;
-  padding: 12px;
-  background: #2a2a2a;
-  border-radius: 8px;
+::-webkit-scrollbar {
+  width: 8px;
 }
 
-.segment .speaker {
-  font-weight: bold;
-  margin-bottom: 4px;
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.segment .time {
-  float: right;
-  color: #888;
-  font-size: 12px;
-}
-
-.settings .form-group {
-  margin-bottom: 16px;
-}
-
-.settings label {
-  display: block;
-  margin-bottom: 4px;
-}
-
-.settings input[type="password"],
-.settings select {
-  width: 100%;
-  padding: 8px;
-  background: #2a2a2a;
-  border: 1px solid #444;
-  border-radius: 4px;
-  color: white;
-}
-
-.settings .hint {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #888;
-}
-
-.error-banner {
-  background: #ff3b30;
-  color: white;
-  padding: 10px 16px;
-  border-radius: 6px;
-  margin-bottom: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 14px;
-}
-
-.error-banner button {
-  background: rgba(255, 255, 255, 0.2);
-  padding: 4px 8px;
-  font-size: 12px;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--border) 80%, var(--foreground));
+  background-clip: content-box;
 }

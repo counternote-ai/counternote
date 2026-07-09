@@ -1,4 +1,12 @@
 import React, { useState } from 'react';
+import { ChevronLeft, KeyRound, ShieldCheck } from 'lucide-react';
+import { Button } from './ui/button';
+import { Card, CardContent } from './ui/card';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Separator } from './ui/separator';
+import { Switch } from './ui/switch';
 
 interface SettingsProps {
   apiKey: string;
@@ -14,51 +22,93 @@ export function Settings({ apiKey, model, autoTranscribe, onSave, onBack }: Sett
   const [localAutoTranscribe, setLocalAutoTranscribe] = useState(autoTranscribe);
 
   return (
-    <div className="settings">
-      <div className="header">
-        <button onClick={onBack}>← Back</button>
-        <h2>Settings</h2>
-      </div>
+    <main className="app-shell">
+      <header className="flex items-center justify-between gap-3">
+        <Button variant="outline" size="pill" onClick={onBack}>
+          <ChevronLeft />
+          Back
+        </Button>
+        <h1 className="text-lg font-semibold text-foreground">Settings</h1>
+      </header>
 
-      <div className="form-group">
-        <label>Groq API Key</label>
-        <input
-          type="password"
-          value={localApiKey}
-          onChange={(e) => setLocalApiKey(e.target.value)}
-          placeholder="gsk_..."
-        />
-      </div>
+      <section className="min-h-0 flex-1 space-y-3">
+        <Card>
+          <CardContent className="space-y-4 p-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+                <KeyRound className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold">Transcription</h2>
+                <p className="text-xs text-muted-foreground">Groq settings for post-interview transcripts.</p>
+              </div>
+            </div>
 
-      <div className="form-group">
-        <label>Model</label>
-        <select value={localModel} onChange={(e) => setLocalModel(e.target.value)}>
-          <option value="whisper-large-v3-turbo">Whisper Large V3 Turbo (faster, cheaper)</option>
-          <option value="whisper-large-v3">Whisper Large V3 (more accurate)</option>
-        </select>
-      </div>
+            <Separator />
 
-      <div className="form-group">
-        <label>
-          <input
-            type="checkbox"
-            checked={localAutoTranscribe}
-            onChange={(e) => setLocalAutoTranscribe(e.target.checked)}
-          />
-          Auto-transcribe after recording
-        </label>
-        <p className="hint">
-          ⚠️ Transcription sends audio to Groq's servers for processing
-        </p>
-      </div>
+            <div className="space-y-2">
+              <Label htmlFor="groq-api-key">Groq API Key</Label>
+              <Input
+                id="groq-api-key"
+                type="password"
+                value={localApiKey}
+                onChange={(e) => setLocalApiKey(e.target.value)}
+                placeholder="gsk_..."
+              />
+            </div>
 
-      <button
-        onClick={() =>
-          onSave({ apiKey: localApiKey, model: localModel, autoTranscribe: localAutoTranscribe })
-        }
+            <div className="space-y-2">
+              <Label htmlFor="groq-model">Model</Label>
+              <Select value={localModel} onValueChange={setLocalModel}>
+                <SelectTrigger id="groq-model">
+                  <SelectValue placeholder="Select a model" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="whisper-large-v3-turbo">Whisper Large V3 Turbo</SelectItem>
+                  <SelectItem value="whisper-large-v3">Whisper Large V3</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Turbo is faster and cheaper; Large V3 can be more accurate.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/50 p-3">
+              <div className="space-y-1">
+                <Label htmlFor="auto-transcribe">Auto-transcribe after recording</Label>
+                <p className="text-xs leading-relaxed text-muted-foreground">Starts transcription as soon as recording stops.</p>
+              </div>
+              <Switch
+                id="auto-transcribe"
+                checked={localAutoTranscribe}
+                onCheckedChange={setLocalAutoTranscribe}
+                aria-label="Auto-transcribe after recording"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="flex gap-3 p-4">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold">Privacy</h2>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Audio stays local until transcription runs. When transcription starts, audio is sent to Groq for processing.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <Button
+        className="w-full"
+        onClick={() => onSave({ apiKey: localApiKey, model: localModel, autoTranscribe: localAutoTranscribe })}
       >
-        Save Settings
-      </button>
-    </div>
+        Save settings
+      </Button>
+    </main>
   );
 }
