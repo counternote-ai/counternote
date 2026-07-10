@@ -40,6 +40,18 @@ This approach is preferred because it preserves the local repository environment
 
 If that constraint becomes inconvenient, the workflow can later move to a Claude Desktop scheduled task without changing its Linear states or execution contract. Cloud routines or Linear coding sessions remain possible future alternatives.
 
+## Local Prerequisites
+
+End-to-end operation requires:
+
+- Claude Code `2.1.196` or later so scheduled fires can invoke project skills; using the current stable release is preferred.
+- An authenticated GitHub CLI (`gh`) installation with read/write access to pull requests and read access to checks.
+- A GitHub repository remote named `origin`.
+- An authenticated Linear MCP connection with issue read/write access.
+- Codex cloud and automatic GitHub code review enabled for the repository.
+
+The workspace check performed on 2026-07-10 confirmed Claude Code `2.1.197`, which satisfies the scheduled-skill requirement, and GitHub CLI `2.96.0`. GitHub CLI is not authenticated and the checkout has no configured Git remote; those remain setup prerequisites, not workflow failures.
+
 ## Actors and Responsibilities
 
 ### Human
@@ -79,6 +91,39 @@ If that constraint becomes inconvenient, the workflow can later move to a Claude
 - Run deterministic repository checks.
 - Store Codex findings, Claude's review-gate comment, and the human merge event.
 
+## Happy-Path Sequence
+
+```mermaid
+sequenceDiagram
+    actor Human
+    participant Linear
+    participant Claude as Claude Code /loop
+    participant GitHub
+    participant CI
+    participant Codex
+
+    Human->>Linear: Move Todo to Agent Ready
+    Claude->>Linear: Read, claim, and verify In Progress
+    Claude->>Claude: Create worktree, implement, test, self-review
+    Claude->>GitHub: Push branch and open ready PR
+    GitHub->>Linear: Move linked issue to Pull Request
+    GitHub->>CI: Run required checks
+    GitHub->>Codex: Trigger automatic review
+    CI-->>GitHub: Publish check results
+    Codex-->>GitHub: Publish current-head review
+    Claude->>GitHub: Read head SHA, checks, reviews, and threads
+    alt Findings or failed checks
+        Claude->>Claude: Repair and re-verify
+        Claude->>GitHub: Push and request current-head re-review
+    else Clean current head
+        Claude->>GitHub: Post semantic approval with head SHA
+        Claude->>Linear: Move to PR Approved and mention Human
+        Linear-->>Human: Notify ready to merge
+        Human->>GitHub: Merge PR
+        GitHub->>Linear: Move issue to Done
+    end
+```
+
 ## Linear State Machine
 
 ```text
@@ -86,7 +131,7 @@ Todo
   -> Agent Ready       human authorizes implementation
 
 Agent Ready
-  -> In Progress       Claude atomically claims the ticket
+  -> In Progress       Claude claims and verifies the ticket
 
 In Progress
   -> Pull Request      linked ready-for-review PR exists
@@ -106,6 +151,8 @@ Blocked
 
 `PR Approved` is a workflow state, not a requirement for GitHub's formal approval event. It means Claude has verified the current pull request head against CI and the latest Codex review and has notified the human.
 
+`Agent Ready` intentionally means both authorized and waiting for selection. While Claude is busy, additional authorized tickets remain in that state. A separate `Queued` status would duplicate this meaning without changing worker behavior, so it is not part of the initial state machine.
+
 ## Ticket Selection and Ownership
 
 Each loop iteration follows this order:
@@ -117,13 +164,28 @@ Each loop iteration follows this order:
 5. Sort candidates by Linear priority, then by oldest issue creation time.
 6. Move the selected ticket to `In Progress` before creating the worktree.
 
-A durable Linear label named `agent:claude-code` identifies tickets owned by this workflow. Claude applies it when claiming work and retains it for audit and recovery. The human remains the ticket assignee.
+A durable Linear label named `agent:claude-code` identifies tickets that have ever been owned by this workflow. Claude applies it when claiming work and retains it permanently for audit. Active ownership is determined by the combination of this label and a current state of `In Progress` or `Pull Request`; the label alone never makes a historical `Done`, `Blocked`, or waiting `PR Approved` ticket active. The human remains the ticket assignee.
 
 Claude also adds one claim comment containing the branch name and, when available, the PR link. Subsequent loop iterations update state only when something material changes; they do not add heartbeat comments.
 
 An implementation ticket remains active until it reaches `PR Approved` or `Blocked`. A `PR Approved` ticket waiting for human merge does not prevent Claude from claiming the next `Agent Ready` ticket.
 
 If an older `PR Approved` ticket becomes stale after Claude has claimed newer work, the older PR enters a priority repair queue. Claude pauses the newer ticket at a safe checkpoint, restores the older ticket to `Pull Request`, repairs and revalidates it, and then resumes the newer ticket. Work remains sequential; Claude never mutates both tickets concurrently.
+
+## Linear Mutation Safety
+
+The Linear MCP interface is not assumed to provide compare-and-swap or version-based optimistic concurrency. Claude therefore uses a read-update-read protocol for every state transition:
+
+1. Read the current issue immediately before mutation.
+2. Confirm its state matches the expected source state.
+3. If it does not match, treat the human or another integration's state as authoritative and reconcile instead of overwriting it.
+4. Perform the single status update.
+5. Check the mutation result for tool, GraphQL, and partial-success errors.
+6. Re-read the issue and confirm the requested destination state.
+
+Claude must confirm `In Progress` before creating a new worktree. A failed or ambiguous mutation is retried on the next iteration. It becomes `Blocked` only after the same mutation failure persists for three consecutive iterations.
+
+This protocol reduces but cannot eliminate the narrow time-of-check/time-of-use race because Linear MCP does not document a conditional state update. If a human update lands between Claude's pre-read and write, the later write may win. The post-read and Linear activity history make the collision visible, and the human can restore the intended status. The sequential pilot accepts this residual risk; a future webhook-backed coordinator would be needed for stronger serialization.
 
 ## Worktree and Branch Contract
 
@@ -196,6 +258,38 @@ Linear's GitHub automation should move the linked ticket to `Pull Request` when 
 
 Codex automatic review is enabled for the repository. Review guidance lives in `AGENTS.md` so it is versioned with the codebase.
 
+### Review Output Contract
+
+The `AGENTS.md` review guidance requires Codex to include exactly one machine-readable verdict in its review summary:
+
+```text
+CODEX_REVIEW_VERDICT: CLEAN
+```
+
+or:
+
+```text
+CODEX_REVIEW_VERDICT: CHANGES_REQUIRED
+```
+
+`CLEAN` means Codex found no P0 or P1 issue for that reviewed commit. `CHANGES_REQUIRED` accompanies one or more actionable findings. Missing, duplicated, or malformed verdicts are treated as an incomplete review, never as approval.
+
+### Review Detection
+
+Claude reads Codex results through GitHub, not through a Codex-specific MCP endpoint:
+
+1. Read the PR's current `headRefOid`, open/draft state, and mergeability with `gh pr view --json`.
+2. Read required checks with `gh pr checks --required --json`; its `bucket` field normalizes results to pass, fail, pending, skipping, or cancel.
+3. List pull request reviews through GitHub's REST reviews endpoint using `gh api`. REST review records include `user.login`, `state`, `submitted_at`, and `commit_id`.
+4. Filter reviews by the configured Codex reviewer login recorded during setup.
+5. Select the newest Codex review whose `commit_id` exactly equals the current `headRefOid`.
+6. Read its verdict marker and body.
+7. Query GitHub GraphQL review threads and inspect `isResolved`; any unresolved Codex thread prevents a clean result.
+
+The first validation PR establishes the Codex review author's actual GitHub login. The workflow stores that non-secret identifier in `.claude/ticket-worker.local.json` rather than hard-coding an undocumented bot name.
+
+If no current-head review exists, Claude posts `@codex review` once for that SHA. The trigger comment includes a hidden marker containing the SHA so reconciliation can detect an existing request and avoid duplicate mentions. If a review exists but violates the output contract, Claude requests one fresh review; a repeated protocol failure follows the repair-cycle limit and moves the ticket to `Blocked`.
+
 Claude treats review feedback as technical input, not unquestionable instructions:
 
 1. Confirm that each finding applies to the current code and ticket.
@@ -220,6 +314,8 @@ Claude moves `Pull Request` to `PR Approved` only when all of these conditions a
 Claude then adds a GitHub PR comment with this semantic approval signal:
 
 > Agent review gate passed for `<head SHA>`: required CI is green, the latest Codex review is complete, and no unresolved findings remain.
+
+The same comment includes a hidden marker in the form `<!-- claude-worker:pr-approved head=<full SHA> -->`. Reconciliation reads the marker and compares its full SHA with the current `headRefOid`. Any mismatch invalidates approval, including a force-push where the stored commit no longer exists.
 
 The comment may be authored through the human's connected GitHub identity; it does not need a separate Codex GitHub user.
 
@@ -258,6 +354,16 @@ Claude moves an active ticket to `Blocked` when it cannot safely or reliably com
 - Three unsuccessful automated repair cycles for the same failure or review finding.
 - A PR closed without merge.
 
+One repair cycle is defined independently of `/loop` timing:
+
+1. Claude identifies a specific failure or review finding.
+2. Claude implements one attempted correction.
+3. Claude reruns the relevant local verification and pushes when remote CI or review is required.
+4. The corresponding check or current-head review completes.
+5. The same normalized failure signature remains.
+
+Waiting for CI, polling unchanged state, transient tool errors, and idle loop iterations do not count as repair cycles. Counters are keyed by issue and normalized failure signature. A materially different failure starts its own counter. The worker stores counters in its gitignored local state so a session resume does not reset the safety limit.
+
 Transient network, Linear, GitHub, or rate-limit errors do not immediately block the ticket. Claude retries them on later loop iterations. Three consecutive iterations with the same external blocker trigger `Blocked`.
 
 The Linear blocker comment contains:
@@ -280,7 +386,8 @@ It must handle these cases without duplication:
 - `In Progress` with a linked PR: repair Linear to `Pull Request`.
 - `Pull Request` with failing CI or findings: resume the repair loop.
 - `Pull Request` with a clean current-head review: evaluate the `PR Approved` gate.
-- `PR Approved` with a changed head or invalid check: return to `Pull Request`.
+- `PR Approved` whose latest approval marker SHA differs from `headRefOid`: return to `Pull Request`, including after force-push.
+- `PR Approved` whose required check became invalid: return to `Pull Request`.
 - `PR Approved` with a merged PR: verify `Done` and clean local artifacts.
 - `Blocked` returned to `Agent Ready`: reuse existing artifacts.
 - Closed unmerged PR: move to `Blocked`.
@@ -296,12 +403,10 @@ When a previously approved PR becomes stale while another ticket is active, reco
 
 Defines:
 
-- Repository architecture and commands.
-- Test-driven development expectations.
-- Worktree-only edit policy for autonomous tickets.
-- Verification requirements.
-- Commit and PR conventions.
-- The prohibition on merging and direct default-branch pushes.
+- An `@AGENTS.md` import so Claude loads the repository's canonical shared agent conventions without duplicating them.
+- Claude-specific worktree behavior and ticket-worker entry points.
+
+`AGENTS.md` is authoritative for shared architecture, coding, testing, commit, and safety rules. `CLAUDE.md` adds only Claude-specific behavior. The files must not define the same rule differently; verification scans for duplicated merge, testing, and branch policies before rollout.
 
 ### `.claude/skills/linear-ticket-worker/SKILL.md`
 
@@ -309,13 +414,19 @@ Contains the complete orchestration procedure described by this spec, including 
 
 ### `.claude/loop.md`
 
-Contains a concise instruction to invoke the project-level `linear-ticket-worker` skill. Because an explicit prompt passed to `/loop` would override `loop.md`, normal operation uses:
+Contains a concise instruction to invoke the project-level `linear-ticket-worker` skill, remain scheduled while the worker is enabled, use longer waits when idle, and shorter waits while CI or review is active.
+
+Current Claude Code documentation confirms that `.claude/loop.md` is the project-level default, that it replaces the built-in maintenance prompt, and that it is used when `/loop` receives an interval only or no arguments. An inline prompt would override this file.
+
+For direct Claude Code accounts, normal operation uses the self-paced form:
 
 ```text
-/loop 10m
+/loop
 ```
 
-The ten-minute interval is the initial default and can be adjusted after observing cost and latency.
+Claude then selects a delay between one minute and one hour on each iteration. The loop prompt directs it toward the longer end while idle and shorter delays only while an active CI or review result is pending.
+
+Bare `/loop` does not load `loop.md` on Bedrock, Vertex AI, or Microsoft Foundry. If the provider changes, use an explicit skill prompt such as `/loop 30m /linear-ticket-worker` instead.
 
 ### `.claude/settings.json`
 
@@ -329,13 +440,21 @@ Grants broad permission for normal development commands within ticket worktrees 
 
 The implementation must use the narrowest Claude Code permission syntax that still allows unattended worktree development. It must not rely only on prose when a supported deny rule can enforce the boundary.
 
+### `.claude/ticket-worker.local.json`
+
+A gitignored, non-secret local configuration file stores environment-specific identifiers such as the GitHub `owner/repo`, Codex reviewer login, Linear reviewer profile URL, and worktree root. It is generated during setup and never committed.
+
+### `.claude/ticket-worker-state.local.json`
+
+A gitignored runtime cache stores the currently selected issue, worktree path, PR number, review-request markers, approval SHA, and repair counters. Linear and GitHub remain authoritative; Claude can rebuild this cache through reconciliation if it is missing or corrupt.
+
 ### `AGENTS.md`
 
-Retains shared repository conventions and adds a focused `Review guidelines` section for Codex, covering behavioral regressions, security, missing tests, Electron IPC boundaries, audio-pipeline correctness, and scope control.
+Remains the canonical shared instruction file and adds a focused `Review guidelines` section for Codex, covering behavioral regressions, security, missing tests, Electron IPC boundaries, audio-pipeline correctness, scope control, and the machine-readable verdict contract.
 
 ### Pull Request Template
 
-An optional repository PR template standardizes Linear linkage, summary, acceptance evidence, verification, risks, and UI evidence.
+An optional repository PR template standardizes Linear linkage, summary, acceptance evidence, verification, risks, and UI evidence. The template file is optional; the PR body content requirements in the execution contract are mandatory whether or not the file exists.
 
 ## External Configuration
 
@@ -350,8 +469,11 @@ An optional repository PR template standardizes Linear linkage, summary, accepta
 
 ### GitHub and Codex
 
+- Create or connect the GitHub repository and configure it as remote `origin`.
+- Install and authenticate GitHub CLI.
 - Enable Codex cloud for the repository.
 - Enable Codex automatic code review.
+- Use the first validation PR to record the actual Codex review login in local worker configuration.
 - Ensure CI runs on opened, reopened, and updated pull requests.
 - Configure required checks consistently.
 - Protect the default branch from direct pushes.
@@ -361,10 +483,10 @@ An optional repository PR template standardizes Linear linkage, summary, accepta
 Start the worker from the repository's primary checkout with:
 
 ```text
-/loop 10m
+/loop
 ```
 
-The scheduler queues an iteration only when the Claude session is idle, so a long implementation does not create concurrent workers. Missed intervals do not create a backlog of duplicate runs.
+The scheduler queues an iteration only when the Claude session is idle, so a long implementation does not create concurrent workers. Missed wakeups do not create a backlog of duplicate runs. In self-paced mode, Claude dynamically waits between one minute and one hour.
 
 Operational constraints:
 
@@ -374,12 +496,27 @@ Operational constraints:
 - Press `Esc` while the loop is waiting to stop it.
 - The human should periodically confirm that the scheduled task remains registered.
 
+## Cost Controls
+
+A fixed ten-minute poll would schedule up to 144 iterations per day, even when no ticket is ready. Token usage per iteration cannot be estimated credibly in advance because it depends on model choice, prompt caching, repository context, MCP responses, CI output, and task complexity.
+
+The initial workflow therefore uses self-paced `/loop` rather than a fixed ten-minute cadence:
+
+- Idle state: perform the smallest filtered Linear query and choose a long delay.
+- Active implementation: continue the current turn rather than polling.
+- Waiting for CI or Codex: query only the current PR and use a shorter delay.
+- No active or authorized work: do not read the repository, GitHub history, or completed ticket details.
+- Record iteration counts, active task counts, and observed Claude account usage during the pilot.
+
+After one week, compare responsiveness with observed usage. If self-pacing is still too active, replace it with `/loop 30m` for at most 48 scheduled iterations per day or move to an event-driven channel or durable scheduler.
+
 ## Validation Plan
 
 Begin with one deliberately small, low-risk ticket and verify the complete lifecycle.
 
 ### Happy Path
 
+- Claude Code meets the minimum version, `gh` is authenticated, and `origin` exists.
 - A `Todo` ticket is ignored.
 - Moving it to `Agent Ready` causes one claim.
 - Claude moves it to `In Progress` and creates one worktree and branch.
@@ -387,6 +524,7 @@ Begin with one deliberately small, low-risk ticket and verify the complete lifec
 - The branch and ready-for-review PR contain the Linear identifier.
 - The linked ticket moves to `Pull Request`.
 - CI and Codex run.
+- GitHub REST returns a Codex review whose `commit_id` matches `headRefOid` and whose verdict is `CLEAN`.
 - A clean current-head review produces the semantic GitHub approval comment.
 - Linear moves to `PR Approved` and mentions the human.
 - Claude may claim the next ticket without waiting for merge.
@@ -399,6 +537,11 @@ Begin with one deliberately small, low-risk ticket and verify the complete lifec
 - A failed CI check prevents `PR Approved`.
 - A Codex finding prevents `PR Approved` until fixed and re-reviewed.
 - A commit pushed after approval returns the ticket to `Pull Request`.
+- A force-push invalidates the stored approval SHA even when the old commit no longer exists.
+- An unresolved GraphQL review thread prevents `PR Approved`.
+- A malformed or missing Codex verdict is treated as incomplete, not clean.
+- One failed repair attempt followed by unchanged polling counts as one cycle, not multiple cycles.
+- A source-state mismatch detected by the pre-read causes reconciliation rather than an overwrite; the narrower undocumented Linear TOCTOU race is recorded as an accepted pilot risk.
 - A closed unmerged PR moves to `Blocked`.
 - A restarted session reconciles existing state without creating duplicate work.
 - Repeated external failures produce one blocker comment after the retry threshold.
@@ -440,7 +583,7 @@ Mitigation: stop after three unsuccessful repair cycles and move the ticket to `
 
 A clean review can become invalid after a new commit.
 
-Mitigation: bind the approval comment and `PR Approved` transition to the current head SHA and revert to `Pull Request` when it changes.
+Mitigation: store the full head SHA in a hidden approval-comment marker, compare it with `headRefOid` every reconciliation pass, and revert to `Pull Request` on any mismatch.
 
 ## Future Evolution
 
@@ -456,8 +599,13 @@ These changes should preserve the same Linear state machine and human authorizat
 ## Reference Documentation
 
 - [Claude Code scheduled tasks](https://code.claude.com/docs/en/scheduled-tasks)
+- [Claude Code project memory and `AGENTS.md` imports](https://code.claude.com/docs/en/memory)
 - [Claude Code subagents and worktree isolation](https://code.claude.com/docs/en/sub-agents)
 - [Linear MCP server](https://linear.app/docs/mcp)
+- [Linear GraphQL mutations and error handling](https://linear.app/developers/graphql)
 - [Linear GitHub integration](https://linear.app/docs/github-integration)
 - [Codex code review in GitHub](https://developers.openai.com/codex/integrations/github)
+- [GitHub pull request reviews REST API](https://docs.github.com/en/rest/pulls/reviews)
+- [GitHub CLI pull request JSON fields](https://cli.github.com/manual/gh_pr_view)
+- [GitHub CLI required pull request checks](https://cli.github.com/manual/gh_pr_checks)
 - [GitHub protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
