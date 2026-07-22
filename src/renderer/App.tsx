@@ -119,24 +119,12 @@ export default function App() {
       return;
     }
 
+    let capture: AudioCapture;
     try {
       // Start audio capture first (requests media permissions)
-      const capture = new AudioCapture();
+      capture = new AudioCapture();
       await capture.start();
       audioCaptureRef.current = capture;
-
-      // Then create the WAV file on main process
-      const result = await window.electronAPI.startRecording();
-      if (result.success) {
-        setIsRecording(true);
-        // Notify main process for tray update
-        window.electronAPI.sendAudioData(new ArrayBuffer(0)); // noop, just to ensure channel is warm
-      } else {
-        // WAV creation failed, stop capture
-        capture.stop();
-        audioCaptureRef.current = null;
-        setError('Failed to start recording');
-      }
     } catch (err: unknown) {
       // Clean up if partially started
       audioCaptureRef.current?.stop();
@@ -151,6 +139,24 @@ export default function App() {
       } else {
         setError('Unable to start recording. Check your recording permissions and try again.');
       }
+      return;
+    }
+
+    try {
+      // Then create the WAV file on the main process.
+      const result = await window.electronAPI.startRecording();
+      if (!result.success) {
+        throw new Error('Unable to create recording file');
+      }
+
+      setIsRecording(true);
+      // Notify main process for tray update
+      window.electronAPI.sendAudioData(new ArrayBuffer(0)); // noop, just to ensure channel is warm
+    } catch (err: unknown) {
+      capture.stop();
+      audioCaptureRef.current = null;
+      console.error('Failed to create recording file:', err);
+      setError('Unable to create the recording file. Check available disk space and try again.');
     }
   };
 

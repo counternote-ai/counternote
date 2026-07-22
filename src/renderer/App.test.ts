@@ -261,4 +261,22 @@ describe('recording permission lifecycle', () => {
       expect.objectContaining({ message: rawCaptureError })
     );
   });
+
+  it('uses storage recovery copy when recording-file creation fails', async () => {
+    const rawFileError = 'ENOSPC: no space left on device';
+    mockElectronAPI.startRecording.mockRejectedValueOnce(new Error(rawFileError));
+    renderApp();
+
+    await getControlPanelProps().onStartRecording();
+    renderApp();
+
+    expect(getErrorMessage()).toBe('Unable to create the recording file. Check available disk space and try again.');
+    expect(getErrorMessage()).not.toContain('permissions');
+    expect(getErrorMessage()).not.toContain(rawFileError);
+    expect(mockCaptureStop).toHaveBeenCalledTimes(1);
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      'Failed to create recording file:',
+      expect.objectContaining({ message: rawFileError })
+    );
+  });
 });
