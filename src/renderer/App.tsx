@@ -55,7 +55,6 @@ export default function App() {
         canAttemptRecording: true,
       };
       setPermissions(unknownPermissions);
-      setError('Unable to check recording permissions');
       return unknownPermissions;
     }
   }, []);
@@ -142,6 +141,7 @@ export default function App() {
       // Clean up if partially started
       audioCaptureRef.current?.stop();
       audioCaptureRef.current = null;
+      console.error('Failed to start audio capture:', err);
 
       // A prompt may have changed permission state while capture was starting.
       const updatedPermissions = await refreshRecordingPermissions();
@@ -149,7 +149,7 @@ export default function App() {
         setPermissionNoticeDismissed(false);
         setError(null);
       } else {
-        setError(getErrorMessage(err, 'Failed to start audio capture'));
+        setError('Unable to start recording. Check your recording permissions and try again.');
       }
     }
   };
