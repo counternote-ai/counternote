@@ -1,11 +1,13 @@
 import React from 'react';
 import { FileText, LoaderCircle, Mic, Plus, Settings, Square } from 'lucide-react';
 import { Badge } from './ui/badge';
+import { Alert, AlertDescription } from './ui/alert';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { formatDuration, getRecordingStatus, type RecordingStatusTone } from '../recording-utils';
+import { type RecordingPermissionNotice } from '../recording-permissions';
 
 interface Recording {
   id: string;
@@ -23,6 +25,9 @@ interface ControlPanelProps {
   onOpenSettings: () => void;
   isRecording: boolean;
   transcribingId?: string | null;
+  permissionNotice?: RecordingPermissionNotice | null;
+  onOpenPermissionSettings: () => void;
+  onDismissPermissionNotice: () => void;
 }
 
 const statusVariant: Record<RecordingStatusTone, 'ready' | 'pending' | 'loading'> = {
@@ -40,6 +45,9 @@ export function ControlPanel({
   onOpenSettings,
   isRecording,
   transcribingId,
+  permissionNotice,
+  onOpenPermissionSettings,
+  onDismissPermissionNotice,
 }: ControlPanelProps) {
   return (
     <TooltipProvider>
@@ -77,6 +85,24 @@ export function ControlPanel({
             )}
           </div>
         </header>
+
+        {permissionNotice && (
+          <Alert variant={permissionNotice.tone === 'error' ? 'destructive' : 'default'}>
+            <AlertDescription className="space-y-3">
+              <p>{permissionNotice.message}</p>
+              <div className="flex flex-wrap gap-2">
+                {permissionNotice.settingsPermission && (
+                  <Button variant="outline" size="sm" onClick={onOpenPermissionSettings}>
+                    Open System Settings
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={onDismissPermissionNotice}>
+                  Dismiss
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {recordings.length === 0 ? (
           <Card className="flex flex-1 items-center justify-center border-dashed bg-card/80">

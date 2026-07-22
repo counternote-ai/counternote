@@ -8,6 +8,11 @@ import { TrayManager } from './tray';
 import { saveExport } from './export';
 import { loadConfig, saveConfig, getGroqApiKey, setGroqApiKey } from './config';
 import { getAudioDuration } from './audio-processor';
+import {
+  getRecordingPermissionSnapshot,
+  openRecordingPermissionSettings,
+} from './recording-permissions';
+import { type RecordingPermission } from '../types/recording-permissions';
 
 let mainWindow: BrowserWindow | null = null;
 let wavWriter: WavWriter | null = null;
@@ -73,6 +78,26 @@ ipcMain.on('audio-data', (event, data: ArrayBuffer) => {
     wavWriter.write(Buffer.from(data));
   }
 });
+
+ipcMain.handle('get-recording-permissions', () => ({
+  success: true,
+  permissions: getRecordingPermissionSnapshot(),
+}));
+
+ipcMain.handle(
+  'open-recording-permission-settings',
+  async (_event, permission: RecordingPermission) => {
+    try {
+      await openRecordingPermissionSettings(permission);
+      return { success: true };
+    } catch (err) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Unable to open System Settings',
+      };
+    }
+  }
+);
 
 ipcMain.handle('list-recordings', async () => {
   try {
@@ -200,13 +225,20 @@ app.whenReady().then(() => {
   session.defaultSession.setDisplayMediaRequestHandler(
     (request, callback) => {
       // Provide the first screen source with loopback audio
-      desktopCapturer.getSources({ types: ['screen'] }).then((sources) => {
-        if (sources.length > 0) {
-          callback({ video: sources[0], audio: 'loopback' });
-        } else {
-          throw new Error('No screen sources available for display media capture');
-        }
-      });
+      desktopCapturer.getSources({ types: ['screen'] })
+        .then((sources) => {
+          const source = sources[0];
+          if (!source) {
+            console.error('No screen sources are available for display media capture.');
+            callback({});
+            return;
+          }
+          callback({ video: source, audio: 'loopback' });
+        })
+        .catch((err: unknown) => {
+          console.error('Failed to get screen sources:', err);
+          callback({});
+        });
     }
   );
 

@@ -1,8 +1,11 @@
+type RecordingPermission = import('../types/recording-permissions').RecordingPermission;
+type RecordingPermissionSnapshot =
+  import('../types/recording-permissions').RecordingPermissionSnapshot;
+
 // CSS module declarations
 declare module '*.css' {}
 
 // Type declarations for Electron API exposed via preload
-
 interface Recording {
   id: string;
   title: string;
@@ -23,6 +26,14 @@ interface ElectronAPI {
   exportTranscript: (transcriptPath: string, format: string) => Promise<{ success: boolean; path?: string; error?: string }>;
   saveConfig: (config: { apiKey?: string; model?: string; autoTranscribe?: boolean }) => Promise<{ success: boolean }>;
   loadConfig: () => Promise<{ success: boolean; config?: { apiKey: string; model: string; autoTranscribe: boolean } }>;
+  getRecordingPermissions: () => Promise<{
+    success: boolean;
+    permissions?: RecordingPermissionSnapshot;
+    error?: string;
+  }>;
+  openRecordingPermissionSettings: (
+    permission: RecordingPermission
+  ) => Promise<{ success: boolean; error?: string }>;
   onStopRecording: (callback: () => void) => void;
   onOpenSettings: (callback: () => void) => void;
 }

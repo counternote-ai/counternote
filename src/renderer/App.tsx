@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { TranscriptView } from './components/TranscriptView';
 import { Settings } from './components/Settings';
 import { Alert, AlertDescription } from './components/ui/alert';
 import { Button } from './components/ui/button';
 import { AudioCapture } from './audio-capture';
+import { getRecordingPermissionNotice } from './recording-permissions';
+import { type RecordingPermissionSnapshot } from '../types/recording-permissions';
 import './styles.css';
 
 type View = 'recordings' | 'transcript' | 'settings';
@@ -31,8 +33,32 @@ export default function App() {
   const [settings, setSettings] = useState({ apiKey: '', model: 'whisper-large-v3-turbo', autoTranscribe: false });
   const [error, setError] = useState<string | null>(null);
   const [transcribingId, setTranscribingId] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<RecordingPermissionSnapshot | null>(null);
+  const [permissionNoticeDismissed, setPermissionNoticeDismissed] = useState(false);
 
   const audioCaptureRef = useRef<AudioCapture | null>(null);
+
+  const refreshRecordingPermissions = useCallback(async (): Promise<RecordingPermissionSnapshot> => {
+    try {
+      const result = await window.electronAPI.getRecordingPermissions();
+      if (!result.success || !result.permissions) {
+        throw new Error(result.error || 'Unable to check recording permissions');
+      }
+      setPermissions(result.permissions);
+      return result.permissions;
+    } catch (err) {
+      console.error('Failed to check recording permissions:', err);
+      const unknownPermissions: RecordingPermissionSnapshot = {
+        screen: 'unknown',
+        microphone: 'unknown',
+        permissionOwnerName: 'Electron',
+        canAttemptRecording: true,
+      };
+      setPermissions(unknownPermissions);
+      setError('Unable to check recording permissions');
+      return unknownPermissions;
+    }
+  }, []);
 
   // Load settings from main process on mount
   useEffect(() => {
@@ -53,6 +79,17 @@ export default function App() {
   useEffect(() => {
     loadRecordings();
   }, []);
+
+  useEffect(() => {
+    void refreshRecordingPermissions();
+
+    const handleFocus = () => {
+      void refreshRecordingPermissions();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [refreshRecordingPermissions]);
 
   // Listen for tray events
   useEffect(() => {
@@ -77,6 +114,12 @@ export default function App() {
 
   const handleStartRecording = async () => {
     setError(null);
+    const currentPermissions = await refreshRecordingPermissions();
+    if (!currentPermissions.canAttemptRecording) {
+      setPermissionNoticeDismissed(false);
+      return;
+    }
+
     try {
       // Start audio capture first (requests media permissions)
       const capture = new AudioCapture();
@@ -96,11 +139,37 @@ export default function App() {
         setError('Failed to start recording');
       }
     } catch (err: unknown) {
-      // User may have denied media permissions
-      setError(getErrorMessage(err, 'Failed to start audio capture'));
       // Clean up if partially started
       audioCaptureRef.current?.stop();
       audioCaptureRef.current = null;
+
+      // A prompt may have changed permission state while capture was starting.
+      const updatedPermissions = await refreshRecordingPermissions();
+      if (!updatedPermissions.canAttemptRecording) {
+        setPermissionNoticeDismissed(false);
+        setError(null);
+      } else {
+        setError(getErrorMessage(err, 'Failed to start audio capture'));
+      }
+    }
+  };
+
+  const permissionNotice = permissions
+    ? getRecordingPermissionNotice(permissions)
+    : null;
+
+  const handleOpenPermissionSettings = async () => {
+    if (!permissionNotice?.settingsPermission) return;
+
+    try {
+      const result = await window.electronAPI.openRecordingPermissionSettings(
+        permissionNotice.settingsPermission
+      );
+      if (!result.success) {
+        setError('Unable to open System Settings. Open System Settings → Privacy & Security manually.');
+      }
+    } catch {
+      setError('Unable to open System Settings. Open System Settings → Privacy & Security manually.');
     }
   };
 
@@ -238,6 +307,9 @@ export default function App() {
         onOpenSettings={() => setView('settings')}
         isRecording={isRecording}
         transcribingId={transcribingId}
+        permissionNotice={permissionNoticeDismissed ? null : permissionNotice}
+        onOpenPermissionSettings={handleOpenPermissionSettings}
+        onDismissPermissionNotice={() => setPermissionNoticeDismissed(true)}
       />
     </>
   );

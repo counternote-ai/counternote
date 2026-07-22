@@ -10,56 +10,79 @@ export class AudioCapture {
   private workletNode: AudioWorkletNode | null = null;
 
   async start(): Promise<void> {
-    // Request display media with audio
-    const displayStream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: true,
-    });
+    let displayStream: MediaStream | null = null;
+    let micStream: MediaStream | null = null;
+    let audioContext: AudioContext | null = null;
 
-    // Stop video track immediately
-    displayStream.getVideoTracks().forEach((track) => track.stop());
+    try {
+      // Request display media with audio
+      displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      });
 
-    // Get microphone
-    const micStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-    });
+      // Stop video track immediately
+      displayStream.getVideoTracks().forEach((track) => track.stop());
 
-    this.systemStream = displayStream;
-    this.micStream = micStream;
+      // Get microphone
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
 
-    // Create audio context
-    this.audioContext = new AudioContext({ sampleRate: 16000 });
+      this.systemStream = displayStream;
+      this.micStream = micStream;
 
-    // Load worklet - use file:// URL for Electron
-    // In Electron renderer, we can use the path relative to the app
-    const workletUrl = new URL('./audio-processor.worklet.js', window.location.href).href;
-    await this.audioContext.audioWorklet.addModule(workletUrl);
+      // Create audio context
+      audioContext = new AudioContext({ sampleRate: 16000 });
+      this.audioContext = audioContext;
 
-    // Create worklet node
-    this.workletNode = new AudioWorkletNode(
-      this.audioContext,
-      'audio-capture-processor'
-    );
+      // Load worklet - use file:// URL for Electron
+      // In Electron renderer, we can use the path relative to the app
+      const workletUrl = new URL('./audio-processor.worklet.js', window.location.href).href;
+      await audioContext.audioWorklet.addModule(workletUrl);
 
-    // Use a ChannelMergerNode to route system audio to channel 0 and mic to channel 1
-    const systemSource = this.audioContext.createMediaStreamSource(displayStream);
-    const micSource = this.audioContext.createMediaStreamSource(micStream);
+      // Create worklet node
+      this.workletNode = new AudioWorkletNode(
+        audioContext,
+        'audio-capture-processor'
+      );
 
-    const merger = this.audioContext.createChannelMerger(2);
-    systemSource.connect(merger, 0, 0); // system -> channel 0
-    micSource.connect(merger, 0, 1);    // mic -> channel 1
+      // Use a ChannelMergerNode to route system audio to channel 0 and mic to channel 1
+      const systemSource = audioContext.createMediaStreamSource(displayStream);
+      const micSource = audioContext.createMediaStreamSource(micStream);
 
-    merger.connect(this.workletNode);
+      const merger = audioContext.createChannelMerger(2);
+      systemSource.connect(merger, 0, 0); // system -> channel 0
+      micSource.connect(merger, 0, 1);    // mic -> channel 1
 
-    // Listen for audio data and send via IPC
-    this.workletNode.port.onmessage = (event) => {
-      if (event.data.type === 'audio') {
-        // Convert Float32Arrays to ArrayBuffer and send to main
-        const channels: Float32Array[] = event.data.data;
-        const buffer = this.pcmToBuffer(channels);
-        window.electronAPI.sendAudioData(buffer);
+      merger.connect(this.workletNode);
+
+      // Listen for audio data and send via IPC
+      this.workletNode.port.onmessage = (event) => {
+        if (event.data.type === 'audio') {
+          // Convert Float32Arrays to ArrayBuffer and send to main
+          const channels: Float32Array[] = event.data.data;
+          const buffer = this.pcmToBuffer(channels);
+          window.electronAPI.sendAudioData(buffer);
+        }
+      };
+    } catch (err) {
+      // Clean up any streams that were partially acquired
+      displayStream?.getTracks().forEach((track) => track.stop());
+      micStream?.getTracks().forEach((track) => track.stop());
+      if (audioContext) {
+        try {
+          await audioContext.close();
+        } catch {
+          // Preserve the original capture error.
+        }
       }
-    };
+      this.systemStream = null;
+      this.micStream = null;
+      this.audioContext = null;
+      this.workletNode = null;
+      throw err;
+    }
   }
 
   private pcmToBuffer(channels: Float32Array[]): ArrayBuffer {

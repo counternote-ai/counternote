@@ -7,6 +7,14 @@ jest.mock('fs', () => {
   };
 });
 
+jest.mock('os', () => {
+  const actual = jest.requireActual<typeof import('os')>('os');
+  return {
+    ...actual,
+    homedir: jest.fn(() => actual.tmpdir()),
+  };
+});
+
 import { loadConfig, saveConfig, getGroqApiKey } from '../config';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -14,7 +22,7 @@ import * as os from 'os';
 import { safeStorage } from 'electron';
 
 // Mock the config directory to use a temp directory
-const TEST_CONFIG_DIR = path.join(os.tmpdir(), 'interview-copilot-test');
+const TEST_CONFIG_DIR = path.join(os.homedir(), 'InterviewCopilot');
 const TEST_CONFIG_FILE = path.join(TEST_CONFIG_DIR, 'config.json');
 const fsMock = fs as unknown as {
   existsSync: jest.Mock;
@@ -27,6 +35,7 @@ const safeStorageMock = safeStorage as unknown as {
 
 describe('Config', () => {
   beforeEach(() => {
+    fs.rmSync(TEST_CONFIG_DIR, { recursive: true, force: true });
     fs.mkdirSync(TEST_CONFIG_DIR, { recursive: true });
   });
 

@@ -2,6 +2,7 @@ export const app = {
   whenReady: jest.fn().mockResolvedValue(undefined),
   on: jest.fn(),
   quit: jest.fn(),
+  isPackaged: false,
 };
 
 export const BrowserWindow = jest.fn().mockImplementation(() => ({
@@ -52,4 +53,12 @@ export const nativeImage = {
 export const safeStorage = {
   encryptStringAsync: jest.fn().mockResolvedValue(Buffer.from('encrypted')),
   decryptStringAsync: jest.fn().mockResolvedValue({ result: 'decrypted', shouldReEncrypt: false }),
+};
+
+export const systemPreferences = {
+  getMediaAccessStatus: jest.fn().mockReturnValue('granted'),
+};
+
+export const shell = {
+  openExternal: jest.fn().mockResolvedValue(undefined),
 };
