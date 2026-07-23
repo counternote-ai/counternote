@@ -6,6 +6,12 @@ This document provides guidelines for AI agents working on the Interview Copilot
 
 Interview Copilot is a Mac menu bar app that records audio from video interviews, transcribes them via Groq API, and provides readable transcripts with speaker labels.
 
+## Product Design Skill
+
+For any work that changes what a user sees, understands, chooses, or does in the renderer or tray, load and follow `.agents/skills/product-design/SKILL.md` before proposing or editing UI. This includes product shaping, UX/UI implementation, copy, accessibility, permissions, loading, empty, error, privacy, responsive, and visual review work, plus backend changes with user-visible outcomes.
+
+Do not load the skill for backend-only work, telemetry-only changes, generated files, or tests with no shipped UI impact.
+
 ## Architecture
 
 ### Key Components
