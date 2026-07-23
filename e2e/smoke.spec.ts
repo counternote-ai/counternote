@@ -1,22 +1,38 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
-let electronApp: ElectronApplication;
+let electronApp: ElectronApplication | undefined;
 let window: Page;
+let testHome: string;
 
 test.beforeAll(async () => {
-  electronApp = await electron.launch({ args: ['.'] });
+  // Isolate the app from the developer's real home directory and user data so
+  // personal recordings, config, and credentials are never loaded or captured.
+  testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'interview-copilot-e2e-'));
+  electronApp = await electron.launch({
+    args: ['.', `--user-data-dir=${testHome}`],
+    env: { ...process.env, HOME: testHome },
+  });
   window = await electronApp.firstWindow();
   await window.waitForLoadState('domcontentloaded');
 });
 
 test.afterAll(async () => {
-  await electronApp.close();
+  try {
+    await electronApp?.close();
+  } finally {
+    if (testHome) {
+      fs.rmSync(testHome, { recursive: true, force: true });
+    }
+  }
 });
 
 test('launches a 400x600 window titled Interview Copilot', async () => {
   expect(await window.title()).toBe('Interview Copilot');
 
-  const windowSize = await electronApp.evaluate(({ BrowserWindow }) => {
+  const windowSize = await electronApp!.evaluate(({ BrowserWindow }) => {
     const [win] = BrowserWindow.getAllWindows();
     return win.getSize();
   });
