@@ -18,3 +18,4 @@ yarn-error.log*
 out/
 coverage/
 .superpowers/
+docs/superpowers/plans/
