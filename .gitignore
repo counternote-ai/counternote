@@ -17,5 +17,6 @@ yarn-error.log*
 *.swo
 out/
 coverage/
+test-results/
 .superpowers/
 docs/superpowers/plans/

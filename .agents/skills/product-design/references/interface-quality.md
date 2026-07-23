@@ -43,6 +43,7 @@ Use the accepted **Review Desk** direction: a warm, calm, compact macOS utility 
 
 ## Verification checklist
 
+- Run `npm run test:e2e` for a rendered smoke check: it builds the app, launches the real 400 x 600 Electron window, exercises home and settings, and saves screenshots to `test-results/`.
 - Inspect 400 x 600 with zero, sparse, and long content.
 - Check long recording titles, transcript paragraphs, and settings help text for clipping.
 - Confirm scroll regions retain headers and actions without hiding content.

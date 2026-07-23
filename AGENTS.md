@@ -99,6 +99,14 @@ Run tests:
 npm test
 ```
 
+### E2E Smoke Test
+
+Located in `e2e/`. Launches the real Electron app via Playwright, checks the 400 x 600 window, home, and settings navigation, and saves screenshots to `test-results/`. Requires a macOS GUI session.
+
+```bash
+npm run test:e2e
+```
+
 ### Test Coverage
 
 Current coverage focuses on:
