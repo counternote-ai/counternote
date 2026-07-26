@@ -20,3 +20,4 @@ coverage/
 test-results/
 .superpowers/
 docs/superpowers/plans/
+.worktrees/
