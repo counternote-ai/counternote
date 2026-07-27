@@ -1,6 +1,7 @@
 node_modules/
 dist/
-release/
+/release/
+/build/whisper/
 .DS_Store
 *.log
 .env
