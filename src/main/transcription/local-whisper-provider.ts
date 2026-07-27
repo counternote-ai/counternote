@@ -1,4 +1,4 @@
-import { TranscriptionSegment } from '../groq-client';
+import { TranscriptionSegment } from '../../types/transcript';
 import { TranscriptionErrorCode } from '../../types/transcription';
 import { WhisperProcessInput } from './whisper-process';
 
