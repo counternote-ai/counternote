@@ -1,8 +1,11 @@
+import { getTranscriptionStageLabel } from './transcription-ui';
+import type { TranscriptionProgress } from '../types/transcription';
+
 export type RecordingStatusTone = 'ready' | 'pending' | 'loading';
 
 export interface RecordingStatusInput {
   transcribed: boolean;
-  isTranscribing: boolean;
+  transcriptionProgress?: TranscriptionProgress | null;
 }
 
 export interface RecordingStatus {
@@ -18,8 +21,8 @@ export function formatDuration(seconds: number): string {
 }
 
 export function getRecordingStatus(input: RecordingStatusInput): RecordingStatus {
-  if (input.isTranscribing) {
-    return { label: 'Transcribing', tone: 'loading' };
+  if (input.transcriptionProgress) {
+    return { label: getTranscriptionStageLabel(input.transcriptionProgress), tone: 'loading' };
   }
 
   if (input.transcribed) {

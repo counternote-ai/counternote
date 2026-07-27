@@ -25,7 +25,6 @@ interface ControlPanelProps {
   onSelectRecording: (id: string) => void;
   onOpenSettings: () => void;
   isRecording: boolean;
-  transcribingId?: string | null;
   transcriptionProgress?: TranscriptionProgress | null;
   localTranscriptionUnavailable?: boolean;
   permissionNotice?: RecordingPermissionNotice | null;
@@ -47,7 +46,6 @@ export function ControlPanel({
   onSelectRecording,
   onOpenSettings,
   isRecording,
-  transcribingId,
   transcriptionProgress,
   localTranscriptionUnavailable = false,
   permissionNotice,
@@ -131,15 +129,22 @@ export function ControlPanel({
           <ScrollArea className="app-scroll-shadow min-h-0 flex-1 pr-1">
             <div className="space-y-3 pb-1">
               {recordings.map((rec) => {
-                const isTranscribing = transcribingId === rec.id;
                 const progress = transcriptionProgress?.recordingId === rec.id
                   ? transcriptionProgress
                   : null;
-                const status = getRecordingStatus({ transcribed: rec.transcribed, isTranscribing });
-                const canOpen = rec.transcribed && !isTranscribing;
+                const isTranscribing = progress !== null;
+                const status = getRecordingStatus({
+                  transcribed: rec.transcribed,
+                  transcriptionProgress: progress,
+                });
+                const canOpen = rec.transcribed;
 
                 return (
-                  <Card key={rec.id} className="overflow-hidden transition-colors hover:bg-card/90">
+                  <Card
+                    key={rec.id}
+                    className="overflow-hidden transition-colors hover:bg-card/90"
+                    aria-busy={isTranscribing || undefined}
+                  >
                     <CardContent className="p-0">
                       <button
                         type="button"
@@ -166,15 +171,13 @@ export function ControlPanel({
                             size="sm"
                             className="w-full"
                             onClick={() => onTranscribe(rec.id)}
-                            disabled={Boolean(transcribingId) || localTranscriptionUnavailable}
+                            disabled={Boolean(transcriptionProgress) || localTranscriptionUnavailable}
                           >
                             {isTranscribing && <LoaderCircle className="animate-spin" />}
                             {localTranscriptionUnavailable
                               ? 'Local transcription unavailable'
                               : isTranscribing
-                                ? progress?.stage === 'downloading-model' && progress.percent !== undefined
-                                  ? `Downloading model · ${progress.percent}%`
-                                  : 'Transcribing'
+                                ? status.label
                                 : 'Transcribe audio'}
                           </Button>
                           {localTranscriptionUnavailable && (

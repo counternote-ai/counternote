@@ -9,11 +9,11 @@ import { getRecordingPermissionNotice } from './recording-permissions';
 import { type RecordingPermissionSnapshot } from '../types/recording-permissions';
 import {
   type LocalModelStatus,
-  type TranscriptionErrorCode,
   type TranscriptionProgress,
   type TranscriptionProvider,
 } from '../types/transcription';
 import { type TranscriptionSettings } from '../types/settings';
+import { getTranscriptionErrorMessage } from './transcription-ui';
 import './styles.css';
 
 type View = 'recordings' | 'transcript' | 'settings';
@@ -31,16 +31,6 @@ function getErrorMessage(fallback: string): string {
   return fallback;
 }
 
-function getTranscriptionErrorMessage(code: TranscriptionErrorCode): string {
-  if (code === 'GROQ_KEY_MISSING') {
-    return 'Transcription needs a Groq API key. Your recording is still saved.';
-  }
-  if (code === 'LOCAL_UNAVAILABLE') {
-    return 'Local transcription is unavailable. Your recording is still saved.';
-  }
-  return 'Transcription failed. Your recording is still saved. Try again.';
-}
-
 export default function App() {
   const [view, setView] = useState<View>('recordings');
   const [isRecording, setIsRecording] = useState(false);
@@ -52,13 +42,13 @@ export default function App() {
     transcriptionProvider: TranscriptionProvider;
   }>({ apiKey: '', model: 'whisper-large-v3-turbo', transcriptionProvider: 'local' });
   const [error, setError] = useState<string | null>(null);
-  const [transcribingId, setTranscribingId] = useState<string | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress | null>(null);
   const [localModelStatus, setLocalModelStatus] = useState<LocalModelStatus>({ state: 'not-downloaded' });
   const [permissions, setPermissions] = useState<RecordingPermissionSnapshot | null>(null);
   const [permissionNoticeDismissed, setPermissionNoticeDismissed] = useState(false);
 
   const audioCaptureRef = useRef<AudioCapture | null>(null);
+  const activeTranscriptionIdRef = useRef<string | null>(null);
 
   const refreshRecordingPermissions = useCallback(async (): Promise<RecordingPermissionSnapshot> => {
     try {
@@ -114,7 +104,9 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = window.electronAPI.onTranscriptionProgress((progress) => {
-      setTranscriptionProgress(progress);
+      if (progress.recordingId === activeTranscriptionIdRef.current) {
+        setTranscriptionProgress(progress);
+      }
     });
     return unsubscribe;
   }, []);
@@ -248,19 +240,23 @@ export default function App() {
     if (!recording) return;
 
     setError(null);
-    setTranscribingId(id);
+    activeTranscriptionIdRef.current = id;
+    setTranscriptionProgress({ recordingId: id, stage: 'preparing-audio' });
     try {
       const result = await window.electronAPI.transcribe(recording.id);
       if (result.success) {
         // Refresh recordings list
         await loadRecordings();
       } else {
-        setError(getTranscriptionErrorMessage(result.code));
+        setError(getTranscriptionErrorMessage(result));
       }
     } catch {
       setError(getErrorMessage('Transcription failed'));
     } finally {
-      setTranscribingId(null);
+      if (activeTranscriptionIdRef.current === id) {
+        activeTranscriptionIdRef.current = null;
+        setTranscriptionProgress(null);
+      }
     }
   };
 
@@ -369,7 +365,6 @@ export default function App() {
         onSelectRecording={handleSelectRecording}
         onOpenSettings={() => setView('settings')}
         isRecording={isRecording}
-        transcribingId={transcribingId}
         transcriptionProgress={transcriptionProgress}
         localTranscriptionUnavailable={
           settings.transcriptionProvider === 'local' && localModelStatus.state === 'unavailable'

@@ -8,15 +8,32 @@ describe('recording renderer utilities', () => {
   });
 
   it('describes recording transcription state', () => {
-    expect(getRecordingStatus({ transcribed: true, isTranscribing: false })).toEqual({
+    expect(getRecordingStatus({ transcribed: true })).toEqual({
       label: 'Ready',
       tone: 'ready',
     });
-    expect(getRecordingStatus({ transcribed: false, isTranscribing: true })).toEqual({
-      label: 'Transcribing',
+    expect(getRecordingStatus({
+      transcribed: false,
+      transcriptionProgress: { recordingId: 'active', stage: 'preparing-audio' },
+    })).toEqual({
+      label: 'Preparing audio',
       tone: 'loading',
     });
-    expect(getRecordingStatus({ transcribed: false, isTranscribing: false })).toEqual({
+    expect(getRecordingStatus({ transcribed: false })).toEqual({
+      label: 'Needs transcript',
+      tone: 'pending',
+    });
+  });
+
+  it('uses the active recording progress label and returns to needs transcript after failure clears it', () => {
+    expect(getRecordingStatus({
+      transcribed: false,
+      transcriptionProgress: { recordingId: 'active', stage: 'transcribing-you' },
+    })).toEqual({
+      label: 'Transcribing you',
+      tone: 'loading',
+    });
+    expect(getRecordingStatus({ transcribed: false, transcriptionProgress: null })).toEqual({
       label: 'Needs transcript',
       tone: 'pending',
     });

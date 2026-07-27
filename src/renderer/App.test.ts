@@ -16,6 +16,7 @@ interface MockControlPanelProps {
   recordings: Array<{ id: string; title: string }>;
   permissionNotice: { tone: string; message: string; settingsPermission?: string } | null;
   localTranscriptionUnavailable?: boolean;
+  transcriptionProgress?: { recordingId: string; stage: string } | null;
   onStartRecording: () => Promise<void>;
   onTranscribe: (recordingId: string) => Promise<void>;
   onOpenPermissionSettings: () => Promise<void>;
@@ -422,6 +423,59 @@ describe('transcription IPC lifecycle', () => {
     expect(mockElectronAPI.transcribe).not.toHaveBeenCalledWith('/private/recordings/secret/audio.wav');
   });
 
+  it('starts a transcription with progress scoped to the selected recording', async () => {
+    mockStateValues[2] = [
+      { id: 'active-recording', title: 'Active interview', duration: 60, transcribed: false },
+      { id: 'other-recording', title: 'Other interview', duration: 60, transcribed: false },
+    ];
+    let resolveTranscription: (result: { success: true }) => void = () => undefined;
+    mockElectronAPI.transcribe.mockImplementationOnce(
+      () => new Promise<{ success: true }>((resolve) => { resolveTranscription = resolve; })
+    );
+    renderApp();
+
+    const transcription = getControlPanelProps().onTranscribe('active-recording');
+    renderApp();
+
+    expect(getControlPanelProps().transcriptionProgress).toEqual({
+      recordingId: 'active-recording',
+      stage: 'preparing-audio',
+    });
+
+    resolveTranscription({ success: true });
+    await transcription;
+  });
+
+  it('keeps the recording after a transcription failure and lets the candidate dismiss its recovery alert', async () => {
+    mockStateValues[2] = [
+      { id: 'saved-recording', title: 'Saved interview', duration: 60, transcribed: false },
+    ];
+    mockElectronAPI.transcribe.mockResolvedValueOnce({
+      success: false,
+      code: 'LOCAL_TRANSCRIPTION_TIMEOUT',
+    });
+    renderApp();
+
+    await getControlPanelProps().onTranscribe('saved-recording');
+    renderApp();
+
+    expect(getErrorMessage()).toBe(
+      'Local transcription stopped responding. Your recording is still saved. Try again, or select Groq in Settings.'
+    );
+    expect(getControlPanelProps().recordings).toEqual([
+      { id: 'saved-recording', title: 'Saved interview', duration: 60, transcribed: false },
+    ]);
+
+    const dismiss = findElements(mockLatestTree, (element) => element.type === mockButton)[0];
+    (dismiss.props.onClick as () => void)();
+    renderApp();
+
+    expect(getErrorMessage()).toBeNull();
+    expect(getControlPanelProps().recordings).toEqual([
+      { id: 'saved-recording', title: 'Saved interview', duration: 60, transcribed: false },
+    ]);
+  });
+
   it('sends only the recording ID when exporting a transcript', async () => {
     mockStateValues[0] = 'transcript';
     mockStateValues[3] = {
@@ -465,7 +519,7 @@ describe('transcription IPC lifecycle', () => {
   });
 
   it('keeps Local selected when its sidecar is unavailable instead of falling back to Groq', () => {
-    mockStateValues[8] = { state: 'unavailable', reason: 'sidecar-missing' };
+    mockStateValues[7] = { state: 'unavailable', reason: 'sidecar-missing' };
     renderApp();
 
     expect(getControlPanelProps().localTranscriptionUnavailable).toBe(true);
