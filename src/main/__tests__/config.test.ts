@@ -33,6 +33,10 @@ const safeStorageMock = safeStorage as unknown as {
   encryptStringAsync: jest.Mock;
 };
 
+const writeConfig = (raw: unknown): void => {
+  fs.writeFileSync(TEST_CONFIG_FILE, JSON.stringify(raw));
+};
+
 describe('Config', () => {
   beforeEach(() => {
     fs.rmSync(TEST_CONFIG_DIR, { recursive: true, force: true });
@@ -54,6 +58,7 @@ describe('Config', () => {
     const config = loadConfig();
 
     expect(config).toEqual({
+      transcriptionProvider: 'local',
       groqModel: 'whisper-large-v3-turbo',
       outputDir: path.join(TEST_CONFIG_DIR, 'recordings'),
     });
@@ -80,6 +85,34 @@ describe('Config', () => {
 
     expect(typeof config.groqModel).toBe('string');
     expect(typeof config.outputDir).toBe('string');
+  });
+
+  it('defaults missing transcriptionProvider to local', () => {
+    writeConfig({ version: 1, groqModel: 'whisper-large-v3-turbo', outputDir: '/recordings' });
+
+    expect(loadConfig().transcriptionProvider).toBe('local');
+  });
+
+  it('preserves an explicitly selected Groq provider', () => {
+    writeConfig({
+      version: 1,
+      transcriptionProvider: 'groq',
+      groqModel: 'whisper-large-v3-turbo',
+      outputDir: '/recordings',
+    });
+
+    expect(loadConfig().transcriptionProvider).toBe('groq');
+  });
+
+  it('rejects an unknown transcription provider', () => {
+    writeConfig({
+      version: 1,
+      transcriptionProvider: 'automatic',
+      groqModel: 'whisper-large-v3-turbo',
+      outputDir: '/recordings',
+    });
+
+    expect(loadConfig().transcriptionProvider).toBe('local');
   });
 
   it('should load the Groq API key when the stored secret decrypts', async () => {

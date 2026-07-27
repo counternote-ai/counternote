@@ -2,17 +2,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { safeStorage } from 'electron';
+import { TranscriptionProvider } from '../types/transcription';
 
 const CONFIG_DIR = path.join(os.homedir(), 'InterviewCopilot');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const SECRETS_FILE = path.join(CONFIG_DIR, 'secrets.enc');
 
 export interface Config {
+  transcriptionProvider: TranscriptionProvider;
   groqModel: string;
   outputDir: string;
 }
 
 const DEFAULT_CONFIG: Config = {
+  transcriptionProvider: 'local',
   groqModel: 'whisper-large-v3-turbo',
   outputDir: path.join(CONFIG_DIR, 'recordings'),
 };
@@ -21,7 +24,10 @@ export function loadConfig(): Config {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       const savedConfig: Partial<Config> = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      const transcriptionProvider: TranscriptionProvider =
+        savedConfig.transcriptionProvider === 'groq' ? 'groq' : 'local';
       return {
+        transcriptionProvider,
         groqModel: savedConfig.groqModel ?? DEFAULT_CONFIG.groqModel,
         outputDir: savedConfig.outputDir ?? DEFAULT_CONFIG.outputDir,
       };
