@@ -1,4 +1,11 @@
-import { getAudioDuration } from '../audio-processor';
+import {
+  splitChannels,
+  convertToFlac,
+  getAudioDuration,
+  isChannelSilent,
+  parseSilenceResult,
+  AudioProcessorDependencies,
+} from '../audio-processor';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -12,6 +19,135 @@ describe('AudioProcessor', () => {
 
   afterEach(() => {
     fs.rmSync(testDir, { recursive: true, force: true });
+  });
+
+  const createMockExecFile = (
+    stderr = '',
+    stdout = ''
+  ): jest.MockedFunction<AudioProcessorDependencies['execFile']> =>
+    jest.fn().mockResolvedValue({ stdout, stderr });
+
+  const writeWavHeader = (
+    filePath: string,
+    durationSeconds: number,
+    sampleRate = 16000,
+    channels = 2,
+    bitsPerSample = 16
+  ): void => {
+    const byteRate = sampleRate * channels * (bitsPerSample / 8);
+    const dataSize = Math.floor(durationSeconds * byteRate);
+    const header = Buffer.alloc(44);
+    header.write('RIFF', 0);
+    header.writeUInt32LE(dataSize + 36, 4);
+    header.write('WAVE', 8);
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20); // PCM format
+    header.writeUInt16LE(channels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(channels * (bitsPerSample / 8), 32);
+    header.writeUInt16LE(bitsPerSample, 34);
+    header.write('data', 36);
+    header.writeUInt32LE(dataSize, 40);
+    fs.writeFileSync(filePath, header);
+  };
+
+  describe('splitChannels', () => {
+    it('adds non-interactive flags before input', async () => {
+      const execFile = createMockExecFile();
+      const audioPath = path.join(testDir, 'audio.wav');
+      writeWavHeader(audioPath, 1);
+
+      await splitChannels(audioPath, { execFile });
+
+      expect(execFile).toHaveBeenCalledTimes(2);
+      expect(execFile.mock.calls[0][1].slice(0, 4)).toEqual([
+        '-nostdin',
+        '-y',
+        '-i',
+        audioPath,
+      ]);
+      expect(execFile.mock.calls[1][1].slice(0, 4)).toEqual([
+        '-nostdin',
+        '-y',
+        '-i',
+        audioPath,
+      ]);
+    });
+  });
+
+  describe('convertToFlac', () => {
+    it('adds non-interactive flags before input', async () => {
+      const execFile = createMockExecFile();
+      const wavPath = path.join(testDir, 'channel.wav');
+      writeWavHeader(wavPath, 1, 16000, 1);
+
+      await convertToFlac(wavPath, { execFile });
+
+      expect(execFile).toHaveBeenCalledTimes(1);
+      expect(execFile.mock.calls[0][1].slice(0, 4)).toEqual([
+        '-nostdin',
+        '-y',
+        '-i',
+        wavPath,
+      ]);
+    });
+  });
+
+  describe('parseSilenceResult', () => {
+    it('detects full-duration silence', () => {
+      expect(parseSilenceResult('silence_start: 0\nsilence_end: 60.0', 60)).toBe(true);
+    });
+
+    it('rejects partial silence', () => {
+      expect(parseSilenceResult('silence_start: 0\nsilence_end: 2.0', 60)).toBe(false);
+    });
+
+    it('rejects missing silence markers', () => {
+      expect(parseSilenceResult('', 60)).toBe(false);
+    });
+
+    it('rejects silence that does not start near zero', () => {
+      expect(parseSilenceResult('silence_start: 0.2\nsilence_end: 60.0', 60)).toBe(false);
+    });
+
+    it('rejects silence that does not reach the end', () => {
+      expect(parseSilenceResult('silence_start: 0\nsilence_end: 59.89', 60)).toBe(false);
+    });
+  });
+
+  describe('isChannelSilent', () => {
+    it('runs silencedetect and returns true when silence covers the full track', async () => {
+      const execFile = createMockExecFile('silence_start: 0\nsilence_end: 2.0');
+      const audioPath = path.join(testDir, 'silent.wav');
+      writeWavHeader(audioPath, 2, 16000, 1);
+
+      const result = await isChannelSilent(audioPath, { execFile });
+
+      expect(result).toBe(true);
+      expect(execFile).toHaveBeenCalledWith('/usr/local/bin/ffmpeg', [
+        '-nostdin',
+        '-y',
+        '-i',
+        audioPath,
+        '-af',
+        'silencedetect=noise=-50dB:d=0.5',
+        '-f',
+        'null',
+        '-',
+      ]);
+    });
+
+    it('returns false when silence does not cover the full track', async () => {
+      const execFile = createMockExecFile('silence_start: 0\nsilence_end: 1.0');
+      const audioPath = path.join(testDir, 'noisy.wav');
+      writeWavHeader(audioPath, 2, 16000, 1);
+
+      const result = await isChannelSilent(audioPath, { execFile });
+
+      expect(result).toBe(false);
+    });
   });
 
   describe('getAudioDuration', () => {
