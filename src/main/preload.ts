@@ -4,8 +4,13 @@ import {
   type LocalModelStatus,
   type TranscriptionIpcResult,
   type TranscriptionProgress,
-  type TranscriptionProvider,
 } from '../types/transcription';
+import {
+  type SettingsLoadIpcResult,
+  type SettingsSaveIpcResult,
+  type TranscriptExportIpcResult,
+  type TranscriptionSettings,
+} from '../types/settings';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   onCaptureReady: (callback: () => void) => ipcRenderer.on('capture-ready', callback),
@@ -33,14 +38,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('local-model-status', listener);
     return () => ipcRenderer.removeListener('local-model-status', listener);
   },
-  exportTranscript: (transcriptPath: string, format: string) => ipcRenderer.invoke('export-transcript', transcriptPath, format),
-  saveConfig: (config: {
-    apiKey?: string;
-    model?: string;
-    transcriptionProvider?: TranscriptionProvider;
-  }) =>
+  exportTranscript: (recordingId: string, format: 'txt'): Promise<TranscriptExportIpcResult> =>
+    ipcRenderer.invoke('export-transcript', recordingId, format),
+  saveConfig: (config: Partial<TranscriptionSettings>): Promise<SettingsSaveIpcResult> =>
     ipcRenderer.invoke('save-config', config),
-  loadConfig: () => ipcRenderer.invoke('load-config'),
+  loadConfig: (): Promise<SettingsLoadIpcResult> => ipcRenderer.invoke('load-config'),
   getRecordingPermissions: () => ipcRenderer.invoke('get-recording-permissions'),
   openRecordingPermissionSettings: (permission: RecordingPermission) =>
     ipcRenderer.invoke('open-recording-permission-settings', permission),

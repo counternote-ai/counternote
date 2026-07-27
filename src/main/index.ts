@@ -19,6 +19,12 @@ import {
   type TranscriptionErrorCode,
   type TranscriptionIpcResult,
 } from '../types/transcription';
+import {
+  type SettingsLoadIpcResult,
+  type SettingsSaveIpcResult,
+  type TranscriptExportIpcResult,
+  type TranscriptionSettings,
+} from '../types/settings';
 import { TranscriptionOrchestrator } from './transcription/orchestrator';
 import { TranscriptionError } from './transcription/errors';
 import { ConsoleTranscriptionLogger } from './transcription/logger';
@@ -218,8 +224,8 @@ ipcMain.handle('start-recording', async () => {
   // Update tray to show recording state
   trayManager?.setRecording(true);
 
-  console.log('Recording started:', audioPath);
-  return { success: true, path: audioPath };
+  console.log('Recording started.');
+  return { success: true };
 });
 
 ipcMain.handle('stop-recording', async () => {
@@ -311,8 +317,6 @@ ipcMain.handle('list-recordings', async () => {
             id: entry.name,
             title: `Interview — ${date.toLocaleDateString()} ${date.toLocaleTimeString()}`,
             duration,
-            audioPath,
-            transcriptPath,
             transcribed: hasTranscript,
             segments,
           };
@@ -365,21 +369,37 @@ ipcMain.handle('install-local-model', async (): Promise<TranscriptionIpcResult> 
   }
 });
 
-ipcMain.handle('export-transcript', async (event, transcriptPath: string, format: 'txt') => {
+ipcMain.handle('export-transcript', async (
+  _event,
+  recordingId: unknown,
+  format: unknown
+): Promise<TranscriptExportIpcResult> => {
+  if (typeof recordingId !== 'string' || format !== 'txt') {
+    console.error('Transcript export request rejected.');
+    return { success: false, code: 'TRANSCRIPT_EXPORT_FAILED' };
+  }
+
   try {
+    const transcriptPath = recordingsLibrary.resolveRecordingTranscript(recordingId);
     const transcript = JSON.parse(fs.readFileSync(transcriptPath, 'utf-8'));
-    const exportPath = saveExport(transcript, format, transcriptPath);
-    return { success: true, path: exportPath };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+    saveExport(transcript, format, transcriptPath);
+    return { success: true };
+  } catch {
+    console.error('Transcript export failed.');
+    return { success: false, code: 'TRANSCRIPT_EXPORT_FAILED' };
   }
 });
 
 // Settings IPC handlers
 ipcMain.handle('save-config', async (
   _event,
-  config: { apiKey?: string; model?: string; transcriptionProvider?: 'local' | 'groq' }
-) => {
+  config: unknown
+): Promise<SettingsSaveIpcResult> => {
+  if (!isSettingsUpdate(config)) {
+    console.error('Settings config request rejected.');
+    return { success: false, code: 'SETTINGS_SAVE_FAILED' };
+  }
+
   try {
     // Save API key via safeStorage if provided
     if (config.apiKey !== undefined) {
@@ -395,12 +415,13 @@ ipcMain.handle('save-config', async (
       }),
     });
     return { success: true };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  } catch {
+    console.error('Settings config save failed.');
+    return { success: false, code: 'SETTINGS_SAVE_FAILED' };
   }
 });
 
-ipcMain.handle('load-config', async () => {
+ipcMain.handle('load-config', async (): Promise<SettingsLoadIpcResult> => {
   try {
     const config = loadConfig();
     const apiKey = await getGroqApiKey();
@@ -412,10 +433,21 @@ ipcMain.handle('load-config', async () => {
         transcriptionProvider: config.transcriptionProvider,
       },
     };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  } catch {
+    console.error('Settings config load failed.');
+    return { success: false, code: 'SETTINGS_LOAD_FAILED' };
   }
 });
+
+function isSettingsUpdate(value: unknown): value is Partial<TranscriptionSettings> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return (candidate.apiKey === undefined || typeof candidate.apiKey === 'string')
+    && (candidate.model === undefined || typeof candidate.model === 'string')
+    && (candidate.transcriptionProvider === undefined
+      || candidate.transcriptionProvider === 'local'
+      || candidate.transcriptionProvider === 'groq');
+}
 
 app.whenReady().then(() => {
   // Configure loopback audio capture

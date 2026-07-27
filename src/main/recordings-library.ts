@@ -10,12 +10,11 @@ export class RecordingsLibrary {
   }
 
   resolveRecordingAudio(recordingId: string): string {
-    if (!RECORDING_ID_REGEX.test(recordingId)) {
-      throw new Error('INVALID_RECORDING_ID');
-    }
+    return this.resolveRecordingFile(recordingId, 'audio.wav');
+  }
 
-    const root = this.getRoot();
-    return path.join(root, recordingId, 'audio.wav');
+  resolveRecordingTranscript(recordingId: string): string {
+    return this.resolveRecordingFile(recordingId, 'transcript.json');
   }
 
   contains(candidate: string): boolean {
@@ -28,5 +27,13 @@ export class RecordingsLibrary {
     }
 
     return !relative.startsWith('..') && !path.isAbsolute(relative);
+  }
+
+  private resolveRecordingFile(recordingId: string, fileName: 'audio.wav' | 'transcript.json'): string {
+    if (!RECORDING_ID_REGEX.test(recordingId)) {
+      throw new Error('INVALID_RECORDING_ID');
+    }
+
+    return path.join(this.getRoot(), recordingId, fileName);
   }
 }

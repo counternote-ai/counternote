@@ -11,6 +11,15 @@ describe('RecordingsLibrary', () => {
       .toThrow('INVALID_RECORDING_ID');
   });
 
+  it('resolves transcripts only from a validated recording directory', () => {
+    const library = new RecordingsLibrary(() => '/library');
+
+    expect(library.resolveRecordingTranscript('2026-07-27T01-03-28-361Z'))
+      .toBe('/library/2026-07-27T01-03-28-361Z/transcript.json');
+    expect(() => library.resolveRecordingTranscript('/private/secret/transcript.json'))
+      .toThrow('INVALID_RECORDING_ID');
+  });
+
   it('rejects sibling paths that merely share the root prefix', () => {
     const library = new RecordingsLibrary(() => '/library');
 

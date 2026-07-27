@@ -13,6 +13,7 @@ import {
   type TranscriptionProgress,
   type TranscriptionProvider,
 } from '../types/transcription';
+import { type TranscriptionSettings } from '../types/settings';
 import './styles.css';
 
 type View = 'recordings' | 'transcript' | 'settings';
@@ -22,13 +23,11 @@ interface AppRecording {
   title: string;
   duration: number;
   transcribed: boolean;
-  audioPath: string;
-  transcriptPath?: string;
   segments?: Array<{ start: number; end: number; text: string; speaker: string }>;
 }
 
-function getErrorMessage(err: unknown, fallback: string): string {
-  console.error(fallback, err);
+function getErrorMessage(fallback: string): string {
+  console.error('Renderer operation failed.');
   return fallback;
 }
 
@@ -69,8 +68,8 @@ export default function App() {
       }
       setPermissions(result.permissions);
       return result.permissions;
-    } catch (err) {
-      console.error('Failed to check recording permissions:', err);
+    } catch {
+      console.error('Renderer permission refresh failed.');
       const unknownPermissions: RecordingPermissionSnapshot = {
         screen: 'unknown',
         microphone: 'unknown',
@@ -90,8 +89,8 @@ export default function App() {
         if (result.success && result.config) {
           setSettings(result.config);
         }
-      } catch (err) {
-        console.error('Failed to load settings:', err);
+      } catch {
+        console.error('Renderer settings load failed.');
       }
     };
     loadSettings();
@@ -124,8 +123,8 @@ export default function App() {
     const loadLocalModelStatus = async (): Promise<void> => {
       try {
         setLocalModelStatus(await window.electronAPI.getLocalModelStatus());
-      } catch (err) {
-        console.error('Failed to load local model status:', err);
+      } catch {
+        console.error('Renderer local model status load failed.');
         setLocalModelStatus({ state: 'unavailable', reason: 'sidecar-missing' });
       }
     };
@@ -150,8 +149,8 @@ export default function App() {
       if (result.success) {
         setRecordings(result.recordings);
       }
-    } catch (err) {
-      console.error('Failed to load recordings:', err);
+    } catch {
+      console.error('Renderer recordings load failed.');
     }
   };
 
@@ -169,11 +168,11 @@ export default function App() {
       capture = new AudioCapture();
       await capture.start();
       audioCaptureRef.current = capture;
-    } catch (err: unknown) {
+    } catch {
       // Clean up if partially started
       audioCaptureRef.current?.stop();
       audioCaptureRef.current = null;
-      console.error('Failed to start audio capture:', err);
+      console.error('Renderer recording start failed.');
 
       // A prompt may have changed permission state while capture was starting.
       const updatedPermissions = await refreshRecordingPermissions();
@@ -196,10 +195,10 @@ export default function App() {
       setIsRecording(true);
       // Notify main process for tray update
       window.electronAPI.sendAudioData(new ArrayBuffer(0)); // noop, just to ensure channel is warm
-    } catch (err: unknown) {
+    } catch {
       capture.stop();
       audioCaptureRef.current = null;
-      console.error('Failed to create recording file:', err);
+      console.error('Renderer recording file creation failed.');
       setError('Unable to create the recording file. Check available disk space and try again.');
     }
   };
@@ -237,8 +236,8 @@ export default function App() {
         // Refresh recordings list
         await loadRecordings();
       }
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, 'Failed to stop recording'));
+    } catch {
+      setError(getErrorMessage('Failed to stop recording'));
       // Still mark as not recording even if error
       setIsRecording(false);
     }
@@ -258,8 +257,8 @@ export default function App() {
       } else {
         setError(getTranscriptionErrorMessage(result.code));
       }
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, 'Transcription failed'));
+    } catch {
+      setError(getErrorMessage('Transcription failed'));
     } finally {
       setTranscribingId(null);
     }
@@ -269,18 +268,18 @@ export default function App() {
     if (!selectedRecording) return;
 
     setError(null);
-    if (!selectedRecording.transcriptPath) {
+    if (!selectedRecording.transcribed) {
       setError('No transcript available to export');
       return;
     }
 
     try {
-      const result = await window.electronAPI.exportTranscript(selectedRecording.transcriptPath, 'txt');
+      const result = await window.electronAPI.exportTranscript(selectedRecording.id, 'txt');
       if (!result.success) {
-        setError(result.error || 'Export failed');
+        setError('Export failed');
       }
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, 'Export failed'));
+    } catch {
+      setError(getErrorMessage('Export failed'));
     }
   };
 
@@ -292,11 +291,7 @@ export default function App() {
     return result;
   };
 
-  const handleSaveSettings = async (newSettings: {
-    apiKey: string;
-    model: string;
-    transcriptionProvider: TranscriptionProvider;
-  }): Promise<void> => {
+  const handleSaveSettings = async (newSettings: TranscriptionSettings): Promise<void> => {
     setError(null);
     try {
       const result = await window.electronAPI.saveConfig(newSettings);
@@ -306,8 +301,8 @@ export default function App() {
       }
       setSettings(newSettings);
       setView('recordings');
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, 'Failed to save settings'));
+    } catch {
+      setError(getErrorMessage('Failed to save settings'));
     }
   };
 

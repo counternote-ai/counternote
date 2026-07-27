@@ -5,6 +5,10 @@ type TranscriptionProvider = import('../types/transcription').TranscriptionProvi
 type TranscriptionProgress = import('../types/transcription').TranscriptionProgress;
 type TranscriptionIpcResult = import('../types/transcription').TranscriptionIpcResult;
 type LocalModelStatus = import('../types/transcription').LocalModelStatus;
+type TranscriptionSettings = import('../types/settings').TranscriptionSettings;
+type SettingsSaveIpcResult = import('../types/settings').SettingsSaveIpcResult;
+type SettingsLoadIpcResult = import('../types/settings').SettingsLoadIpcResult;
+type TranscriptExportIpcResult = import('../types/settings').TranscriptExportIpcResult;
 
 // CSS module declarations
 declare module '*.css' {}
@@ -15,15 +19,13 @@ interface Recording {
   title: string;
   duration: number;
   transcribed: boolean;
-  audioPath: string;
-  transcriptPath?: string;
   segments?: Array<{ start: number; end: number; text: string; speaker: string }>;
 }
 
 interface ElectronAPI {
   onCaptureReady: (callback: () => void) => void;
   sendAudioData: (data: ArrayBuffer) => void;
-  startRecording: () => Promise<{ success: boolean; path?: string }>;
+  startRecording: () => Promise<{ success: boolean }>;
   stopRecording: () => Promise<{ success: boolean }>;
   listRecordings: () => Promise<{ success: boolean; recordings: Recording[] }>;
   transcribe: (recordingId: string) => Promise<TranscriptionIpcResult>;
@@ -31,17 +33,9 @@ interface ElectronAPI {
   getLocalModelStatus: () => Promise<LocalModelStatus>;
   installLocalModel: () => Promise<TranscriptionIpcResult>;
   onLocalModelStatus: (callback: (status: LocalModelStatus) => void) => () => void;
-  exportTranscript: (transcriptPath: string, format: string) => Promise<{ success: boolean; path?: string; error?: string }>;
-  saveConfig: (config: {
-    apiKey?: string;
-    model?: string;
-    transcriptionProvider?: TranscriptionProvider;
-  }) => Promise<{ success: boolean; error?: string }>;
-  loadConfig: () => Promise<{
-    success: boolean;
-    config?: { apiKey: string; model: string; transcriptionProvider: TranscriptionProvider };
-    error?: string;
-  }>;
+  exportTranscript: (recordingId: string, format: 'txt') => Promise<TranscriptExportIpcResult>;
+  saveConfig: (config: Partial<TranscriptionSettings>) => Promise<SettingsSaveIpcResult>;
+  loadConfig: () => Promise<SettingsLoadIpcResult>;
   getRecordingPermissions: () => Promise<{
     success: boolean;
     permissions?: RecordingPermissionSnapshot;

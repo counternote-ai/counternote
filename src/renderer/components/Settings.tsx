@@ -58,6 +58,7 @@ export function Settings({
   const [localProvider, setLocalProvider] = useState<TranscriptionProvider>(provider);
   const [isInstallingModel, setIsInstallingModel] = useState(false);
   const [modelInstallFailed, setModelInstallFailed] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const isLocal = localProvider === 'local';
   const canInstallModel = localModelStatus.state !== 'unavailable';
@@ -75,6 +76,21 @@ export function Settings({
       setModelInstallFailed(true);
     } finally {
       setIsInstallingModel(false);
+    }
+  };
+
+  const saveSettings = async (): Promise<void> => {
+    if (isSaving) return;
+
+    setIsSaving(true);
+    try {
+      await onSave({
+        apiKey: localApiKey,
+        model: localModel,
+        transcriptionProvider: localProvider,
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -202,14 +218,13 @@ export function Settings({
 
       <Button
         className="w-full"
-        onClick={() => void onSave({
-          apiKey: localApiKey,
-          model: localModel,
-          transcriptionProvider: localProvider,
-        })}
+        onClick={() => void saveSettings()}
+        disabled={isSaving}
+        aria-busy={isSaving}
       >
         Save settings
       </Button>
+      <p className="sr-only" aria-live="polite">{isSaving ? 'Saving settings' : ''}</p>
     </main>
   );
 }

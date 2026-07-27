@@ -29,6 +29,10 @@ interface MockSettingsProps {
   onSave: (settings: { apiKey: string; model: string; transcriptionProvider?: 'local' | 'groq' }) => Promise<void>;
 }
 
+interface MockTranscriptProps {
+  onExport: () => Promise<void>;
+}
+
 const mockCreateElement = (type: unknown, props: Record<string, unknown> | null, ...children: unknown[]): MockElement => ({
   type,
   props: {
@@ -42,6 +46,7 @@ const mockAlertDescription = (): null => null;
 const mockButton = (): null => null;
 const mockControlPanel = (): null => null;
 const mockSettings = (): null => null;
+const mockTranscriptView = (): null => null;
 const mockIcon = (): null => null;
 const mockBadge = (): null => null;
 const mockCard = (): null => null;
@@ -75,7 +80,7 @@ jest.mock('react', () => ({
 }));
 
 jest.mock('./components/ControlPanel', () => ({ ControlPanel: mockControlPanel }));
-jest.mock('./components/TranscriptView', () => ({ TranscriptView: (): null => null }));
+jest.mock('./components/TranscriptView', () => ({ TranscriptView: mockTranscriptView }));
 jest.mock('./components/Settings', () => ({ Settings: mockSettings }));
 jest.mock('./components/ui/alert', () => ({
   Alert: mockAlert,
@@ -136,6 +141,15 @@ function getSettingsProps(): MockSettingsProps {
 
   const children = mockLatestTree.props.children as unknown[];
   return (children[1] as MockElement).props as unknown as MockSettingsProps;
+}
+
+function getTranscriptProps(): MockTranscriptProps {
+  if (!mockLatestTree) {
+    throw new Error('App has not been rendered');
+  }
+
+  const children = mockLatestTree.props.children as unknown[];
+  return (children[1] as MockElement).props as unknown as MockTranscriptProps;
 }
 
 function getErrorMessage(): string | null {
@@ -199,6 +213,7 @@ const mockElectronAPI = {
   getLocalModelStatus: jest.fn(),
   installLocalModel: jest.fn(),
   transcribe: jest.fn(),
+  exportTranscript: jest.fn(),
   saveConfig: jest.fn(),
 };
 
@@ -229,6 +244,7 @@ beforeEach(() => {
   mockElectronAPI.getLocalModelStatus.mockResolvedValue({ state: 'not-downloaded' });
   mockElectronAPI.installLocalModel.mockResolvedValue({ success: true });
   mockElectronAPI.transcribe.mockResolvedValue({ success: true });
+  mockElectronAPI.exportTranscript.mockResolvedValue({ success: true });
   mockElectronAPI.saveConfig.mockResolvedValue({ success: true });
   mockCaptureStart.mockResolvedValue(undefined);
 
@@ -341,8 +357,9 @@ describe('recording permission lifecycle', () => {
 
     expect(getErrorMessage()).toBe('Unable to start recording. Check your recording permissions and try again.');
     expect(getErrorMessage()).not.toContain(rawCaptureError);
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      'Failed to start audio capture:',
+    expect(mockConsoleError).toHaveBeenCalledWith('Renderer recording start failed.');
+    expect(mockConsoleError).not.toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ message: rawCaptureError })
     );
   });
@@ -359,8 +376,9 @@ describe('recording permission lifecycle', () => {
     expect(getErrorMessage()).not.toContain('permissions');
     expect(getErrorMessage()).not.toContain(rawFileError);
     expect(mockCaptureStop).toHaveBeenCalledTimes(1);
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      'Failed to create recording file:',
+    expect(mockConsoleError).toHaveBeenCalledWith('Renderer recording file creation failed.');
+    expect(mockConsoleError).not.toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ message: rawFileError })
     );
   });
@@ -402,6 +420,26 @@ describe('transcription IPC lifecycle', () => {
 
     expect(mockElectronAPI.transcribe).toHaveBeenCalledWith('2026-07-27T12-00-00-000Z');
     expect(mockElectronAPI.transcribe).not.toHaveBeenCalledWith('/private/recordings/secret/audio.wav');
+  });
+
+  it('sends only the recording ID when exporting a transcript', async () => {
+    mockStateValues[0] = 'transcript';
+    mockStateValues[3] = {
+      id: '2026-07-27T12-00-00-000Z',
+      title: 'Saved interview',
+      duration: 60,
+      transcribed: true,
+      transcriptPath: '/private/recordings/secret/transcript.json',
+    };
+    renderApp();
+
+    await getTranscriptProps().onExport();
+
+    expect(mockElectronAPI.exportTranscript).toHaveBeenCalledWith('2026-07-27T12-00-00-000Z', 'txt');
+    expect(mockElectronAPI.exportTranscript).not.toHaveBeenCalledWith(
+      '/private/recordings/secret/transcript.json',
+      'txt'
+    );
   });
 
   it('saves the selected local provider while preserving Groq values', async () => {
@@ -535,6 +573,41 @@ describe('transcription provider settings', () => {
     expect(text).toContain('Unavailable');
     expect(text).toContain('Local Whisper is unavailable because its sidecar is not installed.');
     expect(text).not.toContain('Groq API Key');
+  });
+
+  it('disables only Save settings while the request is pending', async () => {
+    let resolveSave: (() => void) | undefined;
+    const onSave = jest.fn(() => new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    }));
+    let tree = renderSettings({ onSave });
+    let save = findElements(
+      tree,
+      (element) => element.type === mockButton && renderedText(element.props.children).includes('Save settings')
+    )[0];
+
+    (save.props.onClick as () => void)();
+    mockStateCursor = 0;
+    tree = ActualSettings({
+      apiKey: 'existing-key',
+      model: 'whisper-large-v3-turbo',
+      provider: 'local',
+      localModelStatus: { state: 'not-downloaded' },
+      onInstallLocalModel: jest.fn().mockResolvedValue({ success: true }),
+      onSave,
+      onBack: jest.fn(),
+    }) as unknown as MockElement;
+    save = findElements(
+      tree,
+      (element) => element.type === mockButton && renderedText(element.props.children).includes('Save settings')
+    )[0];
+
+    expect(save.props.disabled).toBe(true);
+    expect(save.props['aria-busy']).toBe(true);
+    expect(renderedText(tree).join(' ')).toContain('Saving settings');
+
+    resolveSave?.();
+    await Promise.resolve();
   });
 
   it('uses explicit installation progress, ready state, and retry after a failed download', async () => {
