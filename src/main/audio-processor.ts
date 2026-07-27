@@ -20,11 +20,12 @@ function defaultDependencies(): AudioProcessorDependencies {
 
 export async function splitChannels(
   audioPath: string,
-  deps: AudioProcessorDependencies = defaultDependencies()
+  deps: AudioProcessorDependencies = defaultDependencies(),
+  output?: { system?: string; mic?: string }
 ): Promise<{ system: string; mic: string }> {
   const dir = path.dirname(audioPath);
-  const systemPath = path.join(dir, 'channel-system.wav');
-  const micPath = path.join(dir, 'channel-mic.wav');
+  const systemPath = output?.system ?? path.join(dir, 'channel-system.wav');
+  const micPath = output?.mic ?? path.join(dir, 'channel-mic.wav');
 
   // Extract channel 1 (system audio)
   await deps.execFile(ffmpegPath, [

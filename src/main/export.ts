@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Transcript } from './transcription';
+import { Transcript } from '../types/transcript';
 
 export function exportToPlainText(transcript: Transcript): string {
   const lines: string[] = [];

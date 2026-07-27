@@ -1,9 +1,7 @@
 import { app, BrowserWindow, ipcMain, session, desktopCapturer } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
 import { WavWriter } from './wav-writer';
-import { transcribeRecording } from './transcription';
 import { TrayManager } from './tray';
 import { saveExport } from './export';
 import { loadConfig, saveConfig, getGroqApiKey, setGroqApiKey } from './config';
@@ -171,13 +169,9 @@ ipcMain.handle('list-recordings', async () => {
   }
 });
 
-ipcMain.handle('transcribe', async (event, audioPath: string) => {
-  try {
-    const transcript = await transcribeRecording(audioPath);
-    return { success: true, transcript };
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
-  }
+ipcMain.handle('transcribe', async (_event, _audioPath: string) => {
+  // Task 7 will wire the new orchestrator to typed IPC progress and settings.
+  return { success: false, error: 'Transcription handler is being refactored in Task 7' };
 });
 
 ipcMain.handle('export-transcript', async (event, transcriptPath: string, format: 'txt') => {

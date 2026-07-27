@@ -1,0 +1,506 @@
+import * as path from 'path';
+import { Transcript, TranscriptionSegment } from '../../../types/transcript';
+import { TranscriptionProvider, TranscriptionStage } from '../../../types/transcription';
+import { TranscriptionOrchestrator, TranscriptionOrchestratorRequest } from '../orchestrator';
+import { TranscriptionError } from '../errors';
+import { TranscriptionLogger } from '../logger';
+
+type FakeFs = {
+  files: Map<string, Buffer>;
+  writeFile: jest.MockedFunction<(filePath: string, data: string) => Promise<void>>;
+  rename: jest.MockedFunction<(oldPath: string, newPath: string) => Promise<void>>;
+  rm: jest.MockedFunction<(filePath: string, options?: { force?: boolean }) => Promise<void>>;
+};
+
+const RECORDING_ID = '2026-07-27T12-00-00-000Z';
+const ROOT = '/recordings';
+const ATTEMPT_ID = 'attempt-1';
+const AUDIO_PATH = path.join(ROOT, RECORDING_ID, 'audio.wav');
+const TRANSCRIPT_PATH = path.join(ROOT, RECORDING_ID, 'transcript.json');
+const SYSTEM_PATH = path.join(ROOT, RECORDING_ID, `channel-system-${ATTEMPT_ID}.wav`);
+const MIC_PATH = path.join(ROOT, RECORDING_ID, `channel-mic-${ATTEMPT_ID}.wav`);
+
+function makeAudioBytes(): Buffer {
+  return Buffer.from('audio-wav-bytes');
+}
+
+function makeTranscriptBytes(): Buffer {
+  return Buffer.from('existing-transcript');
+}
+
+function makeSegment(start: number, end: number, text: string, speaker: string): TranscriptionSegment {
+  return { start, end, text, speaker };
+}
+
+function createFakeFs(
+  initial: Record<string, Buffer> = {},
+  order?: string[]
+): FakeFs {
+  const files = new Map<string, Buffer>(Object.entries(initial));
+  const writeFile = jest.fn(async (filePath: string, data: string) => {
+    order?.push('write');
+    files.set(filePath, Buffer.from(data));
+  });
+  const rename = jest.fn(async (oldPath: string, newPath: string) => {
+    if (!files.has(oldPath)) {
+      throw new Error(`ENOENT: ${oldPath}`);
+    }
+    files.set(newPath, files.get(oldPath)!);
+    files.delete(oldPath);
+  });
+  const rm = jest.fn(async (filePath: string, options?: { force?: boolean }) => {
+    if (!files.has(filePath) && !options?.force) {
+      throw new Error(`ENOENT: ${filePath}`);
+    }
+    files.delete(filePath);
+  });
+  return { files, writeFile, rename, rm };
+}
+
+interface CreateOrchestratorOverrides {
+  provider?: TranscriptionProvider;
+  coordinator?: TranscriptionOrchestrator['deps']['coordinator'];
+  recordingsLibrary?: TranscriptionOrchestrator['deps']['recordingsLibrary'];
+  loadConfig?: TranscriptionOrchestrator['deps']['loadConfig'];
+  getGroqApiKey?: TranscriptionOrchestrator['deps']['getGroqApiKey'];
+  localProvider?: { transcribe: jest.Mock };
+  groqProvider?: { transcribe: jest.Mock };
+  splitChannels?: TranscriptionOrchestrator['deps']['splitChannels'];
+  getAudioDuration?: TranscriptionOrchestrator['deps']['getAudioDuration'];
+  fs?: FakeFs;
+  logger?: TranscriptionLogger;
+}
+
+function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
+  const order: string[] = [];
+  const fs = overrides.fs ?? createFakeFs({ [AUDIO_PATH]: makeAudioBytes() }, order);
+
+  const coordinator: TranscriptionOrchestrator['deps']['coordinator'] = overrides.coordinator ?? {
+    tryStartTranscription: jest.fn(() => {
+      order.push('lock');
+      return true;
+    }),
+    finishTranscription: jest.fn(() => {
+      order.push('unlock');
+    }),
+  };
+
+  const recordingsLibrary: TranscriptionOrchestrator['deps']['recordingsLibrary'] =
+    overrides.recordingsLibrary ?? {
+      resolveRecordingAudio: jest.fn((recordingId: string) => {
+        return path.join(ROOT, recordingId, 'audio.wav');
+      }),
+      contains: jest.fn(() => true),
+    };
+
+  const localProvider = overrides.localProvider ?? {
+    transcribe: jest.fn(async (req: { speaker: string }) => {
+      order.push(req.speaker.toLowerCase());
+      return [];
+    }),
+  };
+
+  const groqProvider = overrides.groqProvider ?? {
+    transcribe: jest.fn(async (req: { speaker: string }) => {
+      order.push(req.speaker.toLowerCase());
+      return [];
+    }),
+  };
+
+  const splitChannels =
+    overrides.splitChannels ??
+    jest.fn(async () => {
+      order.push('prepare');
+      return { system: SYSTEM_PATH, mic: MIC_PATH };
+    });
+
+  const getAudioDuration = overrides.getAudioDuration ?? jest.fn(async () => 120);
+
+  const loadConfig =
+    overrides.loadConfig ??
+    jest.fn(() => ({
+      transcriptionProvider: 'local' as TranscriptionProvider,
+      groqModel: 'whisper-large-v3-turbo',
+    }));
+
+  const getGroqApiKey = overrides.getGroqApiKey ?? jest.fn(async () => 'decrypted-groq-key');
+
+  const logger: TranscriptionLogger = overrides.logger ?? {
+    log: jest.fn((_recordingId, _stage, category) => {
+      if (category === 'cleanup') {
+        order.push('cleanup');
+      }
+    }),
+  };
+
+  const progressStages: TranscriptionStage[] = [];
+
+  const orchestrator = new TranscriptionOrchestrator({
+    coordinator,
+    recordingsLibrary,
+    loadConfig,
+    getGroqApiKey,
+    localProvider: localProvider as unknown as TranscriptionOrchestrator['deps']['localProvider'],
+    groqProvider: groqProvider as unknown as TranscriptionOrchestrator['deps']['groqProvider'],
+    splitChannels,
+    getAudioDuration,
+    fs,
+    logger,
+    attemptIdGenerator: () => ATTEMPT_ID,
+    now: () => 0,
+    dateFactory: () => '2026-07-27T12:00:00.000Z',
+  });
+
+  const request: TranscriptionOrchestratorRequest = {
+    recordingId: RECORDING_ID,
+    provider: overrides.provider,
+    onProgress: (progress) => {
+      progressStages.push(progress.stage);
+    },
+  };
+
+  return {
+    orchestrator,
+    request,
+    deps: {
+      coordinator,
+      recordingsLibrary,
+      loadConfig,
+      getGroqApiKey,
+      localProvider,
+      groqProvider,
+      splitChannels,
+      getAudioDuration,
+      fs,
+      logger,
+    },
+    order,
+    progressStages,
+  };
+}
+
+describe('TranscriptionOrchestrator', () => {
+  describe('single-flight and routing', () => {
+    it('acquires coordinator before preparation and releases in finally on success', async () => {
+      const { orchestrator, request, order, deps } = createOrchestrator();
+
+      await orchestrator.transcribe(request);
+
+      expect(order).toEqual([
+        'lock',
+        'prepare',
+        'interviewer',
+        'you',
+        'write',
+        'cleanup',
+        'unlock',
+      ]);
+      expect(deps.coordinator.finishTranscription).toHaveBeenCalled();
+    });
+
+    it('throws TRANSCRIPTION_BUSY when coordinator refuses and never calls ffmpeg', async () => {
+      const { orchestrator, request, deps } = createOrchestrator({
+        coordinator: {
+          tryStartTranscription: jest.fn(() => false),
+          finishTranscription: jest.fn(),
+        },
+      });
+
+      await expect(orchestrator.transcribe(request)).rejects.toMatchObject({
+        code: 'TRANSCRIPTION_BUSY',
+      });
+
+      expect(deps.splitChannels).not.toHaveBeenCalled();
+      expect(deps.coordinator.finishTranscription).toHaveBeenCalled();
+    });
+
+    it('uses only Local Whisper when provider is local', async () => {
+      const { orchestrator, request, deps } = createOrchestrator({
+        provider: 'local',
+      });
+
+      await orchestrator.transcribe(request);
+
+      expect(deps.localProvider.transcribe).toHaveBeenCalledTimes(2);
+      expect(deps.groqProvider.transcribe).not.toHaveBeenCalled();
+      expect(deps.getGroqApiKey).not.toHaveBeenCalled();
+    });
+
+    it('uses only Groq and decrypts the key when provider is groq', async () => {
+      const { orchestrator, request, deps } = createOrchestrator({
+        provider: 'groq',
+      });
+
+      await orchestrator.transcribe(request);
+
+      expect(deps.groqProvider.transcribe).toHaveBeenCalledTimes(2);
+      expect(deps.localProvider.transcribe).not.toHaveBeenCalled();
+      expect(deps.getGroqApiKey).toHaveBeenCalled();
+    });
+
+    it('processes channels sequentially in Interviewer then You order', async () => {
+      const order: string[] = [];
+      const { orchestrator, request } = createOrchestrator({
+        localProvider: {
+          transcribe: jest.fn(async (req: { speaker: string }) => {
+            order.push(req.speaker);
+            return [makeSegment(order.length, order.length + 1, `text-${req.speaker}`, req.speaker)];
+          }),
+        },
+      });
+
+      const result = await orchestrator.transcribe(request);
+
+      expect(order).toEqual(['Interviewer', 'You']);
+      expect(result.segments[0].speaker).toBe('Interviewer');
+      expect(result.segments[1].speaker).toBe('You');
+    });
+
+    it('releases coordinator in finally after every failure', async () => {
+      const { orchestrator, request, deps } = createOrchestrator({
+        splitChannels: jest.fn(async () => {
+          throw new Error('ffmpeg exploded');
+        }),
+      });
+
+      await expect(orchestrator.transcribe(request)).rejects.toBeDefined();
+      expect(deps.coordinator.finishTranscription).toHaveBeenCalled();
+    });
+  });
+
+  describe('cleanup and atomic write', () => {
+    it('removes temporary artifacts, preserves audio.wav, and keeps existing transcript on split failure', async () => {
+      const fs = createFakeFs({
+        [AUDIO_PATH]: makeAudioBytes(),
+        [TRANSCRIPT_PATH]: makeTranscriptBytes(),
+      });
+      const { orchestrator, request } = createOrchestrator({
+        fs,
+        splitChannels: jest.fn(async () => {
+          // Simulate split creating files
+          fs.files.set(SYSTEM_PATH, Buffer.from('system'));
+          fs.files.set(MIC_PATH, Buffer.from('mic'));
+          throw new Error('split failed');
+        }),
+      });
+
+      await expect(orchestrator.transcribe(request)).rejects.toMatchObject({
+        code: 'AUDIO_PREPARATION_FAILED',
+      });
+
+      expect(fs.files.has(AUDIO_PATH)).toBe(true);
+      expect(fs.files.get(AUDIO_PATH)?.equals(makeAudioBytes())).toBe(true);
+      expect(fs.files.get(TRANSCRIPT_PATH)?.equals(makeTranscriptBytes())).toBe(true);
+      expect(fs.files.has(SYSTEM_PATH)).toBe(false);
+      expect(fs.files.has(MIC_PATH)).toBe(false);
+    });
+
+    it('removes artifacts, preserves audio.wav, and keeps existing transcript on first provider failure', async () => {
+      const fs = createFakeFs({
+        [AUDIO_PATH]: makeAudioBytes(),
+        [TRANSCRIPT_PATH]: makeTranscriptBytes(),
+      });
+      const tmpTranscriptPath = `${TRANSCRIPT_PATH}.tmp-${ATTEMPT_ID}`;
+      const { orchestrator, request } = createOrchestrator({
+        fs,
+        provider: 'local',
+        localProvider: {
+          transcribe: jest.fn(async (req: { speaker: string }) => {
+            if (req.speaker === 'Interviewer') {
+              throw Object.assign(new Error('local failed'), {
+                code: 'LOCAL_TRANSCRIPTION_FAILED',
+              });
+            }
+            return [];
+          }),
+        },
+      });
+
+      await expect(orchestrator.transcribe(request)).rejects.toMatchObject({
+        code: 'LOCAL_TRANSCRIPTION_FAILED',
+      });
+
+      expect(fs.files.has(AUDIO_PATH)).toBe(true);
+      expect(fs.files.get(AUDIO_PATH)?.equals(makeAudioBytes())).toBe(true);
+      expect(fs.files.get(TRANSCRIPT_PATH)?.equals(makeTranscriptBytes())).toBe(true);
+      expect(fs.files.has(SYSTEM_PATH)).toBe(false);
+      expect(fs.files.has(MIC_PATH)).toBe(false);
+      expect(fs.files.has(tmpTranscriptPath)).toBe(false);
+    });
+
+    it('removes artifacts, preserves audio.wav, and keeps existing transcript on second provider failure', async () => {
+      const fs = createFakeFs({
+        [AUDIO_PATH]: makeAudioBytes(),
+        [TRANSCRIPT_PATH]: makeTranscriptBytes(),
+      });
+      const tmpTranscriptPath = `${TRANSCRIPT_PATH}.tmp-${ATTEMPT_ID}`;
+      const { orchestrator, request } = createOrchestrator({
+        fs,
+        provider: 'groq',
+        groqProvider: {
+          transcribe: jest.fn(async (req: { speaker: string }) => {
+            if (req.speaker === 'You') {
+              throw Object.assign(new Error('groq failed'), { code: 'GROQ_REJECTED' });
+            }
+            return [];
+          }),
+        },
+      });
+
+      await expect(orchestrator.transcribe(request)).rejects.toMatchObject({
+        code: 'GROQ_REJECTED',
+      });
+
+      expect(fs.files.has(AUDIO_PATH)).toBe(true);
+      expect(fs.files.get(AUDIO_PATH)?.equals(makeAudioBytes())).toBe(true);
+      expect(fs.files.get(TRANSCRIPT_PATH)?.equals(makeTranscriptBytes())).toBe(true);
+      expect(fs.files.has(SYSTEM_PATH)).toBe(false);
+      expect(fs.files.has(MIC_PATH)).toBe(false);
+      expect(fs.files.has(tmpTranscriptPath)).toBe(false);
+    });
+
+    it('preserves existing transcript when JSON normalization fails', async () => {
+      const fs = createFakeFs({
+        [AUDIO_PATH]: makeAudioBytes(),
+        [TRANSCRIPT_PATH]: makeTranscriptBytes(),
+      });
+      const { orchestrator, request } = createOrchestrator({
+        fs,
+        localProvider: {
+          transcribe: jest.fn(async () => {
+            return [{ invalid: true } as unknown as TranscriptionSegment];
+          }),
+        },
+      });
+
+      await expect(orchestrator.transcribe(request)).rejects.toBeDefined();
+
+      expect(fs.files.get(AUDIO_PATH)?.equals(makeAudioBytes())).toBe(true);
+      expect(fs.files.get(TRANSCRIPT_PATH)?.equals(makeTranscriptBytes())).toBe(true);
+    });
+
+    it('preserves existing transcript when atomic rename fails and removes temp file', async () => {
+      const fs = createFakeFs({
+        [AUDIO_PATH]: makeAudioBytes(),
+        [TRANSCRIPT_PATH]: makeTranscriptBytes(),
+      });
+      const tmpTranscriptPath = `${TRANSCRIPT_PATH}.tmp-${ATTEMPT_ID}`;
+      fs.rename = jest.fn(async (_oldPath: string, _newPath: string) => {
+        throw new Error('rename failed');
+      });
+
+      const { orchestrator, request } = createOrchestrator({ fs });
+
+      await expect(orchestrator.transcribe(request)).rejects.toMatchObject({
+        code: 'TRANSCRIPT_WRITE_FAILED',
+      });
+
+      expect(fs.files.has(tmpTranscriptPath)).toBe(false);
+      expect(fs.files.get(TRANSCRIPT_PATH)?.equals(makeTranscriptBytes())).toBe(true);
+    });
+
+    it('logs cleanup errors but preserves the original error code', async () => {
+      const fs = createFakeFs({
+        [AUDIO_PATH]: makeAudioBytes(),
+      });
+      fs.rm = jest.fn(async (_filePath: string, _options?: { force?: boolean }) => {
+        throw new Error('cleanup failed');
+      });
+
+      const { orchestrator, request, deps } = createOrchestrator({
+        fs,
+        provider: 'local',
+        localProvider: {
+          transcribe: jest.fn(async (req: { speaker: string }) => {
+            if (req.speaker === 'Interviewer') {
+              throw Object.assign(new Error('local failed'), {
+                code: 'LOCAL_TRANSCRIPTION_FAILED',
+              });
+            }
+            return [];
+          }),
+        },
+      });
+
+      await expect(orchestrator.transcribe(request)).rejects.toMatchObject({
+        code: 'LOCAL_TRANSCRIPTION_FAILED',
+      });
+
+      expect(deps.logger.log).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        'cleanup-failed',
+        expect.any(Number)
+      );
+    });
+  });
+
+  describe('progress and safe logging', () => {
+    it('emits the exact stage sequence for local provider', async () => {
+      const { orchestrator, request, progressStages } = createOrchestrator({
+        provider: 'local',
+        localProvider: {
+          transcribe: jest.fn(async (_req: unknown, onProgress: (percent: number) => void) => {
+            onProgress(50);
+            return [];
+          }),
+        },
+      });
+
+      await orchestrator.transcribe(request);
+
+      expect(progressStages).toEqual([
+        'preparing-audio',
+        'downloading-model',
+        'transcribing-interviewer',
+        'transcribing-you',
+        'finishing-transcript',
+      ]);
+    });
+
+    it('carries the safe recording ID, not the full path, in progress events', async () => {
+      const { orchestrator, request } = createOrchestrator();
+      const progressEvents: { recordingId: string; stage: TranscriptionStage }[] = [];
+
+      await orchestrator.transcribe({
+        ...request,
+        onProgress: (progress) => {
+          progressEvents.push(progress);
+        },
+      });
+
+      for (const event of progressEvents) {
+        expect(event.recordingId).toBe(RECORDING_ID);
+        expect(event.recordingId).not.toContain('/');
+        expect(event.recordingId).not.toContain(ROOT);
+      }
+    });
+
+    it('logs stage, category, status, and elapsed without API key or full paths', async () => {
+      const { orchestrator, request, deps } = createOrchestrator({ provider: 'groq' });
+
+      await orchestrator.transcribe(request);
+
+      const logs = (deps.logger.log as jest.Mock).mock.calls as [
+        string,
+        TranscriptionStage,
+        string,
+        number
+      ][];
+
+      for (const [recordingId, stage, category, elapsed] of logs) {
+        expect(typeof recordingId).toBe('string');
+        expect(recordingId).not.toContain('/');
+        expect(recordingId).not.toContain(ROOT);
+        expect(typeof stage).toBe('string');
+        expect(typeof category).toBe('string');
+        expect(typeof elapsed).toBe('number');
+      }
+
+      const logString = JSON.stringify(logs);
+      expect(logString).not.toContain('decrypted-groq-key');
+      expect(logString).not.toContain(ROOT);
+      expect(logString).not.toContain(AUDIO_PATH);
+    });
+  });
+});

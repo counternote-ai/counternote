@@ -1,5 +1,5 @@
 import { exportToPlainText } from '../export';
-import { Transcript } from '../transcription';
+import { Transcript } from '../../types/transcript';
 
 describe('Export', () => {
   const mockTranscript: Transcript = {
