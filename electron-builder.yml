@@ -1,21 +1,16 @@
 appId: com.interview-copilot.app
 productName: Interview Copilot
 directories:
-  output: dist
+  output: release
   buildResources: build
 files:
   - dist/**/*
   - package.json
+extraResources:
+  - from: build/whisper/darwin-arm64/whisper-cli
+    to: whisper/bin/whisper-cli
 mac:
   category: public.app-category.productivity
-  target:
-    - dmg
-    - zip
-win:
-  target:
-    - nsis
-    - portable
-linux:
-  target:
-    - AppImage
-    - deb
+  identity: null
+  extendInfo:
+    NSMicrophoneUsageDescription: Interview Copilot needs microphone access to record your side of an interview.
