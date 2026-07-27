@@ -15,6 +15,31 @@ This change removes cloud rate limits from the default path, makes the product's
 local-first promise literal, and hardens both providers so failed transcription
 never endangers the original recording or leaves blocking temporary files.
 
+## Relationship to Maintainability Remediation
+
+This spec is the detailed implementation authority for the transcription work
+identified in Phase 5 of
+[`2026-07-26-maintainability-remediation-design.md`](2026-07-26-maintainability-remediation-design.md).
+It supersedes that phase's transcription-reliability bullets by incorporating
+and expanding them: `finally` cleanup, non-blocking ffmpeg retries, Groq response
+validation, narrow error codes, and a dedicated transcription-orchestration
+module. Phase 5 remains authoritative for unrelated shared contracts, IPC path
+confinement, listener lifecycle, and main-process boundaries.
+
+This work assumes these earlier remediation deliverables:
+
+- **Phase 1:** Remove `autoTranscribe` from config, IPC, Settings, tests, and
+  documentation. A recording stop must never trigger a silent 547 MiB model
+  download.
+- **Phase 2:** Provide the recordings-library service and one shared
+  main-process activity state that prevents migration during recording or
+  transcription.
+- **Phase 3:** Establish the macOS-only electron-builder configuration, package
+  and sign the `whisper-cli` sidecar, and verify it in the notarized app.
+
+The implementation plan must sequence this feature after Phases 1–3 or include
+their exact prerequisite tasks rather than creating competing implementations.
+
 ## Decision Brief
 
 - **User and job:** A job candidate needs a dependable transcript of a saved
@@ -39,9 +64,11 @@ never endangers the original recording or leaves blocking temporary files.
   saved recording.
 - **Privacy consequence:** Local Whisper keeps audio on the Mac. Groq uploads
   prepared audio only after explicit provider selection and transcription.
-- **Evidence:** The accepted Review Desk product direction, current dual-channel
-  pipeline, the original transcription design, Groq's published audio rate
-  limits, and `whisper.cpp`'s Apple Silicon/Metal and JSON-output support.
+- **Evidence:** The accepted
+  [Review Desk UI design](2026-07-09-ui-redesign-design.md), current
+  dual-channel pipeline, the original transcription design, Groq's published
+  audio rate limits, and `whisper.cpp`'s Apple Silicon/Metal and JSON-output
+  support.
 
 ## Chosen Integration
 
@@ -54,10 +81,34 @@ This sidecar approach is preferred over a Node native addon or local HTTP server
 - the app can pin and upgrade the engine independently;
 - no persistent local service is needed.
 
-The first implementation targets the current macOS Apple Silicon application.
-The packaged CLI must be built with Metal support. An unsupported architecture
-must make Local Whisper unavailable with a clear Settings explanation while
-leaving Groq selectable; it must not attempt cloud fallback.
+The first implementation targets the current macOS Apple Silicon application,
+consistent with remediation Phase 3's macOS-only scope. The persisted default
+remains platform-independent: `local` does not silently mutate to `groq` on an
+unsupported platform. The packaged CLI must be built with Metal support. An
+unsupported platform or architecture makes Local Whisper unavailable with a
+clear Settings explanation while leaving Groq selectable; it must not attempt
+cloud fallback.
+
+The deterministic sidecar build script writes an architecture-specific
+development artifact to:
+
+```text
+build/whisper/darwin-arm64/whisper-cli
+```
+
+Remediation Phase 3 owns the corresponding electron-builder configuration. It
+must copy that executable with `extraResources` to:
+
+```text
+Contents/Resources/whisper/bin/whisper-cli
+```
+
+The production resolver uses `process.resourcesPath`; the development resolver
+uses the repository artifact. Phase 3 must sign the nested executable as part of
+the hardened-runtime app signing flow, notarize the containing app, and verify
+the packaged sidecar with both `codesign --verify --deep --strict` and an
+unpacked-package launch smoke test. The model is downloaded at runtime and is
+not an `extraResource` or ASAR member.
 
 ## Provider Configuration
 
@@ -97,6 +148,14 @@ The model is stored at:
 ~/Library/Application Support/Interview Copilot/models/
 ```
 
+The path is resolved as `path.join(app.getPath('userData'), 'models')`, not from
+`outputDir` and not from the recordings-library service. Models are replaceable,
+app-managed assets; recordings and transcripts are user-owned library data.
+Consequently, changing the recordings folder in remediation Phase 2 neither
+moves nor verifies model files. Keeping these roots separate preserves the
+library migration's source/destination invariants. Tests inject the model root;
+the E2E process's isolated `HOME` remains an additional containment boundary.
+
 The first local transcription performs this lifecycle:
 
 1. Check whether the final model file exists and matches the expected digest.
@@ -114,6 +173,37 @@ offline.
 The app will not silently redownload a corrupt or incompatible model during an
 active transcription attempt. It reports the problem and exposes an explicit
 retry action.
+
+### Download Test Seam
+
+`LocalModelManager` receives a `ModelArtifactSpec` and download transport through
+constructor injection:
+
+```ts
+interface ModelArtifactSpec {
+  url: URL;
+  fileName: string;
+  byteSize: number;
+  sha256: string;
+}
+
+interface ModelDownloadTransport {
+  download(
+    source: URL,
+    destination: string,
+    onProgress: (receivedBytes: number, totalBytes: number) => void
+  ): Promise<void>;
+}
+```
+
+Production composition supplies pinned constants and the HTTPS transport. Unit
+tests supply a temporary model root, deterministic bytes, and an in-memory or
+local-server transport.
+
+E2E may override the artifact manifest and CLI path only when
+`app.isPackaged === false` and `INTERVIEW_COPILOT_E2E === '1'`. Its fixture uses
+a local stub server and fake CLI; it never contacts the production model host or
+downloads the 547 MiB model. Production code ignores those overrides otherwise.
 
 ## Transcription Pipeline
 
@@ -133,6 +223,13 @@ and memory. `whisper-cli` receives 16 kHz, mono, 16-bit WAV input and writes JSO
 with segment timestamps. CLI output is parsed into the existing
 `TranscriptionSegment` contract.
 
+Before inference, a lightweight ffmpeg silence check examines each complete
+channel. A channel with no non-silent interval longer than 500 ms above -50 dB
+produces an empty segment list and does not invoke Whisper. The CLI also uses its
+no-speech threshold and non-speech-token suppression options. This guards muted
+or near-empty microphone channels without claiming to eliminate all Whisper
+hallucinations.
+
 The timestamp values for both channel files share the same zero point, so their
 segments can be merged directly without temporal chunk offsets.
 
@@ -147,6 +244,42 @@ Temporal chunking is not required for Local Whisper. Groq file-size chunking
 remains a separate compatibility requirement for files above the active
 account's upload limit; chunking does not reduce billed audio seconds or solve
 audio-seconds-per-hour limits.
+
+## Process Supervision
+
+The local provider invokes `whisper-cli` with progress printing enabled. Any
+stdout, stderr, or parsed progress update refreshes a per-channel activity
+watchdog.
+
+- Five minutes without child output or progress is treated as a stalled child.
+- A hard per-channel deadline of `max(15 minutes, 2 × channel duration)` prevents
+  a noisy but non-terminating child from running forever.
+- On either deadline, the supervisor sends `SIGTERM`, waits five seconds, then
+  sends `SIGKILL` if necessary.
+- The supervisor rejects with the narrow `LOCAL_TRANSCRIPTION_TIMEOUT` code and
+  continues through normal `finally` cleanup.
+
+The user-facing message is local-specific:
+
+`Local transcription stopped responding. Your recording is still saved. Try again, or select Groq in Settings.`
+
+The cloud-specific `Check your connection` guidance is reserved for Groq network
+timeouts and model downloads.
+
+## Main-Process Single Flight
+
+A main-process `TranscriptionActivityCoordinator` owns the single-flight lock.
+The IPC handler must acquire it before model download or audio preparation and
+release it in `finally`. If another attempt owns the lock, the handler returns
+the narrow `TRANSCRIPTION_BUSY` error without starting work.
+
+The renderer's disabled button remains a usability guard, not the authority.
+Concurrent IPC calls, reopened windows, or future entry points cannot bypass the
+main-process coordinator.
+
+The coordinator exposes `isTranscribing(): boolean`. Remediation Phase 2's
+recordings-library migration consults the same instance alongside recording
+activity; it must not maintain a second transcription flag that can drift.
 
 ## Temporary Files and Atomic Outputs
 
@@ -195,8 +328,10 @@ Examples:
 
 - `The local model download failed. Your recording is still saved. Check your connection and try again.`
 - `Local transcription could not start. Your recording is still saved. Retry, or select Groq in Settings.`
+- `Local transcription stopped responding. Your recording is still saved. Try again, or select Groq in Settings.`
 - `Groq's rate limit was reached. Your recording is still saved. Try again in 18 minutes.`
-- `Transcription timed out. Your recording is still saved. Check your connection and try again.`
+- `Groq transcription timed out. Your recording is still saved. Check your connection and try again.`
+- `Another recording is already being transcribed. Wait for it to finish, then try again.`
 
 Raw provider responses, filesystem implementation details, stack traces, API
 keys, and transcript/audio content are never shown in the UI.
@@ -257,8 +392,14 @@ Focused unit tests will cover:
 - Local versus Groq routing with no automatic fallback;
 - model cache hit, download progress, checksum verification, atomic promotion,
   interrupted download cleanup, and retry;
+- production download constants versus injected unit/E2E artifact manifests;
 - `whisper-cli` invocation and JSON segment normalization;
+- local inactivity watchdog, hard deadline, TERM/KILL escalation, and timeout
+  copy;
 - sequential channel processing and speaker labels;
+- complete-channel silence detection and skipped inference;
+- main-process single-flight acquisition, busy result, and `finally` release;
+- shared transcription activity state used by recordings-library migration;
 - ffmpeg non-interactive overwrite arguments;
 - cleanup after preparation, local inference, Groq, parsing, and write failures;
 - preservation of `audio.wav` and an existing completed transcript;
@@ -282,10 +423,15 @@ recording card.
 - No Groq request occurs unless Groq is explicitly selected.
 - First local use downloads, verifies, and atomically installs the pinned model.
 - Later local transcription works without a network connection.
-- A 60-minute dual-channel recording is not subject to Groq limits in Local
-  mode.
+- A 60-minute dual-channel recording completes locally with no network request
+  after the model is installed.
 - Both channels preserve their existing labels and merged timestamps.
+- A silent channel does not produce hallucinated transcript segments.
 - Progress identifies the current stage and model-download percentage.
+- A stalled or non-terminating local child is terminated and reported instead of
+  leaving the UI busy indefinitely.
+- A main-process lock prevents concurrent transcription and is shared with the
+  recordings-library migration guard.
 - Every failed attempt leaves `audio.wav` usable and removes disposable files.
 - Retrying after any failure never blocks on an ffmpeg overwrite prompt.
 - Groq remains usable as a manually selected provider with bounded rate-limit
@@ -293,6 +439,8 @@ recording card.
 - Main-process logs identify the failing stage without leaking secrets or
   transcript content.
 - The documented build/watch commands match actual package scripts.
+- The packaged, signed, and notarized macOS app can spawn its signed
+  `whisper-cli` sidecar from `process.resourcesPath`.
 
 ## References
 
