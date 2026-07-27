@@ -8,6 +8,7 @@ import { ScrollArea } from './ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { formatDuration, getRecordingStatus, type RecordingStatusTone } from '../recording-utils';
 import { type RecordingPermissionNotice } from '../recording-permissions';
+import { type TranscriptionProgress } from '../../types/transcription';
 
 interface Recording {
   id: string;
@@ -25,6 +26,8 @@ interface ControlPanelProps {
   onOpenSettings: () => void;
   isRecording: boolean;
   transcribingId?: string | null;
+  transcriptionProgress?: TranscriptionProgress | null;
+  localTranscriptionUnavailable?: boolean;
   permissionNotice?: RecordingPermissionNotice | null;
   onOpenPermissionSettings: () => void;
   onDismissPermissionNotice: () => void;
@@ -45,6 +48,8 @@ export function ControlPanel({
   onOpenSettings,
   isRecording,
   transcribingId,
+  transcriptionProgress,
+  localTranscriptionUnavailable = false,
   permissionNotice,
   onOpenPermissionSettings,
   onDismissPermissionNotice,
@@ -127,6 +132,9 @@ export function ControlPanel({
             <div className="space-y-3 pb-1">
               {recordings.map((rec) => {
                 const isTranscribing = transcribingId === rec.id;
+                const progress = transcriptionProgress?.recordingId === rec.id
+                  ? transcriptionProgress
+                  : null;
                 const status = getRecordingStatus({ transcribed: rec.transcribed, isTranscribing });
                 const canOpen = rec.transcribed && !isTranscribing;
 
@@ -158,11 +166,22 @@ export function ControlPanel({
                             size="sm"
                             className="w-full"
                             onClick={() => onTranscribe(rec.id)}
-                            disabled={Boolean(transcribingId)}
+                            disabled={Boolean(transcribingId) || localTranscriptionUnavailable}
                           >
                             {isTranscribing && <LoaderCircle className="animate-spin" />}
-                            {isTranscribing ? 'Transcribing' : 'Transcribe audio'}
+                            {localTranscriptionUnavailable
+                              ? 'Local transcription unavailable'
+                              : isTranscribing
+                                ? progress?.stage === 'downloading-model' && progress.percent !== undefined
+                                  ? `Downloading model · ${progress.percent}%`
+                                  : 'Transcribing'
+                                : 'Transcribe audio'}
                           </Button>
+                          {localTranscriptionUnavailable && (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              Local Whisper is unavailable. Check Settings for details.
+                            </p>
+                          )}
                         </div>
                       )}
                     </CardContent>

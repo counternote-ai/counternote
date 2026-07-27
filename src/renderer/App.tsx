@@ -7,6 +7,12 @@ import { Button } from './components/ui/button';
 import { AudioCapture } from './audio-capture';
 import { getRecordingPermissionNotice } from './recording-permissions';
 import { type RecordingPermissionSnapshot } from '../types/recording-permissions';
+import {
+  type LocalModelStatus,
+  type TranscriptionErrorCode,
+  type TranscriptionProgress,
+  type TranscriptionProvider,
+} from '../types/transcription';
 import './styles.css';
 
 type View = 'recordings' | 'transcript' | 'settings';
@@ -22,7 +28,18 @@ interface AppRecording {
 }
 
 function getErrorMessage(err: unknown, fallback: string): string {
-  return err instanceof Error ? err.message : fallback;
+  console.error(fallback, err);
+  return fallback;
+}
+
+function getTranscriptionErrorMessage(code: TranscriptionErrorCode): string {
+  if (code === 'GROQ_KEY_MISSING') {
+    return 'Transcription needs a Groq API key. Your recording is still saved.';
+  }
+  if (code === 'LOCAL_UNAVAILABLE') {
+    return 'Local transcription is unavailable. Your recording is still saved.';
+  }
+  return 'Transcription failed. Your recording is still saved. Try again.';
 }
 
 export default function App() {
@@ -30,9 +47,15 @@ export default function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordings, setRecordings] = useState<AppRecording[]>([]);
   const [selectedRecording, setSelectedRecording] = useState<AppRecording | null>(null);
-  const [settings, setSettings] = useState({ apiKey: '', model: 'whisper-large-v3-turbo' });
+  const [settings, setSettings] = useState<{
+    apiKey: string;
+    model: string;
+    transcriptionProvider: TranscriptionProvider;
+  }>({ apiKey: '', model: 'whisper-large-v3-turbo', transcriptionProvider: 'local' });
   const [error, setError] = useState<string | null>(null);
   const [transcribingId, setTranscribingId] = useState<string | null>(null);
+  const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress | null>(null);
+  const [localModelStatus, setLocalModelStatus] = useState<LocalModelStatus>({ state: 'not-downloaded' });
   const [permissions, setPermissions] = useState<RecordingPermissionSnapshot | null>(null);
   const [permissionNoticeDismissed, setPermissionNoticeDismissed] = useState(false);
 
@@ -89,6 +112,27 @@ export default function App() {
 
     return () => window.removeEventListener('focus', handleFocus);
   }, [refreshRecordingPermissions]);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onTranscriptionProgress((progress) => {
+      setTranscriptionProgress(progress);
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const loadLocalModelStatus = async (): Promise<void> => {
+      try {
+        setLocalModelStatus(await window.electronAPI.getLocalModelStatus());
+      } catch (err) {
+        console.error('Failed to load local model status:', err);
+        setLocalModelStatus({ state: 'unavailable', reason: 'sidecar-missing' });
+      }
+    };
+
+    void loadLocalModelStatus();
+    return window.electronAPI.onLocalModelStatus(setLocalModelStatus);
+  }, []);
 
   // Listen for tray events
   useEffect(() => {
@@ -207,12 +251,12 @@ export default function App() {
     setError(null);
     setTranscribingId(id);
     try {
-      const result = await window.electronAPI.transcribe(recording.audioPath);
+      const result = await window.electronAPI.transcribe(recording.id);
       if (result.success) {
         // Refresh recordings list
         await loadRecordings();
       } else {
-        setError(result.error || 'Transcription failed');
+        setError(getTranscriptionErrorMessage(result.code));
       }
     } catch (err: unknown) {
       setError(getErrorMessage(err, 'Transcription failed'));
@@ -240,10 +284,26 @@ export default function App() {
     }
   };
 
-  const handleSaveSettings = async (newSettings: { apiKey: string; model: string }) => {
+  const handleInstallLocalModel = async () => {
+    const result = await window.electronAPI.installLocalModel();
+    if (result.success) {
+      setLocalModelStatus(await window.electronAPI.getLocalModelStatus());
+    }
+    return result;
+  };
+
+  const handleSaveSettings = async (newSettings: {
+    apiKey: string;
+    model: string;
+    transcriptionProvider: TranscriptionProvider;
+  }): Promise<void> => {
     setError(null);
     try {
-      await window.electronAPI.saveConfig(newSettings);
+      const result = await window.electronAPI.saveConfig(newSettings);
+      if (!result.success) {
+        setError('Settings could not be saved. Your changes are still here. Try again.');
+        return;
+      }
       setSettings(newSettings);
       setView('recordings');
     } catch (err: unknown) {
@@ -278,6 +338,9 @@ export default function App() {
         <Settings
           apiKey={settings.apiKey}
           model={settings.model}
+          provider={settings.transcriptionProvider}
+          localModelStatus={localModelStatus}
+          onInstallLocalModel={handleInstallLocalModel}
           onSave={handleSaveSettings}
           onBack={() => setView('recordings')}
         />
@@ -312,6 +375,10 @@ export default function App() {
         onOpenSettings={() => setView('settings')}
         isRecording={isRecording}
         transcribingId={transcribingId}
+        transcriptionProgress={transcriptionProgress}
+        localTranscriptionUnavailable={
+          settings.transcriptionProvider === 'local' && localModelStatus.state === 'unavailable'
+        }
         permissionNotice={permissionNoticeDismissed ? null : permissionNotice}
         onOpenPermissionSettings={handleOpenPermissionSettings}
         onDismissPermissionNotice={() => setPermissionNoticeDismissed(true)}

@@ -1,3 +1,5 @@
+import type { ComponentProps } from 'react';
+
 const mockEffects: Array<() => void | (() => void)> = [];
 const mockEventListeners = new Map<string, () => void>();
 const mockStateValues: unknown[] = [];
@@ -13,9 +15,18 @@ interface MockElement {
 interface MockControlPanelProps {
   recordings: Array<{ id: string; title: string }>;
   permissionNotice: { tone: string; message: string; settingsPermission?: string } | null;
+  localTranscriptionUnavailable?: boolean;
   onStartRecording: () => Promise<void>;
+  onTranscribe: (recordingId: string) => Promise<void>;
   onOpenPermissionSettings: () => Promise<void>;
   onDismissPermissionNotice: () => void;
+}
+
+interface MockSettingsProps {
+  apiKey: string;
+  model: string;
+  provider?: 'local' | 'groq';
+  onSave: (settings: { apiKey: string; model: string; transcriptionProvider?: 'local' | 'groq' }) => Promise<void>;
 }
 
 const mockCreateElement = (type: unknown, props: Record<string, unknown> | null, ...children: unknown[]): MockElement => ({
@@ -30,6 +41,19 @@ const mockAlert = (): null => null;
 const mockAlertDescription = (): null => null;
 const mockButton = (): null => null;
 const mockControlPanel = (): null => null;
+const mockSettings = (): null => null;
+const mockIcon = (): null => null;
+const mockBadge = (): null => null;
+const mockCard = (): null => null;
+const mockCardContent = (): null => null;
+const mockInput = (): null => null;
+const mockLabel = (): null => null;
+const mockSelect = (): null => null;
+const mockSelectContent = (): null => null;
+const mockSelectItem = (): null => null;
+const mockSelectTrigger = (): null => null;
+const mockSelectValue = (): null => null;
+const mockSeparator = (): null => null;
 
 jest.mock('react', () => ({
   __esModule: true,
@@ -52,12 +76,30 @@ jest.mock('react', () => ({
 
 jest.mock('./components/ControlPanel', () => ({ ControlPanel: mockControlPanel }));
 jest.mock('./components/TranscriptView', () => ({ TranscriptView: (): null => null }));
-jest.mock('./components/Settings', () => ({ Settings: (): null => null }));
+jest.mock('./components/Settings', () => ({ Settings: mockSettings }));
 jest.mock('./components/ui/alert', () => ({
   Alert: mockAlert,
   AlertDescription: mockAlertDescription,
 }));
 jest.mock('./components/ui/button', () => ({ Button: mockButton }));
+jest.mock('./components/ui/badge', () => ({ Badge: mockBadge }));
+jest.mock('./components/ui/card', () => ({ Card: mockCard, CardContent: mockCardContent }));
+jest.mock('./components/ui/input', () => ({ Input: mockInput }));
+jest.mock('./components/ui/label', () => ({ Label: mockLabel }));
+jest.mock('./components/ui/select', () => ({
+  Select: mockSelect,
+  SelectContent: mockSelectContent,
+  SelectItem: mockSelectItem,
+  SelectTrigger: mockSelectTrigger,
+  SelectValue: mockSelectValue,
+}));
+jest.mock('./components/ui/separator', () => ({ Separator: mockSeparator }));
+jest.mock('lucide-react', () => ({
+  ChevronLeft: mockIcon,
+  Download: mockIcon,
+  KeyRound: mockIcon,
+  ShieldCheck: mockIcon,
+}));
 
 const mockCaptureStart = jest.fn<Promise<void>, []>();
 const mockCaptureStop = jest.fn<void, []>();
@@ -69,6 +111,7 @@ jest.mock('./audio-capture', () => ({
 }));
 
 const App = require('./App').default as typeof import('./App').default;
+const ActualSettings = jest.requireActual('./components/Settings').Settings as typeof import('./components/Settings').Settings;
 
 function renderApp(): MockElement {
   mockStateCursor = 0;
@@ -86,6 +129,15 @@ function getControlPanelProps(): MockControlPanelProps {
   return panel.props as unknown as MockControlPanelProps;
 }
 
+function getSettingsProps(): MockSettingsProps {
+  if (!mockLatestTree) {
+    throw new Error('App has not been rendered');
+  }
+
+  const children = mockLatestTree.props.children as unknown[];
+  return (children[1] as MockElement).props as unknown as MockSettingsProps;
+}
+
 function getErrorMessage(): string | null {
   if (!mockLatestTree) {
     throw new Error('App has not been rendered');
@@ -99,6 +151,22 @@ function getErrorMessage(): string | null {
   const descriptionChildren = description.props.children as MockElement[];
   const message = descriptionChildren[0];
   return message.props.children as string;
+}
+
+function findElements(value: unknown, predicate: (element: MockElement) => boolean): MockElement[] {
+  if (typeof value !== 'object' || value === null) return [];
+  if (Array.isArray(value)) return value.flatMap((child) => findElements(child, predicate));
+
+  const element = value as MockElement;
+  const matches = predicate(element) ? [element] : [];
+  return matches.concat(findElements(element.props?.children, predicate));
+}
+
+function renderedText(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (typeof value !== 'object' || value === null) return [];
+  if (Array.isArray(value)) return value.flatMap(renderedText);
+  return renderedText((value as MockElement).props?.children);
 }
 
 function grantedPermissions() {
@@ -126,6 +194,12 @@ const mockElectronAPI = {
   startRecording: jest.fn(),
   onStopRecording: jest.fn(),
   onOpenSettings: jest.fn(),
+  onTranscriptionProgress: jest.fn(),
+  onLocalModelStatus: jest.fn(),
+  getLocalModelStatus: jest.fn(),
+  installLocalModel: jest.fn(),
+  transcribe: jest.fn(),
+  saveConfig: jest.fn(),
 };
 
 beforeEach(() => {
@@ -142,9 +216,20 @@ beforeEach(() => {
     permissions: grantedPermissions(),
   });
   mockElectronAPI.openRecordingPermissionSettings.mockResolvedValue({ success: true });
-  mockElectronAPI.loadConfig.mockResolvedValue({ success: true });
+  mockElectronAPI.loadConfig.mockResolvedValue({
+    success: true,
+    config: {
+      apiKey: 'existing-key',
+      model: 'whisper-large-v3-turbo',
+      transcriptionProvider: 'local',
+    },
+  });
   mockElectronAPI.listRecordings.mockResolvedValue({ success: true, recordings: [] });
   mockElectronAPI.startRecording.mockResolvedValue({ success: true });
+  mockElectronAPI.getLocalModelStatus.mockResolvedValue({ state: 'not-downloaded' });
+  mockElectronAPI.installLocalModel.mockResolvedValue({ success: true });
+  mockElectronAPI.transcribe.mockResolvedValue({ success: true });
+  mockElectronAPI.saveConfig.mockResolvedValue({ success: true });
   mockCaptureStart.mockResolvedValue(undefined);
 
   Object.defineProperty(global, 'window', {
@@ -278,5 +363,209 @@ describe('recording permission lifecycle', () => {
       'Failed to create recording file:',
       expect.objectContaining({ message: rawFileError })
     );
+  });
+});
+
+describe('transcription IPC lifecycle', () => {
+  it('subscribes once to transcription and model updates and removes both listeners on cleanup', async () => {
+    const unsubscribeProgress = jest.fn();
+    const unsubscribeModel = jest.fn();
+    mockElectronAPI.onTranscriptionProgress.mockReturnValue(unsubscribeProgress);
+    mockElectronAPI.onLocalModelStatus.mockReturnValue(unsubscribeModel);
+
+    renderApp();
+    const cleanups = mockEffects
+      .map((effect) => effect())
+      .filter((cleanup): cleanup is () => void => typeof cleanup === 'function');
+    await Promise.resolve();
+
+    expect(mockElectronAPI.onTranscriptionProgress).toHaveBeenCalledTimes(1);
+    expect(mockElectronAPI.onLocalModelStatus).toHaveBeenCalledTimes(1);
+
+    cleanups.forEach((cleanup) => cleanup());
+
+    expect(unsubscribeProgress).toHaveBeenCalledTimes(1);
+    expect(unsubscribeModel).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends only the recording ID when a saved recording is transcribed', async () => {
+    mockStateValues[2] = [{
+      id: '2026-07-27T12-00-00-000Z',
+      title: 'Saved interview',
+      duration: 60,
+      transcribed: false,
+      audioPath: '/private/recordings/secret/audio.wav',
+    }];
+    renderApp();
+
+    await getControlPanelProps().onTranscribe('2026-07-27T12-00-00-000Z');
+
+    expect(mockElectronAPI.transcribe).toHaveBeenCalledWith('2026-07-27T12-00-00-000Z');
+    expect(mockElectronAPI.transcribe).not.toHaveBeenCalledWith('/private/recordings/secret/audio.wav');
+  });
+
+  it('saves the selected local provider while preserving Groq values', async () => {
+    renderApp();
+    mockEffects[0]();
+    await Promise.resolve();
+    renderApp();
+    mockEffects[5]();
+    mockElectronAPI.onOpenSettings.mock.calls[0][0]();
+    renderApp();
+
+    await getSettingsProps().onSave({
+      apiKey: 'existing-key',
+      model: 'whisper-large-v3-turbo',
+      transcriptionProvider: 'local',
+    });
+
+    expect(mockElectronAPI.saveConfig).toHaveBeenCalledWith({
+      apiKey: 'existing-key',
+      model: 'whisper-large-v3-turbo',
+      transcriptionProvider: 'local',
+    });
+  });
+
+  it('keeps Local selected when its sidecar is unavailable instead of falling back to Groq', () => {
+    mockStateValues[8] = { state: 'unavailable', reason: 'sidecar-missing' };
+    renderApp();
+
+    expect(getControlPanelProps().localTranscriptionUnavailable).toBe(true);
+  });
+});
+
+describe('transcription provider settings', () => {
+  const renderSettings = (overrides: Partial<ComponentProps<typeof ActualSettings>> = {}): MockElement => {
+    mockStateValues.splice(0);
+    mockStateCursor = 0;
+    return ActualSettings({
+      apiKey: 'existing-key',
+      model: 'whisper-large-v3-turbo',
+      provider: 'local',
+      localModelStatus: { state: 'not-downloaded' },
+      onInstallLocalModel: jest.fn().mockResolvedValue({ success: true }),
+      onSave: jest.fn().mockResolvedValue(undefined),
+      onBack: jest.fn(),
+      ...overrides,
+    }) as unknown as MockElement;
+  };
+
+  it('defaults missing provider configuration to Local Whisper with local-only privacy copy', () => {
+    const tree = renderSettings();
+    const text = renderedText(tree).join(' ');
+
+    expect(findElements(tree, (element) => element.type === mockSelect)[0].props.value).toBe('local');
+    expect(text).toContain('Large V3 Turbo · about 547 MB');
+    expect(text).toContain('Not downloaded');
+    expect(text).toContain('Transcription runs on this Mac. Audio is not uploaded.');
+    expect(text).not.toContain('Groq API Key');
+  });
+
+  it('reveals Groq configuration and its upload boundary only after explicit Groq selection', () => {
+    let tree = renderSettings();
+    const providerSelect = findElements(tree, (element) => element.type === mockSelect)[0];
+    (providerSelect.props.onValueChange as (value: string) => void)('groq');
+    mockStateCursor = 0;
+    tree = ActualSettings({
+      apiKey: 'existing-key',
+      model: 'whisper-large-v3-turbo',
+      provider: 'local',
+      localModelStatus: { state: 'not-downloaded' },
+      onInstallLocalModel: jest.fn().mockResolvedValue({ success: true }),
+      onSave: jest.fn().mockResolvedValue(undefined),
+      onBack: jest.fn(),
+    }) as unknown as MockElement;
+    const text = renderedText(tree).join(' ');
+
+    expect(text).toContain('Groq API Key');
+    expect(text).toContain('Transcription sends prepared audio to Groq for processing.');
+    expect(text).not.toContain('Transcription runs on this Mac. Audio is not uploaded.');
+  });
+
+  it('preserves hidden Groq values when saving Local Whisper', async () => {
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    let tree = renderSettings({ onSave });
+    const providerSelect = findElements(tree, (element) => element.type === mockSelect)[0];
+    (providerSelect.props.onValueChange as (value: string) => void)('groq');
+    mockStateCursor = 0;
+    tree = ActualSettings({
+      apiKey: 'existing-key',
+      model: 'whisper-large-v3-turbo',
+      provider: 'local',
+      localModelStatus: { state: 'not-downloaded' },
+      onInstallLocalModel: jest.fn().mockResolvedValue({ success: true }),
+      onSave,
+      onBack: jest.fn(),
+    }) as unknown as MockElement;
+    const groqInput = findElements(tree, (element) => element.props.id === 'groq-api-key')[0];
+    (groqInput.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'preserved-key' } });
+    const groqProviderSelect = findElements(tree, (element) => element.type === mockSelect)[0];
+    (groqProviderSelect.props.onValueChange as (value: string) => void)('local');
+    mockStateCursor = 0;
+    tree = ActualSettings({
+      apiKey: 'existing-key',
+      model: 'whisper-large-v3-turbo',
+      provider: 'local',
+      localModelStatus: { state: 'not-downloaded' },
+      onInstallLocalModel: jest.fn().mockResolvedValue({ success: true }),
+      onSave,
+      onBack: jest.fn(),
+    }) as unknown as MockElement;
+
+    const save = findElements(
+      tree,
+      (element) => element.type === mockButton && renderedText(element.props.children).includes('Save settings')
+    )[0];
+    await (save.props.onClick as () => Promise<void>)();
+
+    expect(onSave).toHaveBeenCalledWith({
+      apiKey: 'preserved-key',
+      model: 'whisper-large-v3-turbo',
+      transcriptionProvider: 'local',
+    });
+  });
+
+  it('keeps Local selected and explains when its sidecar is unavailable', () => {
+    const tree = renderSettings({
+      localModelStatus: { state: 'unavailable', reason: 'sidecar-missing' },
+    });
+    const text = renderedText(tree).join(' ');
+
+    expect(findElements(tree, (element) => element.type === mockSelect)[0].props.value).toBe('local');
+    expect(text).toContain('Unavailable');
+    expect(text).toContain('Local Whisper is unavailable because its sidecar is not installed.');
+    expect(text).not.toContain('Groq API Key');
+  });
+
+  it('uses explicit installation progress, ready state, and retry after a failed download', async () => {
+    const install = jest.fn().mockResolvedValue({ success: false, code: 'MODEL_DOWNLOAD_FAILED' });
+    let tree = renderSettings({
+      localModelStatus: { state: 'downloading', percent: 42 },
+      onInstallLocalModel: install,
+    });
+    expect(renderedText(tree).join(' ')).toContain('Downloading · 42%');
+
+    tree = renderSettings({ localModelStatus: { state: 'ready' } });
+    expect(renderedText(tree).join(' ')).toContain('Ready');
+
+    tree = renderSettings({ onInstallLocalModel: install });
+    const download = findElements(
+      tree,
+      (element) => element.type === mockButton && renderedText(element.props.children).includes('Download model')
+    )[0];
+    await (download.props.onClick as () => Promise<void>)();
+    mockStateCursor = 0;
+    tree = ActualSettings({
+      apiKey: 'existing-key',
+      model: 'whisper-large-v3-turbo',
+      provider: 'local',
+      localModelStatus: { state: 'not-downloaded' },
+      onInstallLocalModel: install,
+      onSave: jest.fn().mockResolvedValue(undefined),
+      onBack: jest.fn(),
+    }) as unknown as MockElement;
+
+    expect(install).toHaveBeenCalledTimes(1);
+    expect(renderedText(tree).join(' ')).toContain('Retry download');
   });
 });

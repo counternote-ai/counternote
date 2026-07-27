@@ -6,6 +6,7 @@ import { TrayManager } from './tray';
 import { saveExport } from './export';
 import { loadConfig, saveConfig, getGroqApiKey, setGroqApiKey } from './config';
 import { getAudioDuration } from './audio-processor';
+import { isChannelSilent, splitChannels } from './audio-processor';
 import { AppActivityCoordinator } from './activity-coordinator';
 import { RecordingsLibrary } from './recordings-library';
 import {
@@ -13,15 +14,170 @@ import {
   openRecordingPermissionSettings,
 } from './recording-permissions';
 import { type RecordingPermission } from '../types/recording-permissions';
+import {
+  type LocalModelStatus,
+  type TranscriptionErrorCode,
+  type TranscriptionIpcResult,
+} from '../types/transcription';
+import { TranscriptionOrchestrator } from './transcription/orchestrator';
+import { TranscriptionError } from './transcription/errors';
+import { ConsoleTranscriptionLogger } from './transcription/logger';
+import { LocalModelManager, ModelInstallError } from './transcription/local-model-manager';
+import { PRODUCTION_MODEL_ARTIFACT, type ModelArtifactSpec } from './transcription/model-artifact';
+import { HttpsModelDownloadTransport } from './transcription/model-download';
+import { LocalWhisperProvider } from './transcription/local-whisper-provider';
+import { GroqProvider } from './transcription/groq-provider';
+import { WhisperProcessRunner } from './transcription/whisper-process';
+import { resolveWhisperCliPath } from './transcription/sidecar-path';
 
 let mainWindow: BrowserWindow | null = null;
 let wavWriter: WavWriter | null = null;
 let trayManager: TrayManager | null = null;
 const activity = new AppActivityCoordinator();
 const recordingsLibrary = new RecordingsLibrary(() => loadConfig().outputDir);
+let modelService: LocalModelManager | null = null;
+let transcriptionService: TranscriptionOrchestrator | null = null;
+let localUnavailableStatus: LocalModelStatus | null = null;
 
 // Set app name for macOS menu bar and Activity Monitor
 app.name = 'Interview Copilot';
+
+function e2eEnabled(): boolean {
+  return !app.isPackaged && process.env.INTERVIEW_COPILOT_E2E === '1';
+}
+
+function modelArtifact(): ModelArtifactSpec {
+  const manifestPath = e2eEnabled() ? process.env.INTERVIEW_COPILOT_MODEL_MANIFEST : undefined;
+  if (!manifestPath) return PRODUCTION_MODEL_ARTIFACT;
+
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as unknown;
+    if (!isModelArtifact(manifest)) return PRODUCTION_MODEL_ARTIFACT;
+    return {
+      url: new URL(manifest.url),
+      fileName: manifest.fileName,
+      byteSize: manifest.byteSize,
+      sha256: manifest.sha256,
+    };
+  } catch {
+    console.error('E2E model manifest could not be loaded.');
+    return PRODUCTION_MODEL_ARTIFACT;
+  }
+}
+
+function isModelArtifact(value: unknown): value is {
+  url: string;
+  fileName: string;
+  byteSize: number;
+  sha256: string;
+} {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.url === 'string'
+    && typeof candidate.fileName === 'string'
+    && typeof candidate.byteSize === 'number'
+    && Number.isSafeInteger(candidate.byteSize)
+    && candidate.byteSize > 0
+    && typeof candidate.sha256 === 'string'
+    && /^[a-f0-9]{64}$/i.test(candidate.sha256);
+}
+
+function getModelService(): LocalModelManager {
+  if (modelService === null) {
+    const artifact = modelArtifact();
+    const transport = new HttpsModelDownloadTransport(artifact.byteSize);
+    modelService = new LocalModelManager(
+      path.join(app.getPath('userData'), 'models'),
+      artifact,
+      transport.download.bind(transport)
+    );
+  }
+  return modelService;
+}
+
+function getLocalModelStatus(): Promise<LocalModelStatus> {
+  if (localUnavailableStatus) return Promise.resolve(localUnavailableStatus);
+
+  try {
+    resolveWhisperCliPath({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      projectRoot: path.resolve(__dirname, '../..'),
+      platform: process.platform,
+      arch: process.arch,
+    });
+  } catch {
+    localUnavailableStatus = {
+      state: 'unavailable',
+      reason: process.platform === 'darwin' && process.arch === 'arm64'
+        ? 'sidecar-missing'
+        : 'unsupported-platform',
+    };
+    return Promise.resolve(localUnavailableStatus);
+  }
+
+  return getModelService().getStatus();
+}
+
+function getTranscriptionService(): TranscriptionOrchestrator {
+  if (transcriptionService !== null) return transcriptionService;
+
+  let localProvider: LocalWhisperProvider | { transcribe: () => Promise<never> };
+  try {
+    const cliPath = resolveWhisperCliPath({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      projectRoot: path.resolve(__dirname, '../..'),
+      platform: process.platform,
+      arch: process.arch,
+    });
+    const runner = new WhisperProcessRunner();
+    const manager = getModelService();
+    localProvider = new LocalWhisperProvider({
+      cliPath,
+      ensureModel: manager.ensureModel.bind(manager),
+      runProcess: runner.run.bind(runner),
+      isChannelSilent,
+    });
+  } catch {
+    localUnavailableStatus = {
+      state: 'unavailable',
+      reason: process.platform === 'darwin' && process.arch === 'arm64'
+        ? 'sidecar-missing'
+        : 'unsupported-platform',
+    };
+    localProvider = {
+      transcribe: async (): Promise<never> => {
+        throw new TranscriptionError('LOCAL_UNAVAILABLE');
+      },
+    };
+  }
+
+  transcriptionService = new TranscriptionOrchestrator({
+    coordinator: activity,
+    recordingsLibrary,
+    loadConfig: () => loadConfig(),
+    getGroqApiKey,
+    localProvider,
+    groqProvider: new GroqProvider({ fetch, setTimeout, clearTimeout }),
+    splitChannels: (audioPath, output) => splitChannels(audioPath, undefined, output),
+    getAudioDuration,
+    fs: fs.promises,
+    logger: new ConsoleTranscriptionLogger(),
+  });
+  return transcriptionService;
+}
+
+function transcriptionFailure(error: unknown, fallback: TranscriptionErrorCode): TranscriptionIpcResult {
+  const code = error instanceof TranscriptionError || error instanceof ModelInstallError
+    ? error.code
+    : fallback;
+  const retryAfterSeconds = error instanceof TranscriptionError
+    ? error.details.retryAfterSeconds
+    : undefined;
+  console.error('Transcription operation failed.', { code });
+  return { success: false, code, retryAfterSeconds };
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -169,9 +325,44 @@ ipcMain.handle('list-recordings', async () => {
   }
 });
 
-ipcMain.handle('transcribe', async (_event, _audioPath: string) => {
-  // Task 7 will wire the new orchestrator to typed IPC progress and settings.
-  return { success: false, error: 'Transcription handler is being refactored in Task 7' };
+ipcMain.handle('transcribe', async (event, recordingId: unknown): Promise<TranscriptionIpcResult> => {
+  if (typeof recordingId !== 'string') {
+    return { success: false, code: 'AUDIO_PREPARATION_FAILED' };
+  }
+
+  try {
+    await getTranscriptionService().transcribe({
+      recordingId,
+      onProgress: (progress) => event.sender.send('transcription-progress', progress),
+    });
+    return { success: true };
+  } catch (error) {
+    return transcriptionFailure(error, 'AUDIO_PREPARATION_FAILED');
+  }
+});
+
+ipcMain.handle('get-local-model-status', (): Promise<LocalModelStatus> => getLocalModelStatus());
+
+ipcMain.handle('install-local-model', async (): Promise<TranscriptionIpcResult> => {
+  const status = await getLocalModelStatus();
+  if (status.state === 'unavailable') {
+    return { success: false, code: 'LOCAL_UNAVAILABLE' };
+  }
+
+  try {
+    await getModelService().ensureModel((percent) => {
+      mainWindow?.webContents.send('local-model-status', {
+        state: 'downloading',
+        percent,
+      } satisfies LocalModelStatus);
+    });
+    mainWindow?.webContents.send('local-model-status', { state: 'ready' } satisfies LocalModelStatus);
+    return { success: true };
+  } catch (error) {
+    const latestStatus = await getModelService().getStatus();
+    mainWindow?.webContents.send('local-model-status', latestStatus);
+    return transcriptionFailure(error, 'MODEL_DOWNLOAD_FAILED');
+  }
 });
 
 ipcMain.handle('export-transcript', async (event, transcriptPath: string, format: 'txt') => {
@@ -187,7 +378,7 @@ ipcMain.handle('export-transcript', async (event, transcriptPath: string, format
 // Settings IPC handlers
 ipcMain.handle('save-config', async (
   _event,
-  config: { apiKey?: string; model?: string }
+  config: { apiKey?: string; model?: string; transcriptionProvider?: 'local' | 'groq' }
 ) => {
   try {
     // Save API key via safeStorage if provided
@@ -199,6 +390,9 @@ ipcMain.handle('save-config', async (
     saveConfig({
       ...currentConfig,
       ...(config.model !== undefined && { groqModel: config.model }),
+      ...(config.transcriptionProvider !== undefined && {
+        transcriptionProvider: config.transcriptionProvider,
+      }),
     });
     return { success: true };
   } catch (err) {
@@ -215,6 +409,7 @@ ipcMain.handle('load-config', async () => {
       config: {
         apiKey: apiKey || '',
         model: config.groqModel,
+        transcriptionProvider: config.transcriptionProvider,
       },
     };
   } catch (err) {

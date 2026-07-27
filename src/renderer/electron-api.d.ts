@@ -1,6 +1,10 @@
 type RecordingPermission = import('../types/recording-permissions').RecordingPermission;
 type RecordingPermissionSnapshot =
   import('../types/recording-permissions').RecordingPermissionSnapshot;
+type TranscriptionProvider = import('../types/transcription').TranscriptionProvider;
+type TranscriptionProgress = import('../types/transcription').TranscriptionProgress;
+type TranscriptionIpcResult = import('../types/transcription').TranscriptionIpcResult;
+type LocalModelStatus = import('../types/transcription').LocalModelStatus;
 
 // CSS module declarations
 declare module '*.css' {}
@@ -22,15 +26,20 @@ interface ElectronAPI {
   startRecording: () => Promise<{ success: boolean; path?: string }>;
   stopRecording: () => Promise<{ success: boolean }>;
   listRecordings: () => Promise<{ success: boolean; recordings: Recording[] }>;
-  transcribe: (audioPath: string) => Promise<{ success: boolean; transcript?: any; error?: string }>;
+  transcribe: (recordingId: string) => Promise<TranscriptionIpcResult>;
+  onTranscriptionProgress: (callback: (progress: TranscriptionProgress) => void) => () => void;
+  getLocalModelStatus: () => Promise<LocalModelStatus>;
+  installLocalModel: () => Promise<TranscriptionIpcResult>;
+  onLocalModelStatus: (callback: (status: LocalModelStatus) => void) => () => void;
   exportTranscript: (transcriptPath: string, format: string) => Promise<{ success: boolean; path?: string; error?: string }>;
   saveConfig: (config: {
     apiKey?: string;
     model?: string;
+    transcriptionProvider?: TranscriptionProvider;
   }) => Promise<{ success: boolean; error?: string }>;
   loadConfig: () => Promise<{
     success: boolean;
-    config?: { apiKey: string; model: string };
+    config?: { apiKey: string; model: string; transcriptionProvider: TranscriptionProvider };
     error?: string;
   }>;
   getRecordingPermissions: () => Promise<{
