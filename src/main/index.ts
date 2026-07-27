@@ -8,6 +8,8 @@ import { TrayManager } from './tray';
 import { saveExport } from './export';
 import { loadConfig, saveConfig, getGroqApiKey, setGroqApiKey } from './config';
 import { getAudioDuration } from './audio-processor';
+import { AppActivityCoordinator } from './activity-coordinator';
+import { RecordingsLibrary } from './recordings-library';
 import {
   getRecordingPermissionSnapshot,
   openRecordingPermissionSettings,
@@ -17,6 +19,8 @@ import { type RecordingPermission } from '../types/recording-permissions';
 let mainWindow: BrowserWindow | null = null;
 let wavWriter: WavWriter | null = null;
 let trayManager: TrayManager | null = null;
+const activity = new AppActivityCoordinator();
+const recordingsLibrary = new RecordingsLibrary(() => loadConfig().outputDir);
 
 // Set app name for macOS menu bar and Activity Monitor
 app.name = 'Interview Copilot';
@@ -47,13 +51,15 @@ function createWindow() {
 // IPC handlers for recording
 ipcMain.handle('start-recording', async () => {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const recordingsDir = path.join(os.homedir(), 'InterviewCopilot', 'recordings', timestamp);
+  const recordingsDir = path.join(recordingsLibrary.getRoot(), timestamp);
 
   // Create directory
   fs.mkdirSync(recordingsDir, { recursive: true });
 
   const audioPath = path.join(recordingsDir, 'audio.wav');
   wavWriter = new WavWriter(audioPath, 16000, 2);
+
+  activity.startRecording();
 
   // Update tray to show recording state
   trayManager?.setRecording(true);
@@ -68,6 +74,7 @@ ipcMain.handle('stop-recording', async () => {
     wavWriter = null;
     console.log('Recording stopped');
   }
+  activity.finishRecording();
   // Update tray to hide recording state
   trayManager?.setRecording(false);
   return { success: true };
@@ -101,7 +108,7 @@ ipcMain.handle(
 
 ipcMain.handle('list-recordings', async () => {
   try {
-    const recordingsDir = path.join(os.homedir(), 'InterviewCopilot', 'recordings');
+    const recordingsDir = recordingsLibrary.getRoot();
     if (!fs.existsSync(recordingsDir)) {
       return { success: true, recordings: [] };
     }
