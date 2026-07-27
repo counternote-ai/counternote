@@ -4,6 +4,7 @@ import { TranscriptionProvider, TranscriptionStage } from '../../../types/transc
 import { TranscriptionOrchestrator, TranscriptionOrchestratorRequest } from '../orchestrator';
 import { TranscriptionError } from '../errors';
 import { TranscriptionLogger } from '../logger';
+import { AppActivityCoordinator } from '../../activity-coordinator';
 
 type FakeFs = {
   files: Map<string, Buffer>;
@@ -198,20 +199,44 @@ describe('TranscriptionOrchestrator', () => {
       expect(deps.coordinator.finishTranscription).toHaveBeenCalled();
     });
 
-    it('throws TRANSCRIPTION_BUSY when coordinator refuses and never calls ffmpeg', async () => {
-      const { orchestrator, request, deps } = createOrchestrator({
-        coordinator: {
-          tryStartTranscription: jest.fn(() => false),
-          finishTranscription: jest.fn(),
-        },
+    it('keeps the original owner locked when a busy request is rejected', async () => {
+      const coordinator = new AppActivityCoordinator();
+      const finishTranscription = jest.spyOn(coordinator, 'finishTranscription');
+      let startSplit: (() => void) | undefined;
+      let releaseSplit: (() => void) | undefined;
+      const splitStarted = new Promise<void>((resolve) => {
+        startSplit = resolve;
       });
+      const splitGate = new Promise<void>((resolve) => {
+        releaseSplit = resolve;
+      });
+      const splitChannels = jest.fn(async () => {
+        startSplit?.();
+        await splitGate;
+        return { system: SYSTEM_PATH, mic: MIC_PATH };
+      });
+      const first = createOrchestrator({ coordinator, splitChannels });
+      const second = createOrchestrator({ coordinator });
+      const third = createOrchestrator({ coordinator });
 
-      await expect(orchestrator.transcribe(request)).rejects.toMatchObject({
+      const firstRun = first.orchestrator.transcribe(first.request);
+      await splitStarted;
+
+      await expect(second.orchestrator.transcribe(second.request)).rejects.toMatchObject({
+        code: 'TRANSCRIPTION_BUSY',
+      });
+      await expect(third.orchestrator.transcribe(third.request)).rejects.toMatchObject({
         code: 'TRANSCRIPTION_BUSY',
       });
 
-      expect(deps.splitChannels).not.toHaveBeenCalled();
-      expect(deps.coordinator.finishTranscription).toHaveBeenCalled();
+      expect(second.deps.splitChannels).not.toHaveBeenCalled();
+      expect(third.deps.splitChannels).not.toHaveBeenCalled();
+      expect(finishTranscription).not.toHaveBeenCalled();
+
+      releaseSplit?.();
+      await firstRun;
+
+      expect(finishTranscription).toHaveBeenCalledTimes(1);
     });
 
     it('uses only Local Whisper when provider is local', async () => {
@@ -436,6 +461,22 @@ describe('TranscriptionOrchestrator', () => {
   });
 
   describe('progress and safe logging', () => {
+    it('never logs an absolute-path recording ID supplied through IPC', async () => {
+      const unsafeRecordingId = '/Users/example/private-interviews/audio.wav';
+      const { orchestrator, request, deps } = createOrchestrator();
+
+      await expect(
+        orchestrator.transcribe({ ...request, recordingId: unsafeRecordingId })
+      ).rejects.toMatchObject({ code: 'AUDIO_PREPARATION_FAILED' });
+
+      expect(deps.recordingsLibrary.resolveRecordingAudio).not.toHaveBeenCalled();
+      const logs = (deps.logger.log as jest.Mock).mock.calls;
+      expect(logs).toEqual([
+        ['invalid-recording-id', 'preparing-audio', 'failure', 0],
+      ]);
+      expect(JSON.stringify(logs)).not.toContain(unsafeRecordingId);
+    });
+
     it('emits the exact stage sequence for local provider', async () => {
       const { orchestrator, request, progressStages } = createOrchestrator({
         provider: 'local',
@@ -501,6 +542,56 @@ describe('TranscriptionOrchestrator', () => {
       expect(logString).not.toContain('decrypted-groq-key');
       expect(logString).not.toContain(ROOT);
       expect(logString).not.toContain(AUDIO_PATH);
+    });
+
+    it('normalizes a recognized provider failure into a typed error with safe retry details', async () => {
+      const providerFailure = Object.assign(new Error('provider response body'), {
+        code: 'GROQ_RATE_LIMITED',
+        retryAfterSeconds: 42,
+        status: 429,
+      });
+      const { orchestrator, request } = createOrchestrator({
+        provider: 'groq',
+        groqProvider: {
+          transcribe: jest.fn(async () => {
+            throw providerFailure;
+          }),
+        },
+      });
+
+      let thrown: unknown;
+      try {
+        await orchestrator.transcribe(request);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(TranscriptionError);
+      expect(thrown).toMatchObject({
+        code: 'GROQ_RATE_LIMITED',
+        details: { retryAfterSeconds: 42, status: 429 },
+      });
+    });
+
+    it('maps an unknown Groq provider failure to a typed safe Groq error', async () => {
+      const { orchestrator, request } = createOrchestrator({
+        provider: 'groq',
+        groqProvider: {
+          transcribe: jest.fn(async () => {
+            throw new Error('untrusted provider body');
+          }),
+        },
+      });
+
+      let thrown: unknown;
+      try {
+        await orchestrator.transcribe(request);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(TranscriptionError);
+      expect(thrown).toMatchObject({ code: 'GROQ_REJECTED' });
     });
   });
 });
