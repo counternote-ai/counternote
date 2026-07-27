@@ -93,6 +93,18 @@ describe('LocalWhisperProvider', () => {
     });
   });
 
+  it('rejects null offsets', async () => {
+    const provider = createProvider({
+      runProcess: jest.fn().mockResolvedValue({
+        transcription: [{ offsets: { from: null, to: 7860 }, text: 'x' }],
+      }),
+    });
+
+    await expect(provider.transcribe(baseRequest, jest.fn())).rejects.toMatchObject({
+      code: 'LOCAL_TRANSCRIPTION_FAILED',
+    });
+  });
+
   it('rejects reversed offsets', async () => {
     const provider = createProvider({
       runProcess: jest.fn().mockResolvedValue({

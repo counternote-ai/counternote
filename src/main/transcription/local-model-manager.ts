@@ -22,7 +22,7 @@ export class ModelInstallError extends Error {
 
 export class LocalModelManager {
   private installation: Promise<string> | null = null;
-  private readonly progressListeners = new Set<(percent: number) => void>();
+  private readonly progressListeners = new Map<symbol, (percent: number) => void>();
 
   constructor(
     private readonly modelRoot: string,
@@ -31,7 +31,8 @@ export class LocalModelManager {
   ) {}
 
   async ensureModel(onProgress: (percent: number) => void): Promise<string> {
-    this.progressListeners.add(onProgress);
+    const key = Symbol();
+    this.progressListeners.set(key, onProgress);
     try {
       if (this.installation === null) {
         this.installation = this.install().finally(() => {
@@ -40,7 +41,7 @@ export class LocalModelManager {
       }
       return await this.installation;
     } finally {
-      this.progressListeners.delete(onProgress);
+      this.progressListeners.delete(key);
     }
   }
 
@@ -102,8 +103,12 @@ export class LocalModelManager {
   }
 
   private broadcastProgress(percent: number): void {
-    for (const listener of this.progressListeners) {
-      listener(percent);
+    for (const listener of this.progressListeners.values()) {
+      try {
+        listener(percent);
+      } catch {
+        // A throwing listener must not silence the broadcast for the rest.
+      }
     }
   }
 

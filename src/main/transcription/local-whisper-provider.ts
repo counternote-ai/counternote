@@ -72,15 +72,20 @@ function normalizeTranscription(
       );
     }
 
-    const startMs = Number(item.offsets.from);
-    const endMs = Number(item.offsets.to);
-
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    if (
+      typeof item.offsets.from !== 'number' ||
+      typeof item.offsets.to !== 'number' ||
+      !Number.isFinite(item.offsets.from) ||
+      !Number.isFinite(item.offsets.to)
+    ) {
       throw new LocalTranscriptionError(
         'LOCAL_TRANSCRIPTION_FAILED',
-        'segment offsets are non-finite'
+        'segment offsets are malformed'
       );
     }
+
+    const startMs = item.offsets.from;
+    const endMs = item.offsets.to;
 
     const start = startMs / 1000;
     const end = endMs / 1000;

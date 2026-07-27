@@ -161,4 +161,52 @@ describe('LocalModelManager', () => {
 
     expect(download).not.toHaveBeenCalled();
   });
+
+  it('broadcasts progress to every concurrent caller even when they share the same callback', async () => {
+    const bytes = Buffer.from('downloaded-model');
+    const progress: number[] = [];
+    const sharedCallback = (percent: number): void => {
+      progress.push(percent);
+    };
+
+    const manager = createManager({
+      artifact: artifactFor(bytes),
+      download: async (_url, destination, onProgress) => {
+        fs.writeFileSync(destination, bytes);
+        onProgress(bytes.length, bytes.length);
+      },
+    });
+
+    const first = manager.ensureModel(sharedCallback);
+    const second = manager.ensureModel(sharedCallback);
+
+    await expect(Promise.all([first, second])).resolves.toEqual([finalPath, finalPath]);
+    expect(progress.filter((p) => p === 100).length).toBe(2);
+  });
+
+  it('does not let a throwing listener silence the remaining listeners', async () => {
+    const bytes = Buffer.from('downloaded-model');
+    const safeProgress: number[] = [];
+    const throwingCallback = (percent: number): void => {
+      if (percent === 50) throw new Error('listener boom');
+    };
+    const safeCallback = (percent: number): void => {
+      safeProgress.push(percent);
+    };
+
+    const manager = createManager({
+      artifact: artifactFor(bytes),
+      download: async (_url, destination, onProgress) => {
+        fs.writeFileSync(destination, bytes);
+        onProgress(bytes.length / 2, bytes.length);
+        onProgress(bytes.length, bytes.length);
+      },
+    });
+
+    const first = manager.ensureModel(throwingCallback);
+    const second = manager.ensureModel(safeCallback);
+
+    await expect(Promise.all([first, second])).resolves.toEqual([finalPath, finalPath]);
+    expect(safeProgress).toContain(100);
+  });
 });
