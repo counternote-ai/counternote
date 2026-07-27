@@ -24,7 +24,7 @@ sidecar is an application-owned runtime component, never a user setup step.
 
 - No model weights are bundled into the application.
 - No user-visible sidecar installation or configuration workflow is added.
-- Existing Windows and Linux package targets are removed.
+- No Windows or Linux packaging support is offered.
 - No signing, notarization, or distributable-release claim is made without
   Apple Developer credentials.
 
@@ -62,10 +62,12 @@ the YAML, and `directories.output` changes from `dist` to `release`.
 Electron Forge tooling is removed because electron-builder is the chosen
 packager.
 
-The unpacked package includes valid macOS microphone and screen-capture usage
-descriptions so capture is not terminated by the operating system. A valid
-application icon and release entitlements remain part of the
-credential-gated release phase if suitable assets are not already present.
+The unpacked package includes `NSMicrophoneUsageDescription` through
+`mac.extendInfo` so microphone capture is not terminated by the operating
+system. ScreenCaptureKit uses the macOS Screen Recording TCC prompt and has no
+parallel required usage-description key. A valid application icon and release
+entitlements remain part of the credential-gated release phase because no
+suitable application icon is currently present.
 
 The build scripts distinguish an unsigned local package from a release: local
 `pack` validates resource inclusion and executable behavior; release signing
@@ -88,8 +90,12 @@ paths.
 The local package gate builds the sidecar, creates an unpacked App, verifies
 the development and nested executables using `file`, `--help`, and `otool -L`,
 and asserts that neither has `libwhisper` nor `libggml` dylib references. It
-then runs the Electron smoke test. Signing/notarization verification is a
-separate release gate requiring Apple Developer credentials.
+then launches the unpacked application and verifies packaged-mode sidecar
+resolution through `process.resourcesPath` plus the Settings `Not downloaded`
+state. Full transcription with the fake CLI and loopback model server remains a
+development-mode E2E test because packaged builds intentionally ignore those
+overrides. Signing/notarization verification is a separate release gate
+requiring Apple Developer credentials.
 
 ## Risks and Boundaries
 
