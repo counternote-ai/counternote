@@ -31,7 +31,7 @@ Reachable states: populated transcript, empty segments, long title, long segment
 **Job:** configure transcription deliberately and understand data handling.
 
 - Keep Back and the screen title in a simple toolbar.
-- Group API key, model, and auto-transcribe settings in a transcription card.
+- Group API key and model settings in a transcription card.
 - Keep the privacy explanation calm and precise; it is not an error alert.
 - Keep Save at the bottom as the main commitment action.
 - Preserve entered values through validation or save failure.

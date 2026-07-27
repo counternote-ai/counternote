@@ -1,8 +1,10 @@
 # Interview Copilot — Design Spec
 
 **Date:** 2026-07-08
-**Status:** Draft
+**Status:** Implemented; retained as historical design context
 **Author:** Albus + Claude
+
+**Maintenance note:** The auto-transcribe setting described in this historical design was removed because it did not have an implemented behavior.
 
 ---
 

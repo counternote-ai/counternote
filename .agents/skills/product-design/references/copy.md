@@ -19,7 +19,6 @@ Use calm, direct, literal language. Write for a candidate who may already be und
 - Remote/system channel: `Interviewer`
 - Microphone channel: `You`
 - Provider: `Groq`
-- Setting: `Auto-transcribe after recording`
 
 ## Status language
 

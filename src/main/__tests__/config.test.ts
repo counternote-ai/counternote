@@ -53,14 +53,16 @@ describe('Config', () => {
   it('should return default config when no config file exists', () => {
     const config = loadConfig();
 
-    expect(config.groqModel).toBe('whisper-large-v3-turbo');
-    expect(config.autoTranscribe).toBe(false);
+    expect(config).toEqual({
+      groqModel: 'whisper-large-v3-turbo',
+      outputDir: path.join(TEST_CONFIG_DIR, 'recordings'),
+    });
+    expect(config).not.toHaveProperty('autoTranscribe');
   });
 
   it('should load config from file when it exists', () => {
     const testConfig = {
       groqModel: 'whisper-large-v3',
-      autoTranscribe: true,
       outputDir: '/test/dir',
     };
 
@@ -70,7 +72,6 @@ describe('Config', () => {
     // For now, we test the structure
     const config = loadConfig();
     expect(config).toHaveProperty('groqModel');
-    expect(config).toHaveProperty('autoTranscribe');
     expect(config).toHaveProperty('outputDir');
   });
 
@@ -78,7 +79,6 @@ describe('Config', () => {
     const config = loadConfig();
 
     expect(typeof config.groqModel).toBe('string');
-    expect(typeof config.autoTranscribe).toBe('boolean');
     expect(typeof config.outputDir).toBe('string');
   });
 

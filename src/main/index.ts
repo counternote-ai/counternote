@@ -184,7 +184,10 @@ ipcMain.handle('export-transcript', async (event, transcriptPath: string, format
 });
 
 // Settings IPC handlers
-ipcMain.handle('save-config', async (event, config: { apiKey?: string; model?: string; autoTranscribe?: boolean }) => {
+ipcMain.handle('save-config', async (
+  _event,
+  config: { apiKey?: string; model?: string }
+) => {
   try {
     // Save API key via safeStorage if provided
     if (config.apiKey !== undefined) {
@@ -195,7 +198,6 @@ ipcMain.handle('save-config', async (event, config: { apiKey?: string; model?: s
     saveConfig({
       ...currentConfig,
       ...(config.model !== undefined && { groqModel: config.model }),
-      ...(config.autoTranscribe !== undefined && { autoTranscribe: config.autoTranscribe }),
     });
     return { success: true };
   } catch (err) {
@@ -212,7 +214,6 @@ ipcMain.handle('load-config', async () => {
       config: {
         apiKey: apiKey || '',
         model: config.groqModel,
-        autoTranscribe: config.autoTranscribe,
       },
     };
   } catch (err) {

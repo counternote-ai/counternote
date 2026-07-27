@@ -9,20 +9,22 @@ const SECRETS_FILE = path.join(CONFIG_DIR, 'secrets.enc');
 
 export interface Config {
   groqModel: string;
-  autoTranscribe: boolean;
   outputDir: string;
 }
 
 const DEFAULT_CONFIG: Config = {
   groqModel: 'whisper-large-v3-turbo',
-  autoTranscribe: false,
   outputDir: path.join(CONFIG_DIR, 'recordings'),
 };
 
 export function loadConfig(): Config {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
-      return { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')) };
+      const savedConfig: Partial<Config> = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+      return {
+        groqModel: savedConfig.groqModel ?? DEFAULT_CONFIG.groqModel,
+        outputDir: savedConfig.outputDir ?? DEFAULT_CONFIG.outputDir,
+      };
     }
   } catch (err) {
     console.error('Failed to load config:', err);

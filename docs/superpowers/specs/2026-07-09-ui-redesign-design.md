@@ -1,8 +1,10 @@
 # Interview Copilot UI Redesign - Design Spec
 
 **Date:** 2026-07-09
-**Status:** Ready for user review
+**Status:** Implemented; retained as historical design context
 **Scope:** Renderer UI redesign for recordings, transcript, and settings screens
+
+**Maintenance note:** The auto-transcribe control described here was removed because it did not have an implemented behavior.
 
 ## Overview
 

@@ -33,6 +33,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Standardized the supported development runtime on Node.js 22.
+- Reorganized repository documentation around current architecture, development, and privacy guidance.
+- Removed the nonfunctional auto-transcribe setting; transcription remains explicitly user initiated.
+
+### Removed
+
+- Removed generated agent execution artifacts and an unrelated workflow proposal from version control.
+
 ### Planned
 
 - Real-time transcription display

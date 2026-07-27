@@ -24,8 +24,15 @@ interface ElectronAPI {
   listRecordings: () => Promise<{ success: boolean; recordings: Recording[] }>;
   transcribe: (audioPath: string) => Promise<{ success: boolean; transcript?: any; error?: string }>;
   exportTranscript: (transcriptPath: string, format: string) => Promise<{ success: boolean; path?: string; error?: string }>;
-  saveConfig: (config: { apiKey?: string; model?: string; autoTranscribe?: boolean }) => Promise<{ success: boolean }>;
-  loadConfig: () => Promise<{ success: boolean; config?: { apiKey: string; model: string; autoTranscribe: boolean } }>;
+  saveConfig: (config: {
+    apiKey?: string;
+    model?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+  loadConfig: () => Promise<{
+    success: boolean;
+    config?: { apiKey: string; model: string };
+    error?: string;
+  }>;
   getRecordingPermissions: () => Promise<{
     success: boolean;
     permissions?: RecordingPermissionSnapshot;

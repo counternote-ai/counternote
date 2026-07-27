@@ -1,86 +1,58 @@
 # Security Policy
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-If you discover a security vulnerability, please report it responsibly.
+Interview Copilot is not yet publicly released, and a private security-reporting address has not been published.
 
-**Do NOT open a public issue.**
+Do not include sensitive vulnerability details in a public issue. The maintainer will add a private reporting email here before public release.
 
-Instead, please email: [INSERT EMAIL]
+## Security measures
 
-### What to include
+For the detailed local-data and upload boundary, see [Privacy and Local Data](docs/privacy.md).
 
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Suggested fix (if any)
+### Data storage
 
-### Response timeline
+- The Groq API key is encrypted with Electron `safeStorage`.
+- Audio recordings, transcripts, and text exports are stored locally under `~/InterviewCopilot`.
+- Non-secret settings are stored locally in `~/InterviewCopilot/config.json`.
 
-- Acknowledgment: within 48 hours
-- Initial assessment: within 1 week
-- Fix or mitigation: depends on severity
+### Network communication
 
-## Security Measures
+- Audio is sent to Groq only when the user explicitly selects **Transcribe audio**.
+- Groq API requests use HTTPS.
+- Interview Copilot does not include telemetry or analytics.
 
-### Data Storage
+### Electron security
 
-- API keys are encrypted using macOS Keychain via Electron's `safeStorage`
-- Audio recordings are stored locally on the user's machine
-- No data is sent to external servers without explicit user action
-
-### Network Communication
-
-- Audio is only sent to Groq's servers when the user clicks "Transcribe"
-- All API calls use HTTPS
-- No telemetry or analytics are collected
-
-### Electron Security
-
-- Context isolation is enabled
-- Node integration is disabled in renderer
-- All IPC communication goes through the preload script
-- No remote module usage
+- Context isolation is enabled.
+- Renderer Node integration is disabled.
+- IPC communication is exposed through the preload bridge.
+- The app does not use Electron's remote module.
 
 ### Permissions
 
-The app requests:
-- **Screen Recording** - To capture system audio (interviewer's voice)
-- **Microphone** - To capture the user's voice
+The app uses macOS Screen Recording access for system audio and Microphone access for the user's microphone. These permissions support recording and can be reopened from the recordings screen when macOS reports that access is blocked.
 
-These permissions are required for the core functionality and are not used for any other purpose.
+## User guidance
 
-## Best Practices
+- Keep your Groq API key private.
+- Review transcripts before sharing them.
+- Delete recordings you no longer need.
 
-### For Users
+## Developer guidance
 
-- Keep your Groq API key secure
-- Don't share your API key with others
-- Review transcripts before sharing
-- Delete recordings you no longer need
+- Do not commit API keys or other secrets.
+- Use Electron `safeStorage` for sensitive values.
+- Keep dependencies updated and apply least-privilege design.
 
-### For Developers
+## Security auditing
 
-- Don't commit API keys or secrets
-- Use safeStorage for sensitive data
-- Keep dependencies updated
-- Follow the principle of least privilege
+Run dependency audits regularly:
 
-## Dependencies
-
-### Production
-
-- `electron` - Desktop framework (actively maintained)
-- `react` / `react-dom` - UI library (actively maintained)
-- `ffmpeg-static` - Audio processing binary
-
-### Security Auditing
-
-Run security audits regularly:
 ```bash
 npm audit
 ```
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](LICENSE).

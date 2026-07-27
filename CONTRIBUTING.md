@@ -1,90 +1,45 @@
 # Contributing to Interview Copilot
 
-Thank you for your interest in contributing! This document provides guidelines and instructions for contributing.
+Thanks for contributing. Keep each pull request focused on one change and update documentation when user-facing behavior changes.
 
-## Getting Started
+## Requirements
 
-1. Fork the repository
-2. Clone your fork
-3. Create a feature branch
-4. Make your changes
-5. Submit a pull request
-
-## Development Setup
-
-### Prerequisites
-
-- macOS 13+
-- Node.js 18+
+- macOS 13 or newer
+- Node.js 22.12 or newer
+- npm
 - Git
 
-### Setup
+## Setup
+
+Use the repository's Node.js runtime and install the locked dependency set:
 
 ```bash
-# Clone your fork
-git clone https://github.com/YOUR_USERNAME/interview-copilot.git
-cd interview-copilot
-
-# Install dependencies
-npm install
-
-# Start development mode
-npm run dev
-
-# In another terminal, start the app
-npm start
+nvm use
+npm ci
 ```
 
-## Code Style
+See [Development](docs/development.md) for build, watch-mode, and verification commands.
 
-### TypeScript
+## Code and commits
 
-- Use strict mode
-- Prefer interfaces over types
-- Use explicit return types for public functions
-- Avoid `any` - use `unknown` and type guards
-- Use async/await over callbacks
+- Use TypeScript strict mode; prefer interfaces for object shapes and avoid `any`.
+- Keep React components focused and use functional components with hooks.
+- Use Conventional Commits, clear commit messages, and focused commits.
+- Do not include secrets, generated artifacts, or unrelated formatting changes.
 
-### React
+## Before opening a pull request
 
-- Use functional components with hooks
-- Keep components small and focused
-- Use TypeScript interfaces for props
-- Avoid inline styles
+- Add or update unit tests for behavior changes.
+- Run the unit tests, typecheck, and production build.
+- For renderer changes, run the Electron E2E smoke test in a macOS GUI session.
+- Describe the user-facing effect and any manual verification in the pull request.
 
-### Git
+The commands and E2E requirements are documented in [Development](docs/development.md).
 
-- Use conventional commits
-- Write clear commit messages
-- Keep commits focused and atomic
+## Reporting issues
 
-## Pull Request Process
-
-1. Update documentation if needed
-2. Add tests for new features
-3. Ensure all tests pass
-4. Request review from maintainers
-
-## Reporting Issues
-
-Use the issue tracker to report bugs or suggest features.
-
-### Bug Reports
-
-Include:
-- Steps to reproduce
-- Expected behavior
-- Actual behavior
-- macOS version
-- Node.js version
-
-### Feature Requests
-
-Include:
-- Problem description
-- Proposed solution
-- Alternatives considered
+For bugs, include reproduction steps, expected and actual behavior, and your macOS and Node.js versions. For feature requests, explain the problem, proposed solution, and alternatives considered.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+Contributions are licensed under the [MIT License](LICENSE).

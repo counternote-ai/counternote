@@ -1,170 +1,72 @@
 # Interview Copilot
 
-A lightweight Mac menu bar app that records audio from video interviews (Google Meet, Zoom, MS Teams), transcribes them via Groq API, and provides readable transcripts with speaker labels for post-interview review.
+Interview Copilot is a macOS Electron menu-bar app that records video-interview audio, transcribes it with Groq, and presents timestamped channel-labeled transcripts for review.
 
 ## Features
 
-- **Dual-channel audio capture** — Records system audio (interviewer) and microphone (you) separately
-- **Menu bar app** — Lightweight, always accessible, doesn't interfere with screen sharing
-- **Post-interview transcription** — Uses Groq's Whisper API for fast, accurate transcription
-- **Speaker labeling** — Automatically labels speakers based on audio channel
-- **Timestamped transcripts** — Easy to review and navigate
-- **Export** — Save transcripts as plain text
+- Separate system-audio and microphone capture
+- Menu-bar recording controls and a local recordings library
+- On-demand Groq transcription with channel-based Interviewer and You labels
+- Timestamped transcript review
+- Plain-text transcript export
 
-## Installation
+## Requirements
 
-### Prerequisites
+- macOS 13 or newer
+- Node.js 22.12 or newer
+- A [Groq API key](https://console.groq.com)
 
-- macOS 13+ (required for system audio loopback)
-- Node.js 18+
-- [Groq API key](https://console.groq.com)
+## Local setup
 
-### Setup
-
-1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/interview-copilot.git
-cd interview-copilot
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Build the project:
-```bash
+npm ci
 npm run build
-```
-
-4. Start the app:
-```bash
 npm start
 ```
 
-5. Add your Groq API key in Settings (click ⚙️ Settings in the app)
+Open **Settings**, enter your Groq API key, then select **Save settings**.
 
-## Usage
+## Use Interview Copilot
 
-### Recording an Interview
+1. Select **Record** and allow Screen Recording and Microphone access when macOS asks.
+2. Select **Stop** when the interview ends. The recording appears in Past Interviews.
+3. Select **Transcribe audio** on a saved recording to create its transcript.
+4. Select a transcribed recording to review timestamped segments, then select **Export** to write a plain-text export beside the recording.
 
-1. Click **● Start Recording** in the control panel
-2. Grant screen recording and microphone permissions when prompted
-3. Conduct your interview
-4. Click **⏹ Stop Recording** when done
+Audio stays on your Mac until you select **Transcribe audio**. Transcription sends the recording's two audio channels to Groq for processing.
 
-### Transcribing
+## Local data
 
-1. Click **Transcribe** next to any recording
-2. Wait for transcription to complete (~8-30 seconds depending on length)
-3. Click on the recording to view the transcript
-
-### Exporting
-
-1. Open a transcript
-2. Click **📥 Export**
-3. A plain text file will be saved alongside the audio file
-
-## File Structure
-
-```
+```text
 ~/InterviewCopilot/
 ├── recordings/
-│   ├── 2026-07-08T14-30-00-000Z/
-│   │   ├── audio.wav              # Raw dual-channel recording
-│   │   ├── transcript.json        # Transcript with metadata
-│   │   └── transcript.txt         # Exported plain text
-│   └── ...
-├── config.json                    # User settings
-└── secrets.enc                    # Encrypted API key
+│   └── <timestamp>/
+│       ├── audio.wav
+│       ├── transcript.json       # Created after transcription
+│       └── transcript.txt        # Created after export
+├── config.json                   # Non-secret settings
+└── secrets.enc                   # Encrypted Groq API key
 ```
 
-## Development
+## Documentation
 
-### Scripts
-
-```bash
-npm run dev      # Build with webpack in watch mode
-npm run build    # Build for production
-npm start        # Start the Electron app
-npm test         # Run unit tests
-npm run pack     # Package without building installer
-npm run dist     # Build macOS .dmg installer
-```
-
-### Tech Stack
-
-- **Framework:** Electron + TypeScript
-- **UI:** React
-- **Audio:** Web Audio API (AudioWorkletNode)
-- **Transcription:** Groq API (Whisper Large V3 Turbo)
-- **Audio Processing:** ffmpeg-static
-
-### Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│                  Electron App                    │
-│                                                  │
-│  ┌──────────────┐       ┌────────────────────┐  │
-│  │  Menu Bar     │       │  Control Panel     │  │
-│  │  (Tray Icon)  │◄─────►│  (Renderer Window) │  │
-│  └──────┬───────┘       └────────┬───────────┘  │
-│         │                        │               │
-│  ┌──────▼────────────────────────▼───────────┐  │
-│  │              Main Process                  │  │
-│  │  - Recording lifecycle                     │  │
-│  │  - File I/O                                │  │
-│  │  - Transcription orchestration             │  │
-│  └───────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────┘
-```
-
-## Configuration
-
-### Settings
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Groq API Key | (empty) | Your Groq API key for transcription |
-| Model | whisper-large-v3-turbo | Whisper model to use |
-| Auto-transcribe | false | Automatically transcribe after recording stops |
-
-### Environment Variables
-
-None required. All configuration is stored in `~/InterviewCopilot/config.json`.
+- [Architecture](docs/architecture.md)
+- [Development](docs/development.md)
+- [Privacy and local data](docs/privacy.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
+- [License](LICENSE)
 
 ## Troubleshooting
 
-### "Unable to load a worklet's module"
+### Recording permissions
 
-This error occurs if the AudioWorklet file isn't being served correctly. Ensure you've run `npm run build` before `npm start`.
+If recording is blocked, use **Open System Settings** on the recordings screen to grant Screen Recording or Microphone access, then restart the app if macOS requests it.
 
-### "No screen sources available"
+### Worklet build error
 
-Ensure you've granted screen recording permission to the app in System Settings → Privacy & Security → Screen Recording.
+If the app cannot load the audio worklet, run `npm run build` before `npm start`.
 
-### "Groq API key not configured"
+### Missing API key
 
-Add your API key in Settings (click ⚙️ Settings in the app).
-
-### Invalid Date in recording titles
-
-This is a known issue with date parsing. The app should still function correctly.
-
-## Privacy
-
-- Audio is recorded locally and stored on your machine
-- Audio is only sent to Groq's servers when you explicitly click "Transcribe"
-- API keys are encrypted using macOS Keychain via Electron's safeStorage
-- No data is collected or shared without your consent
-
-## License
-
-MIT
-
-## Acknowledgments
-
-- [Groq](https://groq.com) for fast Whisper transcription
-- [Electron](https://electronjs.org) for the desktop framework
-- [React](https://react.dev) for the UI
+Open **Settings**, add a Groq API key, and select **Save settings** before selecting **Transcribe audio**.

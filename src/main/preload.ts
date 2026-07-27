@@ -9,7 +9,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listRecordings: () => ipcRenderer.invoke('list-recordings'),
   transcribe: (audioPath: string) => ipcRenderer.invoke('transcribe', audioPath),
   exportTranscript: (transcriptPath: string, format: string) => ipcRenderer.invoke('export-transcript', transcriptPath, format),
-  saveConfig: (config: { apiKey?: string; model?: string; autoTranscribe?: boolean }) => ipcRenderer.invoke('save-config', config),
+  saveConfig: (config: { apiKey?: string; model?: string }) =>
+    ipcRenderer.invoke('save-config', config),
   loadConfig: () => ipcRenderer.invoke('load-config'),
   getRecordingPermissions: () => ipcRenderer.invoke('get-recording-permissions'),
   openRecordingPermissionSettings: (permission: RecordingPermission) =>

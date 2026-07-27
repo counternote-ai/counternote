@@ -1,7 +1,7 @@
 # Recording Permissions Design
 
 **Date:** 2026-07-22
-**Status:** Ready for user review
+**Status:** Implemented; retained as historical design context
 **Scope:** macOS recording-permission discovery, recovery, and development identity
 
 ## Overview

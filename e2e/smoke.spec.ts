@@ -50,6 +50,9 @@ test('navigates to settings and back', async () => {
   await window.getByRole('button', { name: 'Open settings' }).click();
   await expect(window.getByRole('heading', { name: 'Settings' })).toBeVisible();
   await expect(window.getByRole('button', { name: 'Save settings' })).toBeVisible();
+  await expect(
+    window.getByText('Auto-transcribe after recording')
+  ).toHaveCount(0);
 
   await window.screenshot({ path: 'test-results/settings.png' });
 

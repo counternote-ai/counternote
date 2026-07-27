@@ -6,20 +6,17 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Separator } from './ui/separator';
-import { Switch } from './ui/switch';
 
 interface SettingsProps {
   apiKey: string;
   model: string;
-  autoTranscribe: boolean;
-  onSave: (settings: { apiKey: string; model: string; autoTranscribe: boolean }) => void;
+  onSave: (settings: { apiKey: string; model: string }) => void;
   onBack: () => void;
 }
 
-export function Settings({ apiKey, model, autoTranscribe, onSave, onBack }: SettingsProps) {
+export function Settings({ apiKey, model, onSave, onBack }: SettingsProps) {
   const [localApiKey, setLocalApiKey] = useState(apiKey);
   const [localModel, setLocalModel] = useState(model);
-  const [localAutoTranscribe, setLocalAutoTranscribe] = useState(autoTranscribe);
 
   return (
     <main className="app-shell">
@@ -73,18 +70,6 @@ export function Settings({ apiKey, model, autoTranscribe, onSave, onBack }: Sett
               </p>
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/50 p-3">
-              <div className="space-y-1">
-                <Label htmlFor="auto-transcribe">Auto-transcribe after recording</Label>
-                <p className="text-xs leading-relaxed text-muted-foreground">Starts transcription as soon as recording stops.</p>
-              </div>
-              <Switch
-                id="auto-transcribe"
-                checked={localAutoTranscribe}
-                onCheckedChange={setLocalAutoTranscribe}
-                aria-label="Auto-transcribe after recording"
-              />
-            </div>
           </CardContent>
         </Card>
 
@@ -105,7 +90,7 @@ export function Settings({ apiKey, model, autoTranscribe, onSave, onBack }: Sett
 
       <Button
         className="w-full"
-        onClick={() => onSave({ apiKey: localApiKey, model: localModel, autoTranscribe: localAutoTranscribe })}
+        onClick={() => onSave({ apiKey: localApiKey, model: localModel })}
       >
         Save settings
       </Button>

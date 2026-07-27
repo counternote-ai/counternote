@@ -30,7 +30,7 @@ export default function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordings, setRecordings] = useState<AppRecording[]>([]);
   const [selectedRecording, setSelectedRecording] = useState<AppRecording | null>(null);
-  const [settings, setSettings] = useState({ apiKey: '', model: 'whisper-large-v3-turbo', autoTranscribe: false });
+  const [settings, setSettings] = useState({ apiKey: '', model: 'whisper-large-v3-turbo' });
   const [error, setError] = useState<string | null>(null);
   const [transcribingId, setTranscribingId] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<RecordingPermissionSnapshot | null>(null);
@@ -240,7 +240,7 @@ export default function App() {
     }
   };
 
-  const handleSaveSettings = async (newSettings: { apiKey: string; model: string; autoTranscribe: boolean }) => {
+  const handleSaveSettings = async (newSettings: { apiKey: string; model: string }) => {
     setError(null);
     try {
       await window.electronAPI.saveConfig(newSettings);
@@ -278,7 +278,6 @@ export default function App() {
         <Settings
           apiKey={settings.apiKey}
           model={settings.model}
-          autoTranscribe={settings.autoTranscribe}
           onSave={handleSaveSettings}
           onBack={() => setView('recordings')}
         />
