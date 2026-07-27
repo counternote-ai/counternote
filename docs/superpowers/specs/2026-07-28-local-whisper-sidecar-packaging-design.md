@@ -2,14 +2,16 @@
 
 ## Decision
 
-Phase 3 will make Local Whisper reproducibly usable in development and in an
+Phase 3 will make Local Whisper reproducibly buildable for development and in an
 unpacked macOS Apple Silicon application without requiring release credentials.
 The user-facing first-use action remains model download; the `whisper-cli`
 sidecar is an application-owned runtime component, never a user setup step.
 
 ## Scope
 
-- Build a pinned `whisper.cpp` v1.9.1 `darwin-arm64` `whisper-cli` with Metal.
+- Build `whisper.cpp` v1.9.1 at commit
+  `f049fff95a089aa9969deb009cdd4892b3e74916` as a statically linked
+  `darwin-arm64` `whisper-cli` with Metal.
 - Write it to `build/whisper/darwin-arm64/whisper-cli` for development.
 - Add a macOS-only electron-builder configuration that copies it to
   `Contents/Resources/whisper/bin/whisper-cli` in an unpacked app.
@@ -22,21 +24,48 @@ sidecar is an application-owned runtime component, never a user setup step.
 
 - No model weights are bundled into the application.
 - No user-visible sidecar installation or configuration workflow is added.
-- No Windows or Linux target is retained.
+- Existing Windows and Linux package targets are removed.
 - No signing, notarization, or distributable-release claim is made without
   Apple Developer credentials.
+
+## Relationship to Prior Specifications
+
+This specification narrows the packaging portion of
+`2026-07-27-local-whisper-transcription-design.md` to the credential-independent
+deliverable approved for the current phase: a reproducible unsigned local
+package. The prior specification's signed and notarized acceptance criterion is
+moved to a credential-gated release phase; it is not considered satisfied here.
+
+Documentation that currently describes the sidecar as signed must distinguish
+the verified unsigned development/package artifact from the future signed
+release artifact.
 
 ## Architecture
 
 `scripts/build-whisper-sidecar.sh` fetches the pinned source revision into a
-temporary build cache, builds only the Metal-enabled `whisper-cli`, and copies
-the executable atomically into the repository artifact location. The script
-does not place source, model weights, or generated output under tracked paths.
+temporary build cache, configures CMake with `-DBUILD_SHARED_LIBS=OFF` and Metal
+enabled, builds only `whisper-cli`, and copies the executable atomically into
+the repository artifact location. Static linking is required so the copied
+binary does not depend on unshipped `libwhisper` or `libggml` dylibs. The
+embedded Metal library remains enabled, so no separate `.metallib` resource is
+required. The script does not place source, model weights, or generated output
+under tracked paths.
 
 `electron-builder.yml` remains the single package configuration. It packages
 only macOS arm64, places artifacts under `release/`, and declares the sidecar
 as an `extraResources` entry under `whisper/bin`. The model stays in Electron
 `userData` and is never an ASAR or extra resource.
+
+The dead `package.json` `build` block is removed so it cannot diverge from the
+YAML configuration. The existing Windows and Linux stanzas are removed from
+the YAML, and `directories.output` changes from `dist` to `release`.
+Electron Forge tooling is removed because electron-builder is the chosen
+packager.
+
+The unpacked package includes valid macOS microphone and screen-capture usage
+descriptions so capture is not terminated by the operating system. A valid
+application icon and release entitlements remain part of the
+credential-gated release phase if suitable assets are not already present.
 
 The build scripts distinguish an unsigned local package from a release: local
 `pack` validates resource inclusion and executable behavior; release signing
@@ -52,12 +81,15 @@ must run `npm run build:whisper` and restart Electron.
 
 ## Verification
 
-Automated checks validate the build script's pinned revision and Metal build
-flags, electron-builder's macOS-arm64 resource mapping, and resolver paths.
+Automated checks validate the build script's full 40-character pinned revision,
+static and Metal build flags, electron-builder's macOS-arm64 resource mapping,
+the absence of a package.json `build` block and non-macOS targets, and resolver
+paths.
 The local package gate builds the sidecar, creates an unpacked App, verifies
-the nested executable using `file` and `--help`, and runs the Electron smoke
-test. Signing/notarization verification is a separate release gate requiring
-Apple Developer credentials.
+the development and nested executables using `file`, `--help`, and `otool -L`,
+and asserts that neither has `libwhisper` nor `libggml` dylib references. It
+then runs the Electron smoke test. Signing/notarization verification is a
+separate release gate requiring Apple Developer credentials.
 
 ## Risks and Boundaries
 
@@ -65,3 +97,6 @@ The sidecar source download requires network access only while preparing a
 developer or release build; end-user local transcription remains offline after
 the model is installed. Build tooling must fail clearly on non-macOS or
 non-arm64 hosts rather than producing a misleading package.
+
+Only `/build/whisper/` is ignored. The parent `/build/` remains available for
+tracked electron-builder resources such as future icons and entitlements.
