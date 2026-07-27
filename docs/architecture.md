@@ -21,16 +21,26 @@ Interview Copilot is a macOS Electron menu-bar app with an isolated React render
 
 1. The user selects Transcribe audio for a saved recording.
 2. The main process splits the stereo WAV into system and microphone channels.
-3. Each channel is converted to FLAC and sent to Groq.
+3. Local Whisper verifies or downloads its model, then passes each channel to the
+   signed `whisper-cli` sidecar on the Mac. Groq uploads prepared audio only when
+   the user explicitly selects Groq as the provider.
 4. Returned segments are labeled Interviewer for system audio and You for microphone audio.
-5. Segments are merged by timestamp and saved as `transcript.json`.
+5. Segments are merged by timestamp and saved as `transcript.json`; failures keep
+   the original recording intact.
 
 The labels describe audio channels; they are not inferred speaker identities or diarization.
+
+The sidecar is a signed child-process executable owned by the main process. It is
+not renderer code, a local HTTP service, or a Node native addon.
 
 ## Local storage
 
 The current library is stored under `~/InterviewCopilot/recordings`. Each timestamped directory contains `audio.wav`, optional `transcript.json`, and optional `transcript.txt`.
 
 `~/InterviewCopilot/config.json` stores non-secret settings. `~/InterviewCopilot/secrets.enc` stores the Groq API key encrypted through Electron `safeStorage`.
+
+Local Whisper models live under `app.getPath('userData')/models`, separate from
+recordings. Changing or moving the recordings root does not automatically move
+the model cache.
 
 The configured `outputDir` is reserved for the recordings-library migration work and is not yet user-selectable.

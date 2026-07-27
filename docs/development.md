@@ -13,11 +13,42 @@ Use `nvm use` to select the repository's Node.js 22 runtime.
 
 ```bash
 npm ci
+```
+
+## Run once
+
+```bash
+# One-shot
 npm run build
 npm start
 ```
 
-For watch mode, run `npm run dev` and `npm start` in separate terminals.
+## Watch mode
+
+```bash
+# Terminal 1
+npm run dev
+```
+
+```bash
+# Terminal 2
+npm start
+```
+
+Webpack watch rebuilds `dist` but does not automatically restart Electron. Use
+`Cmd+R` for renderer-only changes; stop and restart `npm start` after changing
+main-process or preload code.
+
+## Local Whisper sidecar
+
+Prepare the macOS Apple Silicon sidecar before running local transcription:
+
+```bash
+npm run build:whisper
+```
+
+Normal TypeScript watch does not rebuild whisper.cpp. Run the sidecar preparation
+command again after changing its build inputs.
 
 ## Verification
 

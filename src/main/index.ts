@@ -57,35 +57,48 @@ function modelArtifact(): ModelArtifactSpec {
   if (!manifestPath) return PRODUCTION_MODEL_ARTIFACT;
 
   try {
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as unknown;
-    if (!isModelArtifact(manifest)) return PRODUCTION_MODEL_ARTIFACT;
-    return {
-      url: new URL(manifest.url),
-      fileName: manifest.fileName,
-      byteSize: manifest.byteSize,
-      sha256: manifest.sha256,
-    };
+    const artifact = parseModelArtifact(JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as unknown);
+    return artifact ?? PRODUCTION_MODEL_ARTIFACT;
   } catch {
     console.error('E2E model manifest could not be loaded.');
     return PRODUCTION_MODEL_ARTIFACT;
   }
 }
 
-function isModelArtifact(value: unknown): value is {
-  url: string;
-  fileName: string;
-  byteSize: number;
-  sha256: string;
-} {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+function parseModelArtifact(value: unknown): ModelArtifactSpec | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
-  return typeof candidate.url === 'string'
-    && typeof candidate.fileName === 'string'
-    && typeof candidate.byteSize === 'number'
-    && Number.isSafeInteger(candidate.byteSize)
-    && candidate.byteSize > 0
-    && typeof candidate.sha256 === 'string'
-    && /^[a-f0-9]{64}$/i.test(candidate.sha256);
+  const keys = Object.keys(candidate);
+  if (
+    keys.length !== 4
+    || !keys.every((key) => ['url', 'fileName', 'byteSize', 'sha256'].includes(key))
+    || typeof candidate.url !== 'string'
+    || typeof candidate.fileName !== 'string'
+    || candidate.fileName.length === 0
+    || path.basename(candidate.fileName) !== candidate.fileName
+    || typeof candidate.byteSize !== 'number'
+    || !Number.isSafeInteger(candidate.byteSize)
+    || candidate.byteSize <= 0
+    || typeof candidate.sha256 !== 'string'
+    || !/^[a-f0-9]{64}$/.test(candidate.sha256)
+  ) {
+    return null;
+  }
+
+  try {
+    const url = new URL(candidate.url);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return null;
+    }
+    return {
+      url,
+      fileName: candidate.fileName,
+      byteSize: candidate.byteSize,
+      sha256: candidate.sha256,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function getModelService(): LocalModelManager {

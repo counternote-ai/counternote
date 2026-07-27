@@ -6,14 +6,21 @@
 - Generated transcripts and text exports
 - Non-secret configuration
 - The encrypted Groq API key
+- Local Whisper model files cached under Electron `app.getPath('userData')`
 
 Interview Copilot does not include telemetry or analytics.
 
 ## When audio leaves the Mac
 
-Audio remains local while recording and reviewing saved recordings. It is sent to Groq only after the user explicitly selects `Transcribe audio`.
+Local Whisper keeps recording and prepared audio on the Mac. It runs the signed
+`whisper-cli` sidecar locally; it is not renderer code or a native Node addon.
 
-For transcription, Interview Copilot creates temporary single-channel FLAC files for system audio and microphone audio and uploads both to Groq. Groq's own data handling is governed by the user's relationship with Groq.
+Groq receives prepared system and microphone audio only when the user explicitly
+selects Groq as the transcription provider and starts transcription. Groq's own
+data handling is governed by the user's relationship with Groq.
+
+The original `audio.wav` recording survives every transcription failure. Temporary
+prepared-audio and partial-transcript artifacts are cleaned up separately.
 
 ## Credentials
 
