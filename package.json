@@ -17,8 +17,7 @@
     "verify:whisper": "bash scripts/verify-whisper-sidecar.sh build/whisper/darwin-arm64/whisper-cli",
     "pack": "npm run build:whisper && npm run build && electron-builder --dir --arm64",
     "test:packaged": "playwright test --config playwright.packaged.config.ts",
-    "check:pack": "npm run pack && bash scripts/verify-whisper-sidecar.sh \"release/mac-arm64/Interview Copilot.app/Contents/Resources/whisper/bin/whisper-cli\" && npm run test:packaged",
-    "dist": "electron-builder"
+    "check:pack": "npm run pack && bash scripts/verify-whisper-sidecar.sh \"release/mac-arm64/Interview Copilot.app/Contents/Resources/whisper/bin/whisper-cli\" && npm run test:packaged"
   },
   "keywords": [],
   "author": "",
