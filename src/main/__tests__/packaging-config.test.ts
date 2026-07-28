@@ -13,6 +13,10 @@ describe('packaging configuration', () => {
     expect(buildScript).toContain(
       "WHISPER_COMMIT='f049fff95a089aa9969deb009cdd4892b3e74916'"
     );
+    expect(buildScript).toContain(
+      "WHISPER_ARCHIVE_SHA256='279af4ce60dbf397362868f3bacc75b56a4332ac2541cae155070093f6aaf0e3'"
+    );
+    expect(buildScript).toContain('shasum -a 256');
     expect(buildScript).toContain('-DBUILD_SHARED_LIBS=OFF');
     expect(buildScript).toContain('-DGGML_METAL=ON');
     expect(buildScript).toContain('-DGGML_METAL_EMBED_LIBRARY=ON');

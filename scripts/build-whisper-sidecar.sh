@@ -13,7 +13,7 @@ if [[ "$(uname -m)" != "arm64" ]]; then
   exit 1
 fi
 
-for tool in curl tar cmake file otool; do
+for tool in curl tar cmake file otool shasum; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "ERROR: required tool '$tool' is not installed" >&2
     exit 1
@@ -21,6 +21,7 @@ for tool in curl tar cmake file otool; do
 done
 
 WHISPER_COMMIT='f049fff95a089aa9969deb009cdd4892b3e74916'
+WHISPER_ARCHIVE_SHA256='279af4ce60dbf397362868f3bacc75b56a4332ac2541cae155070093f6aaf0e3'
 ARCHIVE_URL="https://github.com/ggml-org/whisper.cpp/archive/${WHISPER_COMMIT}.tar.gz"
 OUTPUT_PATH="${REPO_ROOT}/build/whisper/darwin-arm64/whisper-cli"
 
@@ -31,6 +32,10 @@ SOURCE_DIR="${WORK_DIR}/whisper.cpp-${WHISPER_COMMIT}"
 BUILD_DIR="${WORK_DIR}/build"
 
 curl --fail --location --retry 3 --output "${WORK_DIR}/whisper.tar.gz" "$ARCHIVE_URL"
+if ! echo "$WHISPER_ARCHIVE_SHA256  ${WORK_DIR}/whisper.tar.gz" | shasum -a 256 --check - >/dev/null 2>&1; then
+  echo 'ERROR: downloaded whisper.cpp archive checksum does not match pinned value' >&2
+  exit 1
+fi
 tar -xzf "${WORK_DIR}/whisper.tar.gz" -C "$WORK_DIR"
 
 cmake -S "$SOURCE_DIR" -B "$BUILD_DIR" \
