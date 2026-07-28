@@ -137,28 +137,67 @@ export function parseSilenceResult(
 }
 
 export async function getAudioDuration(audioPath: string): Promise<number> {
-  const buffer = Buffer.alloc(44);
   const fd = await fs.promises.open(audioPath, 'r');
 
   try {
-    await fd.read(buffer, 0, 44, 0);
+    const stat = await fd.stat();
+    const riffHeader = await readWavBytes(fd, 0, 12);
+    if (
+      riffHeader.toString('ascii', 0, 4) !== 'RIFF' ||
+      riffHeader.toString('ascii', 8, 12) !== 'WAVE'
+    ) {
+      throw new Error('Invalid WAV file');
+    }
+
+    let byteRate: number | undefined;
+    let dataSize: number | undefined;
+    let offset = 12;
+
+    while (offset + 8 <= stat.size) {
+      const chunkHeader = await readWavBytes(fd, offset, 8);
+      const chunkId = chunkHeader.toString('ascii', 0, 4);
+      const chunkSize = chunkHeader.readUInt32LE(4);
+      const chunkDataOffset = offset + 8;
+
+      if (chunkDataOffset + chunkSize > stat.size) {
+        throw new Error('Invalid WAV file');
+      }
+
+      if (chunkId === 'fmt ') {
+        if (chunkSize < 16) {
+          throw new Error('Invalid WAV file');
+        }
+        const format = await readWavBytes(fd, chunkDataOffset, 16);
+        byteRate = format.readUInt32LE(8);
+      } else if (chunkId === 'data') {
+        dataSize = chunkSize;
+      }
+
+      if (byteRate !== undefined && dataSize !== undefined) {
+        if (byteRate === 0) {
+          throw new Error('Invalid WAV file: byte rate is zero');
+        }
+        return dataSize / byteRate;
+      }
+
+      offset = chunkDataOffset + chunkSize + (chunkSize % 2);
+    }
+
+    throw new Error('Invalid WAV file');
   } finally {
     await fd.close();
   }
+}
 
-  // WAV header fields (little-endian)
-  // Bytes 22-23: Number of channels
-  const channels = buffer.readUInt16LE(22);
-  // Bytes 24-27: Sample rate
-  const sampleRate = buffer.readUInt32LE(24);
-  // Bytes 28-31: Byte rate (sampleRate * channels * bytesPerSample)
-  const byteRate = buffer.readUInt32LE(28);
-  // Bytes 40-43: Data chunk size
-  const dataSize = buffer.readUInt32LE(40);
-
-  if (byteRate === 0) {
-    throw new Error(`Invalid WAV file: byte rate is zero in ${audioPath}`);
+async function readWavBytes(
+  fd: fs.promises.FileHandle,
+  position: number,
+  length: number
+): Promise<Buffer> {
+  const buffer = Buffer.alloc(length);
+  const { bytesRead } = await fd.read(buffer, 0, length, position);
+  if (bytesRead !== length) {
+    throw new Error('Invalid WAV file');
   }
-
-  return dataSize / byteRate;
+  return buffer;
 }

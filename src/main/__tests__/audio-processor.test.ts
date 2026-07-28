@@ -50,7 +50,7 @@ describe('AudioProcessor', () => {
     header.writeUInt16LE(bitsPerSample, 34);
     header.write('data', 36);
     header.writeUInt32LE(dataSize, 40);
-    fs.writeFileSync(filePath, header);
+    fs.writeFileSync(filePath, Buffer.concat([header, Buffer.alloc(dataSize)]));
   };
 
   describe('splitChannels', () => {
@@ -210,6 +210,47 @@ describe('AudioProcessor', () => {
 
       const duration = await getAudioDuration(testFile);
       expect(duration).toBeCloseTo(1.0, 1);
+    });
+
+    it('reads duration when metadata appears before the data chunk', async () => {
+      const testFile = path.join(testDir, 'ffmpeg-style.wav');
+      const byteRate = 32000;
+      const dataSize = byteRate;
+
+      const riffHeader = Buffer.alloc(12);
+      riffHeader.write('RIFF', 0);
+      riffHeader.write('WAVE', 8);
+
+      const formatChunk = Buffer.alloc(24);
+      formatChunk.write('fmt ', 0);
+      formatChunk.writeUInt32LE(16, 4);
+      formatChunk.writeUInt16LE(1, 8);
+      formatChunk.writeUInt16LE(1, 10);
+      formatChunk.writeUInt32LE(16000, 12);
+      formatChunk.writeUInt32LE(byteRate, 16);
+      formatChunk.writeUInt16LE(2, 20);
+      formatChunk.writeUInt16LE(16, 22);
+
+      const metadata = Buffer.from('INFOISFTLavf');
+      const metadataChunk = Buffer.alloc(8 + metadata.length + (metadata.length % 2));
+      metadataChunk.write('LIST', 0);
+      metadataChunk.writeUInt32LE(metadata.length, 4);
+      metadata.copy(metadataChunk, 8);
+
+      const dataChunkHeader = Buffer.alloc(8);
+      dataChunkHeader.write('data', 0);
+      dataChunkHeader.writeUInt32LE(dataSize, 4);
+      const wavFile = Buffer.concat([
+        riffHeader,
+        formatChunk,
+        metadataChunk,
+        dataChunkHeader,
+        Buffer.alloc(dataSize),
+      ]);
+      wavFile.writeUInt32LE(wavFile.length - 8, 4);
+      fs.writeFileSync(testFile, wavFile);
+
+      await expect(getAudioDuration(testFile)).resolves.toBeCloseTo(1, 5);
     });
 
     it('should throw error for invalid WAV file', async () => {
