@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { RecordingsLibrary } from '../recordings-library';
+import { hasTranscriptSegments, RecordingsLibrary } from '../recordings-library';
 
 describe('RecordingsLibrary', () => {
   it('resolves audio only inside the configured recordings root', () => {
@@ -31,5 +31,12 @@ describe('RecordingsLibrary', () => {
     const library = new RecordingsLibrary(() => '/library');
 
     expect(library.contains('/library/../secrets/audio.wav')).toBe(false);
+  });
+
+  it('does not mark an empty transcript artifact as ready', () => {
+    expect(hasTranscriptSegments([])).toBe(false);
+    expect(hasTranscriptSegments(undefined)).toBe(false);
+    expect(hasTranscriptSegments([{ start: 0, end: 1, text: 'Hello', speaker: 'You' }]))
+      .toBe(true);
   });
 });

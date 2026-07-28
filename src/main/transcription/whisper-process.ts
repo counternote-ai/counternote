@@ -12,6 +12,7 @@ export interface WhisperProcessInput {
   channelPath: string;
   outputPrefix: string;
   channelDurationMs: number;
+  useGpu: boolean;
 }
 
 export interface WhisperProcessDependencies {
@@ -24,7 +25,8 @@ export interface WhisperProcessDependencies {
 export class WhisperProcessError extends Error {
   constructor(
     readonly code: TranscriptionErrorCode,
-    message: string
+    message: string,
+    readonly retryWithoutGpu = false
   ) {
     super(message);
     this.name = 'WhisperProcessError';
@@ -59,6 +61,7 @@ export class WhisperProcessRunner {
       '-sns',
       '-nth',
       '0.60',
+      ...(input.useGpu ? [] : ['-ng']),
     ];
 
     let child: ChildProcess;
@@ -108,13 +111,17 @@ export class WhisperProcessRunner {
         child.removeAllListeners('error');
       };
 
-      const failOnce = (code: TranscriptionErrorCode, message: string): void => {
+      const failOnce = (
+        code: TranscriptionErrorCode,
+        message: string,
+        retryWithoutGpu = false
+      ): void => {
         if (settled) {
           return;
         }
         settled = true;
         cleanup();
-        reject(new WhisperProcessError(code, message));
+        reject(new WhisperProcessError(code, message, retryWithoutGpu));
       };
 
       const succeedOnce = (value: unknown): void => {
@@ -150,7 +157,10 @@ export class WhisperProcessRunner {
         }
       };
 
-      const onClose = async (code: number | null): Promise<void> => {
+      const onClose = async (
+        code: number | null,
+        signal: NodeJS.Signals | null
+      ): Promise<void> => {
         if (settled) {
           return;
         }
@@ -159,9 +169,13 @@ export class WhisperProcessRunner {
           return;
         }
         if (code !== 0) {
+          const exitReason = signal === null || signal === undefined
+            ? `code ${code ?? 'unknown'}`
+            : `signal ${signal}`;
           failOnce(
             'LOCAL_TRANSCRIPTION_FAILED',
-            `whisper-cli exited with code ${code ?? 'unknown'}`
+            `whisper-cli exited with ${exitReason}`,
+            true
           );
           return;
         }

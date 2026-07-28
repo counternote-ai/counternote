@@ -8,7 +8,7 @@ import { loadConfig, saveConfig, getGroqApiKey, setGroqApiKey } from './config';
 import { getAudioDuration } from './audio-processor';
 import { isChannelSilent, splitChannels } from './audio-processor';
 import { AppActivityCoordinator } from './activity-coordinator';
-import { RecordingsLibrary } from './recordings-library';
+import { hasTranscriptSegments, RecordingsLibrary } from './recordings-library';
 import {
   getRecordingPermissionSnapshot,
   openRecordingPermissionSettings,
@@ -306,11 +306,11 @@ ipcMain.handle('list-recordings', async () => {
             console.error('Failed to get audio duration:', err);
           }
 
-          const hasTranscript = fs.existsSync(transcriptPath);
+          const hasTranscriptArtifact = fs.existsSync(transcriptPath);
 
           // Load transcript segments if available
           let segments: any[] | undefined;
-          if (hasTranscript) {
+          if (hasTranscriptArtifact) {
             try {
               const transcript = JSON.parse(fs.readFileSync(transcriptPath, 'utf-8'));
               segments = transcript.segments;
@@ -330,7 +330,7 @@ ipcMain.handle('list-recordings', async () => {
             id: entry.name,
             title: `Interview — ${date.toLocaleDateString()} ${date.toLocaleTimeString()}`,
             duration,
-            transcribed: hasTranscript,
+            transcribed: hasTranscriptSegments(segments),
             segments,
           };
         })

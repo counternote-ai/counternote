@@ -202,6 +202,7 @@ describe('WhisperProcessRunner', () => {
     channelPath: '/audio/channel.wav',
     outputPrefix: '/out/attempt-1',
     channelDurationMs: 60_000,
+    useGpu: true,
   };
 
   beforeEach(() => {
@@ -257,6 +258,16 @@ describe('WhisperProcessRunner', () => {
     );
   });
 
+  it('disables GPU when CPU fallback is requested', () => {
+    runner.run({ ...baseInput, useGpu: false }).catch(() => {});
+
+    expect(spawn).toHaveBeenCalledWith(
+      baseInput.cliPath,
+      expect.arrayContaining(['-ng']),
+      expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
+    );
+  });
+
   it('resolves with parsed JSON after a successful exit', async () => {
     readFile.mockResolvedValueOnce(JSON.stringify({ segments: [] }));
     const result = runner.run(baseInput);
@@ -284,6 +295,18 @@ describe('WhisperProcessRunner', () => {
     await expect(result).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
       message: 'whisper-cli exited with code 1',
+      retryWithoutGpu: true,
+    });
+  });
+
+  it('marks a signal exit as eligible for CPU fallback', async () => {
+    const result = runner.run(baseInput);
+    fakeChild.emit('close', null, 'SIGSEGV');
+
+    await expect(result).rejects.toMatchObject({
+      code: 'LOCAL_TRANSCRIPTION_FAILED',
+      message: 'whisper-cli exited with signal SIGSEGV',
+      retryWithoutGpu: true,
     });
   });
 

@@ -2,6 +2,10 @@ import * as path from 'path';
 
 const RECORDING_ID_REGEX = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9A-Za-z.-]+Z$/;
 
+export function hasTranscriptSegments(segments: unknown): boolean {
+  return Array.isArray(segments) && segments.length > 0;
+}
+
 export class RecordingsLibrary {
   constructor(private readonly getConfiguredRoot: () => string) {}
 

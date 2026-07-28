@@ -1,5 +1,5 @@
 import { LocalWhisperProvider, LocalChannelRequest } from '../local-whisper-provider';
-import { WhisperProcessInput } from '../whisper-process';
+import { WhisperProcessError, WhisperProcessInput } from '../whisper-process';
 
 const baseRequest: LocalChannelRequest = {
   audioPath: '/recordings/attempt/audio.wav',
@@ -68,7 +68,48 @@ describe('LocalWhisperProvider', () => {
       channelPath: baseRequest.audioPath,
       outputPrefix: baseRequest.outputPrefix,
       channelDurationMs: 10_000,
+      useGpu: true,
     });
+  });
+
+  it('retries on CPU when the Metal process exits unsuccessfully', async () => {
+    const successfulTranscript = {
+      transcription: [
+        {
+          offsets: { from: 1000, to: 2000 },
+          text: 'Recovered on CPU.',
+        },
+      ],
+    };
+    const runProcess = jest
+      .fn()
+      .mockRejectedValueOnce(
+        new WhisperProcessError(
+          'LOCAL_TRANSCRIPTION_FAILED',
+          'whisper-cli exited with signal SIGSEGV',
+          true
+        )
+      )
+      .mockResolvedValueOnce(successfulTranscript);
+    const provider = createProvider({ runProcess });
+
+    await expect(provider.transcribe(baseRequest, jest.fn())).resolves.toEqual([
+      {
+        start: 1,
+        end: 2,
+        text: 'Recovered on CPU.',
+        speaker: 'Interviewer',
+      },
+    ]);
+
+    expect(runProcess).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ useGpu: true })
+    );
+    expect(runProcess).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ useGpu: false })
+    );
   });
 
   it('rejects malformed transcription', async () => {
