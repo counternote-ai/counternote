@@ -11,13 +11,18 @@ audio on the Mac and avoids Groq upload limits. The current implementation start
 It also passes both progress printing and `--no-prints`, then discards all child
 stdout and stderr.
 
-The production recording `2026-07-28T02-28-22-392Z` exposed two reliability
-problems:
+The production recording `2026-07-28T02-28-22-392Z` produced three key
+observations:
 
-- Metal failed while loading the pinned Large V3 Turbo Q5 model with exit 139
-  after `ggml_metal_buffer_init` could not allocate a 7.33 MiB buffer.
-- The same complete 34 minute 30 second interviewer channel succeeded on CPU,
-  produced full JSON, and exited 0 in about 7 minutes 47 seconds.
+- The app attempt ended after about 119 seconds with the generic
+  `LOCAL_TRANSCRIPTION_FAILED` code. The existing logs do not identify which
+  child-process attempt failed or how long each attempt ran.
+- A separate direct GPU reproduction failed while loading the pinned Large V3
+  Turbo Q5 model with exit 139 after `ggml_metal_buffer_init` could not allocate
+  a 7.33 MiB buffer.
+- A separate direct CPU reproduction of the complete 34 minute 30 second
+  interviewer channel produced full JSON and exited 0 in about 7 minutes
+  47 seconds.
 
 The generic `LOCAL_TRANSCRIPTION_FAILED` log did not preserve enough safe
 diagnostic information to distinguish model loading, Metal allocation, process
@@ -80,9 +85,10 @@ The hard deadline remains
 The successful 7 minute 47 second CPU reproduction was a direct CLI run without
 `-np`; it does not prove the current supervised `-np` invocation remains active.
 Removing `-np` is defense-in-depth: progress and diagnostics provide liveness
-on slower machines and evidence on failure. It is not claimed as the cause of
-the observed 119-second failure. Child output is not forwarded wholesale to the
-application log.
+on slower machines and evidence on failure. The observed app attempt ended
+before the five-minute inactivity threshold, so its failure is not attributed
+to output suppression or the inactivity watchdog. Child output is not forwarded
+wholesale to the application log.
 
 Timeout handling remains `SIGTERM`, a five-second grace period, then `SIGKILL`.
 The terminal log records whether inactivity or the hard deadline initiated
@@ -112,8 +118,8 @@ The two child streams have explicit privacy roles:
 - stderr is both a liveness signal and the only input to the sanitized
   diagnostic collector.
 
-The stderr collector treats both carriage return and newline as line
-boundaries, so in-place progress updates cannot grow an unbounded partial line.
+The stderr collector treats both `\r` and `\n` as line boundaries, so in-place
+progress updates cannot grow an unbounded partial line.
 It truncates each retained line to 512 characters and keeps at most 4,096
 characters across the diagnostic tail. Before a stderr line can be logged, it
 must:
@@ -141,7 +147,7 @@ The process log supplies the missing child-process reason.
   `LOCAL_TRANSCRIPTION_TIMEOUT`; the terminal process log identifies the
   triggering watchdog. The watchdog name is not added to
   `TranscriptionError.details`.
-- Exit 0 followed by a missing or unreadable JSON result returns
+- Exit 0 followed by a missing, unreadable, or unparseable JSON result returns
   `LOCAL_TRANSCRIPTION_FAILED`; the process log identifies `output-read`.
 - Malformed parsed JSON returns `LOCAL_TRANSCRIPTION_FAILED`; the outer
   orchestration stage and typed code remain safe, with no transcript content
@@ -163,7 +169,8 @@ Implementation follows focused TDD:
 - assert lifecycle logs contain mode, elapsed time, exit code or signal, and
   watchdog reason;
 - assert stdout never enters logs, stderr transcript-shaped lines are excluded,
-  `\r` and `\n` are normalized, paths are redacted, and diagnostics are bounded;
+  `\r` and `\n` are treated as line boundaries, paths are redacted, and
+  diagnostics are bounded;
 - assert spawn, signal, timeout, output-read, and successful JSON paths retain
   their typed outcomes;
 - run the focused local-provider and process-runner suites;
