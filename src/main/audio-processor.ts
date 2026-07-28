@@ -12,6 +12,11 @@ export interface AudioProcessorDependencies {
   execFile: (file: string, args: string[]) => Promise<{ stdout: string; stderr: string }>;
 }
 
+export interface AudioInterval {
+  start: number;
+  end: number;
+}
+
 function defaultDependencies(): AudioProcessorDependencies {
   return {
     execFile: execFileAsync,
@@ -91,6 +96,13 @@ export async function isChannelSilent(
   audioPath: string,
   deps: AudioProcessorDependencies = defaultDependencies()
 ): Promise<boolean> {
+  return (await getAudibleIntervals(audioPath, deps)).length === 0;
+}
+
+export async function getAudibleIntervals(
+  audioPath: string,
+  deps: AudioProcessorDependencies = defaultDependencies()
+): Promise<AudioInterval[]> {
   const durationSeconds = await getAudioDuration(audioPath);
 
   const { stderr } = await deps.execFile(ffmpegPath, [
@@ -105,7 +117,37 @@ export async function isChannelSilent(
     '-',
   ]);
 
-  return parseSilenceResult(stderr, durationSeconds);
+  return parseAudibleIntervals(stderr, durationSeconds);
+}
+
+export function parseAudibleIntervals(
+  stderr: string,
+  durationSeconds: number
+): AudioInterval[] {
+  const intervals: AudioInterval[] = [];
+  let audibleStart = 0;
+  let inSilence = false;
+
+  for (const match of stderr.matchAll(/silence_(start|end):\s*([0-9.]+)/g)) {
+    const event = match[1];
+    const time = Math.min(durationSeconds, Math.max(0, parseFloat(match[2])));
+
+    if (event === 'start' && !inSilence) {
+      if (time > audibleStart) {
+        intervals.push({ start: audibleStart, end: time });
+      }
+      inSilence = true;
+    } else if (event === 'end' && inSilence) {
+      audibleStart = time;
+      inSilence = false;
+    }
+  }
+
+  if (!inSilence && audibleStart < durationSeconds) {
+    intervals.push({ start: audibleStart, end: durationSeconds });
+  }
+
+  return intervals;
 }
 
 export function parseSilenceResult(

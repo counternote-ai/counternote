@@ -2,6 +2,7 @@ import {
   splitChannels,
   convertToFlac,
   getAudioDuration,
+  getAudibleIntervals,
   isChannelSilent,
   parseSilenceResult,
   AudioProcessorDependencies,
@@ -147,6 +148,23 @@ describe('AudioProcessor', () => {
       const result = await isChannelSilent(audioPath, { execFile });
 
       expect(result).toBe(false);
+    });
+  });
+
+  describe('getAudibleIntervals', () => {
+    it('returns only the audio ranges between detected silence', async () => {
+      const execFile = createMockExecFile([
+        'silence_start: 0',
+        'silence_end: 5.0',
+        'silence_start: 9.0',
+        'silence_end: 20.0',
+      ].join('\n'));
+      const audioPath = path.join(testDir, 'partly-silent.wav');
+      writeWavHeader(audioPath, 20, 16000, 1);
+
+      await expect(getAudibleIntervals(audioPath, { execFile })).resolves.toEqual([
+        { start: 5, end: 9 },
+      ]);
     });
   });
 

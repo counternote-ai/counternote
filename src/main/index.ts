@@ -5,8 +5,7 @@ import { WavWriter } from './wav-writer';
 import { TrayManager } from './tray';
 import { saveExport } from './export';
 import { loadConfig, saveConfig, getGroqApiKey, setGroqApiKey } from './config';
-import { getAudioDuration } from './audio-processor';
-import { isChannelSilent, splitChannels } from './audio-processor';
+import { getAudioDuration, getAudibleIntervals, splitChannels } from './audio-processor';
 import { AppActivityCoordinator } from './activity-coordinator';
 import { hasTranscriptSegments, RecordingsLibrary } from './recordings-library';
 import {
@@ -156,7 +155,7 @@ function getTranscriptionService(): TranscriptionOrchestrator {
       cliPath,
       ensureModel: manager.ensureModel.bind(manager),
       runProcess: runner.run.bind(runner),
-      isChannelSilent,
+      getAudibleIntervals,
     });
   } catch {
     localUnavailableStatus = {

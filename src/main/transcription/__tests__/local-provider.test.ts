@@ -1,5 +1,6 @@
 import { LocalWhisperProvider, LocalChannelRequest } from '../local-whisper-provider';
 import { WhisperProcessError, WhisperProcessInput } from '../whisper-process';
+import { type AudioInterval } from '../../audio-processor';
 
 const baseRequest: LocalChannelRequest = {
   audioPath: '/recordings/attempt/audio.wav',
@@ -12,13 +13,15 @@ describe('LocalWhisperProvider', () => {
   const createProvider = (overrides: {
     ensureModel?: jest.MockedFunction<() => Promise<string>>;
     runProcess?: jest.MockedFunction<(_input: WhisperProcessInput) => Promise<unknown>>;
-    isChannelSilent?: jest.MockedFunction<() => Promise<boolean>>;
+    getAudibleIntervals?: jest.MockedFunction<() => Promise<AudioInterval[]>>;
   }) =>
     new LocalWhisperProvider({
       cliPath: '/bin/whisper-cli',
       ensureModel: overrides.ensureModel ?? jest.fn().mockResolvedValue('/models/model.bin'),
       runProcess: overrides.runProcess ?? jest.fn().mockResolvedValue({ transcription: [] }),
-      isChannelSilent: overrides.isChannelSilent ?? jest.fn().mockResolvedValue(false),
+      getAudibleIntervals:
+        overrides.getAudibleIntervals ??
+        jest.fn().mockResolvedValue([{ start: 0, end: baseRequest.durationSeconds }]),
     });
 
   it('returns an empty array for silent channels without loading the model', async () => {
@@ -27,7 +30,7 @@ describe('LocalWhisperProvider', () => {
     const provider = createProvider({
       ensureModel,
       runProcess,
-      isChannelSilent: jest.fn().mockResolvedValue(true),
+      getAudibleIntervals: jest.fn().mockResolvedValue([]),
     });
 
     const onProgress = jest.fn();
@@ -70,6 +73,30 @@ describe('LocalWhisperProvider', () => {
       channelDurationMs: 10_000,
       useGpu: true,
     });
+  });
+
+  it('omits hallucinated segments without enough audible audio', async () => {
+    const provider = createProvider({
+      getAudibleIntervals: jest.fn().mockResolvedValue([
+        { start: 0, end: 0.2 },
+        { start: 4, end: 5 },
+      ]),
+      runProcess: jest.fn().mockResolvedValue({
+        transcription: [
+          { offsets: { from: 0, to: 10_000 }, text: 'Thank you.' },
+          { offsets: { from: 3000, to: 5000 }, text: 'Audible sentence.' },
+        ],
+      }),
+    });
+
+    await expect(provider.transcribe(baseRequest, jest.fn())).resolves.toEqual([
+      {
+        start: 3,
+        end: 5,
+        text: 'Audible sentence.',
+        speaker: 'Interviewer',
+      },
+    ]);
   });
 
   it('retries on CPU when the Metal process exits unsuccessfully', async () => {
