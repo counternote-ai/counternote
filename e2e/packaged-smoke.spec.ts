@@ -1,4 +1,4 @@
-import { test, expect, _electron as electron } from '@playwright/test';
+import { test, expect, _electron as electron, ElectronApplication } from '@playwright/test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -16,13 +16,15 @@ test('launches a 400x600 window titled Interview Copilot and shows Local Whisper
   delete env.INTERVIEW_COPILOT_WHISPER_CLI;
   delete env.INTERVIEW_COPILOT_MODEL_MANIFEST;
 
-  const electronApp = await electron.launch({
-    executablePath: appPath,
-    args: [`--user-data-dir=${testHome}`],
-    env,
-  });
+  let electronApp: ElectronApplication | undefined;
 
   try {
+    electronApp = await electron.launch({
+      executablePath: appPath,
+      args: [`--user-data-dir=${testHome}`],
+      env,
+    });
+
     const window = await electronApp.firstWindow();
     await window.waitForLoadState('domcontentloaded');
 
@@ -54,7 +56,7 @@ test('launches a 400x600 window titled Interview Copilot and shows Local Whisper
       )
     ).toHaveCount(0);
   } finally {
-    await electronApp.close();
+    await electronApp?.close();
     fs.rmSync(testHome, { recursive: true, force: true });
   }
 });
