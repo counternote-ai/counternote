@@ -156,6 +156,23 @@ describe('LocalWhisperProvider', () => {
     });
   });
 
+  it('omits zero-duration segments and keeps valid ones', async () => {
+    const provider = createProvider({
+      runProcess: jest.fn().mockResolvedValue({
+        transcription: [
+          { offsets: { from: 1000, to: 2000 }, text: 'First.' },
+          { offsets: { from: 342000, to: 342000 }, text: ' Yeah.' },
+          { offsets: { from: 4000, to: 5000 }, text: 'Second.' },
+        ],
+      }),
+    });
+
+    await expect(provider.transcribe(baseRequest, jest.fn())).resolves.toEqual([
+      { start: 1, end: 2, text: 'First.', speaker: 'Interviewer' },
+      { start: 4, end: 5, text: 'Second.', speaker: 'Interviewer' },
+    ]);
+  });
+
   it('rejects non-string text', async () => {
     const provider = createProvider({
       runProcess: jest.fn().mockResolvedValue({
