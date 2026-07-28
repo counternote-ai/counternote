@@ -12,7 +12,6 @@ export interface WhisperProcessInput {
   channelPath: string;
   outputPrefix: string;
   channelDurationMs: number;
-  useGpu: boolean;
 }
 
 export interface WhisperProcessDependencies {
@@ -25,8 +24,7 @@ export interface WhisperProcessDependencies {
 export class WhisperProcessError extends Error {
   constructor(
     readonly code: TranscriptionErrorCode,
-    message: string,
-    readonly retryWithoutGpu = false
+    message: string
   ) {
     super(message);
     this.name = 'WhisperProcessError';
@@ -55,13 +53,12 @@ export class WhisperProcessRunner {
       input.outputPrefix,
       '-ojf',
       '-pp',
-      '-np',
       '-l',
       'auto',
       '-sns',
       '-nth',
       '0.60',
-      ...(input.useGpu ? [] : ['-ng']),
+      '-ng',
     ];
 
     let child: ChildProcess;
@@ -113,15 +110,14 @@ export class WhisperProcessRunner {
 
       const failOnce = (
         code: TranscriptionErrorCode,
-        message: string,
-        retryWithoutGpu = false
+        message: string
       ): void => {
         if (settled) {
           return;
         }
         settled = true;
         cleanup();
-        reject(new WhisperProcessError(code, message, retryWithoutGpu));
+        reject(new WhisperProcessError(code, message));
       };
 
       const succeedOnce = (value: unknown): void => {
@@ -174,8 +170,7 @@ export class WhisperProcessRunner {
             : `signal ${signal}`;
           failOnce(
             'LOCAL_TRANSCRIPTION_FAILED',
-            `whisper-cli exited with ${exitReason}`,
-            true
+            `whisper-cli exited with ${exitReason}`
           );
           return;
         }

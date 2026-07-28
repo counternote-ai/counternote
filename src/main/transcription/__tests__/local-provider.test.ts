@@ -1,5 +1,5 @@
 import { LocalWhisperProvider, LocalChannelRequest } from '../local-whisper-provider';
-import { WhisperProcessError, WhisperProcessInput } from '../whisper-process';
+import { WhisperProcessInput } from '../whisper-process';
 import { type AudioInterval } from '../../audio-processor';
 
 const baseRequest: LocalChannelRequest = {
@@ -65,13 +65,13 @@ describe('LocalWhisperProvider', () => {
     ]);
 
     expect(ensureModel).toHaveBeenCalledWith(onProgress);
+    expect(runProcess).toHaveBeenCalledTimes(1);
     expect(runProcess).toHaveBeenCalledWith({
       cliPath: '/bin/whisper-cli',
       modelPath: '/models/model.bin',
       channelPath: baseRequest.audioPath,
       outputPrefix: baseRequest.outputPrefix,
       channelDurationMs: 10_000,
-      useGpu: true,
     });
   });
 
@@ -99,44 +99,15 @@ describe('LocalWhisperProvider', () => {
     ]);
   });
 
-  it('retries on CPU when the Metal process exits unsuccessfully', async () => {
-    const successfulTranscript = {
-      transcription: [
-        {
-          offsets: { from: 1000, to: 2000 },
-          text: 'Recovered on CPU.',
-        },
-      ],
-    };
-    const runProcess = jest
-      .fn()
-      .mockRejectedValueOnce(
-        new WhisperProcessError(
-          'LOCAL_TRANSCRIPTION_FAILED',
-          'whisper-cli exited with signal SIGSEGV',
-          true
-        )
-      )
-      .mockResolvedValueOnce(successfulTranscript);
+  it('does not retry a failed CPU process', async () => {
+    const failure = Object.assign(new Error('cpu process failed'), {
+      code: 'LOCAL_TRANSCRIPTION_FAILED',
+    });
+    const runProcess = jest.fn().mockRejectedValue(failure);
     const provider = createProvider({ runProcess });
 
-    await expect(provider.transcribe(baseRequest, jest.fn())).resolves.toEqual([
-      {
-        start: 1,
-        end: 2,
-        text: 'Recovered on CPU.',
-        speaker: 'Interviewer',
-      },
-    ]);
-
-    expect(runProcess).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ useGpu: true })
-    );
-    expect(runProcess).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ useGpu: false })
-    );
+    await expect(provider.transcribe(baseRequest, jest.fn())).rejects.toBe(failure);
+    expect(runProcess).toHaveBeenCalledTimes(1);
   });
 
   it('rejects malformed transcription', async () => {

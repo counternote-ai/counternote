@@ -1,7 +1,7 @@
 import { TranscriptionSegment } from '../../types/transcript';
 import { TranscriptionErrorCode } from '../../types/transcription';
 import { type AudioInterval } from '../audio-processor';
-import { WhisperProcessError, WhisperProcessInput } from './whisper-process';
+import { WhisperProcessInput } from './whisper-process';
 
 const MIN_AUDIBLE_COVERAGE = 0.4;
 
@@ -43,27 +43,13 @@ export class LocalWhisperProvider {
 
     const modelPath = await this.deps.ensureModel(onModelProgress);
 
-    const processInput: WhisperProcessInput = {
+    const raw = await this.deps.runProcess({
       cliPath: this.deps.cliPath,
       modelPath,
       channelPath: request.audioPath,
       outputPrefix: request.outputPrefix,
       channelDurationMs: request.durationSeconds * 1000,
-      useGpu: true,
-    };
-
-    let raw: unknown;
-    try {
-      raw = await this.deps.runProcess(processInput);
-    } catch (error) {
-      if (
-        !(error instanceof WhisperProcessError) ||
-        !error.retryWithoutGpu
-      ) {
-        throw error;
-      }
-      raw = await this.deps.runProcess({ ...processInput, useGpu: false });
-    }
+    });
 
     return normalizeTranscription(raw, request.speaker, audibleIntervals);
   }
