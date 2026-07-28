@@ -8,6 +8,10 @@
 - The encrypted Groq API key
 - Local Whisper model files cached under Electron `app.getPath('userData')`
 
+Local sidecar lifecycle and failure diagnostics may be written to the terminal.
+Transcript stdout is never logged. Stderr diagnostics are allow-listed, bounded,
+and stripped of transcript-shaped lines, secrets, and absolute paths.
+
 Interview Copilot does not include telemetry or analytics.
 
 ## When audio leaves the Mac

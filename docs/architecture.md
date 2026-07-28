@@ -21,9 +21,10 @@ Interview Copilot is a macOS Electron menu-bar app with an isolated React render
 
 1. The user selects Transcribe audio for a saved recording.
 2. The main process splits the stereo WAV into system and microphone channels.
-3. Local Whisper verifies or downloads its model, then passes each channel to the
-   `whisper-cli` sidecar on the Mac. Groq uploads prepared audio only when
-   the user explicitly selects Groq as the provider.
+3. Local Whisper verifies or downloads its model, then processes each audible
+   channel sequentially with one CPU-only `whisper-cli` process on the Mac.
+   Groq uploads prepared audio only when the user explicitly selects Groq as
+   the provider.
 4. Returned segments are labeled Interviewer for system audio and You for microphone audio.
 5. Segments are merged by timestamp and saved as `transcript.json`; failures keep
    the original recording intact.
