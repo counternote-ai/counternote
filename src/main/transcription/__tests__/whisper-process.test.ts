@@ -195,6 +195,8 @@ describe('WhisperProcessRunner', () => {
   let fakeChild: FakeChildProcess;
   let spawn: jest.Mock;
   let readFile: jest.Mock;
+  let logger: { log: jest.Mock };
+  let nowMs: number;
 
   const baseInput = {
     cliPath: '/bin/whisper-cli',
@@ -206,14 +208,18 @@ describe('WhisperProcessRunner', () => {
 
   beforeEach(() => {
     jest.useFakeTimers();
+    nowMs = 1_000;
     fakeChild = createFakeChild();
     spawn = jest.fn().mockReturnValue(fakeChild);
     readFile = jest.fn();
+    logger = { log: jest.fn() };
     runner = new WhisperProcessRunner({
       spawn,
       setTimeout: (callback: () => void, ms: number) => setTimeout(callback, ms),
       clearTimeout: (id: unknown) => clearTimeout(id as number),
       readFile,
+      logger,
+      now: () => nowMs,
     });
   });
 
@@ -297,11 +303,78 @@ describe('WhisperProcessRunner', () => {
     });
   });
 
+  it('logs CPU start and successful JSON exit without stdout content', async () => {
+    readFile.mockResolvedValueOnce(JSON.stringify({ transcription: [] }));
+    const result = runner.run(baseInput);
+    fakeChild.stdout.emit('data', Buffer.from('private interview answer'));
+    nowMs = 2_500;
+    fakeChild.emit('close', 0, null);
+    await result;
+
+    expect(logger.log).toHaveBeenCalledWith({
+      type: 'start',
+      mode: 'cpu',
+      pid: 12345,
+      channelDurationMs: baseInput.channelDurationMs,
+    });
+    expect(logger.log).toHaveBeenCalledWith({
+      type: 'exit',
+      code: 0,
+      signal: null,
+      elapsedMs: 1_500,
+      jsonRead: true,
+    });
+    expect(JSON.stringify(logger.log.mock.calls)).not.toContain('private interview answer');
+  });
+
+  it('logs a sanitized stderr tail for a failed process', async () => {
+    const result = runner.run(baseInput);
+    fakeChild.stderr.emit(
+      'data',
+      Buffer.from(
+        'ggml_backend: failed to load /Users/example/private/model.bin\r' +
+        '[00:00:00.000 --> 00:00:02.000] private answer\n'
+      )
+    );
+    nowMs = 2_000;
+    fakeChild.emit('close', null, 'SIGSEGV');
+
+    await expect(result).rejects.toMatchObject({
+      code: 'LOCAL_TRANSCRIPTION_FAILED',
+    });
+    expect(logger.log).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'failure',
+      phase: 'runtime',
+      diagnostic: expect.stringContaining('<redacted-path>'),
+    }));
+    expect(JSON.stringify(logger.log.mock.calls)).not.toContain('private answer');
+    expect(JSON.stringify(logger.log.mock.calls)).not.toContain('/Users/example');
+  });
+
+  it('logs output-read when JSON is unparseable', async () => {
+    readFile.mockResolvedValueOnce('{not-json');
+    const result = runner.run(baseInput);
+    fakeChild.emit('close', 0, null);
+
+    await expect(result).rejects.toMatchObject({
+      code: 'LOCAL_TRANSCRIPTION_FAILED',
+    });
+    expect(logger.log).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'failure',
+      phase: 'output-read',
+    }));
+  });
+
   it('sends SIGTERM after five silent minutes and SIGKILL five seconds later', async () => {
     const result = runner.run(baseInput);
 
     await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
     expect(fakeChild.kill).toHaveBeenCalledWith('SIGTERM');
+    expect(logger.log).toHaveBeenCalledWith({
+      type: 'terminate',
+      reason: 'inactivity',
+      elapsedMs: expect.any(Number),
+    });
 
     await jest.advanceTimersByTimeAsync(5_000);
     expect(fakeChild.kill).toHaveBeenCalledWith('SIGKILL');
@@ -340,6 +413,11 @@ describe('WhisperProcessRunner', () => {
     try {
       await jest.advanceTimersByTimeAsync(40 * 60 * 1000);
       expect(fakeChild.kill).toHaveBeenCalledWith('SIGTERM');
+      expect(logger.log).toHaveBeenCalledWith({
+        type: 'terminate',
+        reason: 'hard-deadline',
+        elapsedMs: expect.any(Number),
+      });
     } finally {
       clearInterval(interval);
     }
