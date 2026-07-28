@@ -5,7 +5,7 @@ import { WavWriter } from './wav-writer';
 import { TrayManager } from './tray';
 import { saveExport } from './export';
 import { loadConfig, saveConfig, getGroqApiKey, setGroqApiKey } from './config';
-import { getAudioDuration, getAudibleIntervals, splitChannels } from './audio-processor';
+import { getAudioDuration, getAudibleIntervals, splitChannels, convertToFlac } from './audio-processor';
 import { AppActivityCoordinator } from './activity-coordinator';
 import { hasTranscriptSegments, RecordingsLibrary } from './recordings-library';
 import {
@@ -179,6 +179,7 @@ function getTranscriptionService(): TranscriptionOrchestrator {
     localProvider,
     groqProvider: new GroqProvider({ fetch, setTimeout, clearTimeout }),
     splitChannels: (audioPath, output) => splitChannels(audioPath, undefined, output),
+    convertToFlac,
     getAudioDuration,
     fs: fs.promises,
     logger: new ConsoleTranscriptionLogger(),

@@ -58,6 +58,7 @@ export interface TranscriptionOrchestratorDependencies {
     audioPath: string,
     output?: { system?: string; mic?: string }
   ) => Promise<{ system: string; mic: string }>;
+  convertToFlac: (audioPath: string) => Promise<string>;
   getAudioDuration: (audioPath: string) => Promise<number>;
   fs: {
     writeFile: (filePath: string, data: string) => Promise<void>;
@@ -170,6 +171,16 @@ export class TranscriptionOrchestrator {
           mic: micPath,
         });
 
+        let interviewerChannelPath = systemPath;
+        let youChannelPath = micPath;
+
+        if (provider === 'groq') {
+          interviewerChannelPath = await this.deps.convertToFlac(systemPath);
+          registry.add(interviewerChannelPath);
+          youChannelPath = await this.deps.convertToFlac(micPath);
+          registry.add(youChannelPath);
+        }
+
         const segments: TranscriptionSegment[] = [];
         const apiKey = provider === 'groq' ? await this.deps.getGroqApiKey() : null;
 
@@ -177,7 +188,7 @@ export class TranscriptionOrchestrator {
           request: safeRequest,
           provider,
           config,
-          channelPath: systemPath,
+          channelPath: interviewerChannelPath,
           speaker: 'Interviewer',
           isFirstChannel: true,
           audioPath,
@@ -195,7 +206,7 @@ export class TranscriptionOrchestrator {
           request: safeRequest,
           provider,
           config,
-          channelPath: micPath,
+          channelPath: youChannelPath,
           speaker: 'You',
           isFirstChannel: false,
           audioPath,

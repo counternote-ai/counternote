@@ -67,6 +67,7 @@ interface CreateOrchestratorOverrides {
   localProvider?: { transcribe: jest.Mock };
   groqProvider?: { transcribe: jest.Mock };
   splitChannels?: TranscriptionOrchestrator['deps']['splitChannels'];
+  convertToFlac?: TranscriptionOrchestrator['deps']['convertToFlac'];
   getAudioDuration?: TranscriptionOrchestrator['deps']['getAudioDuration'];
   fs?: FakeFs;
   logger?: TranscriptionLogger;
@@ -115,6 +116,10 @@ function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
       return { system: SYSTEM_PATH, mic: MIC_PATH };
     });
 
+  const convertToFlac =
+    overrides.convertToFlac ??
+    jest.fn(async (wavPath: string) => wavPath.replace('.wav', '.flac'));
+
   const getAudioDuration = overrides.getAudioDuration ?? jest.fn(async () => 120);
 
   const loadConfig =
@@ -144,6 +149,7 @@ function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
     localProvider: localProvider as unknown as TranscriptionOrchestrator['deps']['localProvider'],
     groqProvider: groqProvider as unknown as TranscriptionOrchestrator['deps']['groqProvider'],
     splitChannels,
+    convertToFlac,
     getAudioDuration,
     fs,
     logger,
@@ -171,6 +177,7 @@ function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
       localProvider,
       groqProvider,
       splitChannels,
+      convertToFlac,
       getAudioDuration,
       fs,
       logger,
@@ -261,6 +268,54 @@ describe('TranscriptionOrchestrator', () => {
       expect(deps.groqProvider.transcribe).toHaveBeenCalledTimes(2);
       expect(deps.localProvider.transcribe).not.toHaveBeenCalled();
       expect(deps.getGroqApiKey).toHaveBeenCalled();
+    });
+
+    it('converts each channel WAV to FLAC before uploading to Groq', async () => {
+      const { orchestrator, request, deps } = createOrchestrator({
+        provider: 'groq',
+      });
+
+      await orchestrator.transcribe(request);
+
+      expect(deps.convertToFlac).toHaveBeenCalledTimes(2);
+      expect(deps.convertToFlac).toHaveBeenNthCalledWith(1, SYSTEM_PATH);
+      expect(deps.convertToFlac).toHaveBeenNthCalledWith(2, MIC_PATH);
+      expect(deps.groqProvider.transcribe).toHaveBeenCalledWith(
+        expect.objectContaining({
+          audioPath: SYSTEM_PATH.replace('.wav', '.flac'),
+          speaker: 'Interviewer',
+        })
+      );
+      expect(deps.groqProvider.transcribe).toHaveBeenCalledWith(
+        expect.objectContaining({
+          audioPath: MIC_PATH.replace('.wav', '.flac'),
+          speaker: 'You',
+        })
+      );
+      expect(deps.fs.rm).toHaveBeenCalledWith(SYSTEM_PATH.replace('.wav', '.flac'), {
+        force: true,
+      });
+      expect(deps.fs.rm).toHaveBeenCalledWith(MIC_PATH.replace('.wav', '.flac'), {
+        force: true,
+      });
+    });
+
+    it('keeps channel WAVs unconverted for the local provider', async () => {
+      const { orchestrator, request, deps } = createOrchestrator({
+        provider: 'local',
+      });
+
+      await orchestrator.transcribe(request);
+
+      expect(deps.convertToFlac).not.toHaveBeenCalled();
+      expect(deps.localProvider.transcribe).toHaveBeenCalledWith(
+        expect.objectContaining({ audioPath: SYSTEM_PATH }),
+        expect.any(Function)
+      );
+      expect(deps.localProvider.transcribe).toHaveBeenCalledWith(
+        expect.objectContaining({ audioPath: MIC_PATH }),
+        expect.any(Function)
+      );
     });
 
     it('processes channels sequentially in Interviewer then You order', async () => {
