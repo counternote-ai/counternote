@@ -57,4 +57,25 @@ describe('packaging configuration', () => {
     expect(builderYaml).not.toMatch(/^win:/m);
     expect(builderYaml).not.toMatch(/^linux:/m);
   });
+
+  it('orchestrates packaged verification and smoke without development overrides', () => {
+    const packageJson = JSON.parse(readRepoFile('package.json'));
+    const packagedSmoke = readRepoFile('e2e/packaged-smoke.spec.ts');
+
+    expect(packageJson.scripts['test:packaged']).toBe(
+      'playwright test --config playwright.packaged.config.ts'
+    );
+
+    const checkPack = packageJson.scripts['check:pack'];
+    expect(checkPack).toContain(
+      'release/mac-arm64/Interview Copilot.app/Contents/Resources/whisper/bin/whisper-cli'
+    );
+    expect(checkPack.indexOf('verify-whisper-sidecar.sh')).toBeLessThan(
+      checkPack.indexOf('npm run test:packaged')
+    );
+
+    expect(packagedSmoke).toContain('delete env.INTERVIEW_COPILOT_E2E;');
+    expect(packagedSmoke).toContain('delete env.INTERVIEW_COPILOT_WHISPER_CLI;');
+    expect(packagedSmoke).toContain('delete env.INTERVIEW_COPILOT_MODEL_MANIFEST;');
+  });
 });

@@ -22,7 +22,7 @@ Interview Copilot is a macOS Electron menu-bar app with an isolated React render
 1. The user selects Transcribe audio for a saved recording.
 2. The main process splits the stereo WAV into system and microphone channels.
 3. Local Whisper verifies or downloads its model, then passes each channel to the
-   signed `whisper-cli` sidecar on the Mac. Groq uploads prepared audio only when
+   `whisper-cli` sidecar on the Mac. Groq uploads prepared audio only when
    the user explicitly selects Groq as the provider.
 4. Returned segments are labeled Interviewer for system audio and You for microphone audio.
 5. Segments are merged by timestamp and saved as `transcript.json`; failures keep
@@ -30,8 +30,12 @@ Interview Copilot is a macOS Electron menu-bar app with an isolated React render
 
 The labels describe audio channels; they are not inferred speaker identities or diarization.
 
-The sidecar is a signed child-process executable owned by the main process. It is
-not renderer code, a local HTTP service, or a Node native addon.
+The sidecar is a child-process executable owned by the main process. It is
+not renderer code, a local HTTP service, or a Node native addon. Packaging
+distributes it through two gates: an unsigned local package verifies the static
+binary with `file`, `--help`, and `otool -L`; a release package adds nested code
+signing, a hardened runtime, and Apple notarization once credentials are
+configured.
 
 ## Local storage
 

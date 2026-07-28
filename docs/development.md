@@ -66,6 +66,14 @@ npm run test:e2e
 
 It launches an isolated 400 × 600 app window and stores ignored screenshots under `test-results/`.
 
-## Packaging status
+## Packaging
 
-Packaging configuration is being consolidated in a separate maintenance phase. The current supported product is macOS-only; do not treat Windows or Linux targets as supported.
+Build and verify the macOS Apple Silicon sidecar, then create and check an unsigned local package:
+
+```bash
+npm run build:whisper
+npm run verify:whisper
+npm run check:pack
+```
+
+`check:pack` downloads/builds the whisper.cpp source, creates an unsigned local arm64 app, verifies the nested `whisper-cli` sidecar, and runs the packaged smoke test. It is not a signed or notarized release package.
