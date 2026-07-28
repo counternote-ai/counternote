@@ -56,7 +56,11 @@ test('launches a 400x600 window titled Interview Copilot and shows Local Whisper
       )
     ).toHaveCount(0);
   } finally {
-    await electronApp?.close();
+    try {
+      await electronApp?.close();
+    } catch {
+      // best effort cleanup
+    }
     fs.rmSync(testHome, { recursive: true, force: true });
   }
 });
