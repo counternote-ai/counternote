@@ -1,7 +1,7 @@
 # Local Whisper Reliability and Diagnostics Design
 
 **Date:** 2026-07-28
-**Status:** Revised; pending final review
+**Status:** Approved for implementation
 
 ## Context
 
