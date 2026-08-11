@@ -20,6 +20,10 @@ export class ModelInstallError extends Error {
   }
 }
 
+export interface EnsureModelOptions {
+  recoverInvalidModel?: boolean;
+}
+
 export class LocalModelManager {
   private installation: Promise<string> | null = null;
   private readonly progressListeners = new Map<symbol, (percent: number) => void>();
@@ -30,12 +34,15 @@ export class LocalModelManager {
     readonly download: ModelDownloadTransport['download']
   ) {}
 
-  async ensureModel(onProgress: (percent: number) => void): Promise<string> {
+  async ensureModel(
+    onProgress: (percent: number) => void,
+    options: EnsureModelOptions = {}
+  ): Promise<string> {
     const key = Symbol();
     this.progressListeners.set(key, onProgress);
     try {
       if (this.installation === null) {
-        this.installation = this.install().finally(() => {
+        this.installation = this.install(options).finally(() => {
           this.installation = null;
         });
       }
@@ -53,19 +60,30 @@ export class LocalModelManager {
     return (await this.verifyFile(finalPath)) ? { state: 'ready' } : { state: 'invalid' };
   }
 
-  private async install(): Promise<string> {
+  private async install(options: EnsureModelOptions): Promise<string> {
     const finalPath = this.finalPath();
 
     if (fs.existsSync(finalPath)) {
       if (await this.verifyFile(finalPath)) {
         return finalPath;
       }
-      // Leave the corrupt file in place for explicit user recovery; never
-      // silently redownload during the same attempt.
-      throw new ModelInstallError(
-        'MODEL_CHECKSUM_FAILED',
-        `cached model ${this.artifact.fileName} failed integrity verification`
-      );
+      if (options.recoverInvalidModel) {
+        try {
+          await fs.promises.rm(finalPath);
+        } catch {
+          throw new ModelInstallError(
+            'MODEL_DOWNLOAD_FAILED',
+            'could not remove invalid cached model for recovery'
+          );
+        }
+      } else {
+        // Leave the corrupt file in place for explicit user recovery; never
+        // silently redownload during the same attempt.
+        throw new ModelInstallError(
+          'MODEL_CHECKSUM_FAILED',
+          `cached model ${this.artifact.fileName} failed integrity verification`
+        );
+      }
     }
 
     await fs.promises.mkdir(this.modelRoot, { recursive: true });

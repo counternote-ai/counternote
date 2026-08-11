@@ -3,6 +3,7 @@ export const app = {
   on: jest.fn(),
   quit: jest.fn(),
   isPackaged: false,
+  getPath: jest.fn().mockReturnValue('/tmp/interview-copilot'),
 };
 
 export const BrowserWindow = jest.fn().mockImplementation(() => ({

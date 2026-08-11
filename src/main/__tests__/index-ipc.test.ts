@@ -1,11 +1,16 @@
 import { ipcMain } from 'electron';
 import { loadConfig, setGroqApiKey } from '../config';
+import { LocalModelManager } from '../transcription/local-model-manager';
 
 jest.mock('../config', () => ({
   getGroqApiKey: jest.fn(),
   loadConfig: jest.fn(),
   saveConfig: jest.fn(),
   setGroqApiKey: jest.fn(),
+}));
+
+jest.mock('../transcription/sidecar-path', () => ({
+  resolveWhisperCliPath: jest.fn().mockReturnValue('/app-managed/whisper-cli'),
 }));
 
 import '../index';
@@ -76,5 +81,41 @@ describe('sensitive IPC failures', () => {
     expect(result).toEqual({ success: false, code: 'TRANSCRIPT_EXPORT_FAILED' });
     expect(consoleError).toHaveBeenCalledWith('Transcript export failed.');
     expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining(rendererPath));
+  });
+
+  it('derives invalid-model recovery from a fresh main-process status', async () => {
+    const getStatus = jest.spyOn(LocalModelManager.prototype, 'getStatus')
+      .mockResolvedValueOnce({ state: 'invalid' });
+    const ensureModel = jest.spyOn(LocalModelManager.prototype, 'ensureModel')
+      .mockResolvedValueOnce('/app-managed/models/model.bin');
+
+    try {
+      const result = await getHandler('install-local-model')({}, { recoverInvalidModel: false });
+
+      expect(result).toEqual({ success: true });
+      expect(getStatus).toHaveBeenCalledTimes(1);
+      expect(ensureModel).toHaveBeenCalledWith(expect.any(Function), { recoverInvalidModel: true });
+    } finally {
+      getStatus.mockRestore();
+      ensureModel.mockRestore();
+    }
+  });
+
+  it('does not grant invalid-model recovery from renderer input', async () => {
+    const getStatus = jest.spyOn(LocalModelManager.prototype, 'getStatus')
+      .mockResolvedValueOnce({ state: 'not-downloaded' });
+    const ensureModel = jest.spyOn(LocalModelManager.prototype, 'ensureModel')
+      .mockResolvedValueOnce('/app-managed/models/model.bin');
+
+    try {
+      const result = await getHandler('install-local-model')({}, { recoverInvalidModel: true });
+
+      expect(result).toEqual({ success: true });
+      expect(getStatus).toHaveBeenCalledTimes(1);
+      expect(ensureModel).toHaveBeenCalledWith(expect.any(Function), { recoverInvalidModel: false });
+    } finally {
+      getStatus.mockRestore();
+      ensureModel.mockRestore();
+    }
   });
 });

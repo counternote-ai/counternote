@@ -130,7 +130,7 @@ describe('LocalModelManager', () => {
       code: 'MODEL_CHECKSUM_FAILED',
     });
 
-    const retryResult = await manager.ensureModel(jest.fn()).then(
+    const retryResult = await manager.ensureModel(jest.fn(), { recoverInvalidModel: true }).then(
       (modelPath) => ({ modelPath }),
       (error: unknown) => ({ error })
     );
@@ -138,6 +138,31 @@ describe('LocalModelManager', () => {
     expect(download).toHaveBeenCalledTimes(1);
     expect(retryResult).toEqual({ modelPath: finalPath });
     expect(fs.readFileSync(finalPath)).toEqual(expectedBytes);
+  });
+
+  it('returns a typed failure without filesystem details when invalid-model cleanup fails', async () => {
+    writeModel(Buffer.from('tampered-model'));
+    const rm = jest.spyOn(fs.promises, 'rm').mockImplementation(async (filePath) => {
+      if (filePath === finalPath) {
+        throw new Error(`EACCES: permission denied, unlink '${finalPath}'`);
+      }
+    });
+    const download = jest.fn();
+    const manager = createManager({
+      artifact: artifactFor(Buffer.from('expected-model')),
+      download,
+    });
+
+    try {
+      await expect(manager.ensureModel(jest.fn(), { recoverInvalidModel: true })).rejects.toMatchObject({
+        code: 'MODEL_DOWNLOAD_FAILED',
+        message: 'could not remove invalid cached model for recovery',
+      });
+      expect(download).not.toHaveBeenCalled();
+      expect(fs.readFileSync(finalPath)).toEqual(Buffer.from('tampered-model'));
+    } finally {
+      rm.mockRestore();
+    }
   });
 
   it('coalesces concurrent model installation requests', async () => {

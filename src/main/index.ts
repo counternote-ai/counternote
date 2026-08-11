@@ -372,7 +372,7 @@ ipcMain.handle('install-local-model', async (): Promise<TranscriptionIpcResult> 
         state: 'downloading',
         percent,
       } satisfies LocalModelStatus);
-    });
+    }, { recoverInvalidModel: status.state === 'invalid' });
     mainWindow?.webContents.send('local-model-status', { state: 'ready' } satisfies LocalModelStatus);
     return { success: true };
   } catch (error) {
