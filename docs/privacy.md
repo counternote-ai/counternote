@@ -16,7 +16,7 @@ Interview Copilot does not include telemetry or analytics.
 
 ## When audio leaves the Mac
 
-Local Whisper keeps recording and prepared audio on the Mac. It runs the signed
+Local Whisper keeps recording and prepared audio on the Mac. It runs the bundled
 `whisper-cli` sidecar locally; it is not renderer code or a native Node addon.
 
 Groq receives prepared system and microphone audio only when the user explicitly

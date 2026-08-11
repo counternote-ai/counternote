@@ -1,12 +1,13 @@
 # Interview Copilot
 
-Interview Copilot is a macOS Electron menu-bar app that records video-interview audio, transcribes it with Groq, and presents timestamped channel-labeled transcripts for review.
+Interview Copilot is a macOS Electron menu-bar app that records video-interview audio, transcribes it locally with Whisper or through Groq when selected, and presents timestamped channel-labeled transcripts for review.
 
 ## Features
 
 - Separate system-audio and microphone capture
 - Menu-bar recording controls and a local recordings library
-- On-demand Groq transcription with channel-based Interviewer and You labels
+- Local Whisper transcription by default, with optional Groq transcription
+- Channel-based Interviewer and You labels
 - Timestamped transcript review
 - Plain-text transcript export
 
@@ -14,17 +15,20 @@ Interview Copilot is a macOS Electron menu-bar app that records video-interview 
 
 - macOS 13 or newer
 - Node.js 22.12 or newer
-- A [Groq API key](https://console.groq.com)
+- An Apple Silicon Mac for Local Whisper
+- A [Groq API key](https://console.groq.com) only when using Groq
 
 ## Local setup
 
 ```bash
 npm ci
+npm run build:whisper
 npm run build
 npm start
 ```
 
-Open **Settings**, enter your Groq API key, then select **Save settings**.
+Open **Settings** and download the Local Whisper model. To use Groq instead,
+select Groq, enter your API key, then select **Save settings**.
 
 ## Use Interview Copilot
 
@@ -33,7 +37,8 @@ Open **Settings**, enter your Groq API key, then select **Save settings**.
 3. Select **Transcribe audio** on a saved recording to create its transcript.
 4. Select a transcribed recording to review timestamped segments, then select **Export** to write a plain-text export beside the recording.
 
-Audio stays on your Mac until you select **Transcribe audio**. Transcription sends the recording's two audio channels to Groq for processing.
+Local Whisper keeps prepared audio on your Mac. Audio is sent to Groq only when
+you explicitly select Groq as the provider and then select **Transcribe audio**.
 
 ## Local data
 
@@ -67,6 +72,8 @@ If recording is blocked, use **Open System Settings** on the recordings screen t
 
 If the app cannot load the audio worklet, run `npm run build` before `npm start`.
 
-### Missing API key
+### Missing Groq API key
 
-Open **Settings**, add a Groq API key, and select **Save settings** before selecting **Transcribe audio**.
+If Groq is selected, open **Settings**, add a Groq API key, and select
+**Save settings** before selecting **Transcribe audio**. Local Whisper does not
+require a Groq API key.

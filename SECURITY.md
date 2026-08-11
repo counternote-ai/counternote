@@ -18,7 +18,9 @@ For the detailed local-data and upload boundary, see [Privacy and Local Data](do
 
 ### Network communication
 
-- Audio is sent to Groq only when the user explicitly selects **Transcribe audio**.
+- Audio is sent to Groq only when the user selects Groq as the transcription
+  provider and then explicitly selects **Transcribe audio**. Local Whisper keeps
+  prepared audio on the Mac.
 - Groq API requests use HTTPS.
 - Interview Copilot does not include telemetry or analytics.
 
