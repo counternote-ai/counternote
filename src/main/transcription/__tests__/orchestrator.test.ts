@@ -516,6 +516,45 @@ describe('TranscriptionOrchestrator', () => {
   });
 
   describe('progress and safe logging', () => {
+    it('emits interviewer progress while the Groq provider is still pending', async () => {
+      let releaseProvider: ((segments: TranscriptionSegment[]) => void) | undefined;
+      let signalProviderStarted: (() => void) | undefined;
+      const providerStarted = new Promise<void>((resolve) => {
+        signalProviderStarted = resolve;
+      });
+      const providerGate = new Promise<TranscriptionSegment[]>((resolve) => {
+        releaseProvider = resolve;
+      });
+      const { orchestrator, request } = createOrchestrator({
+        provider: 'groq',
+        groqProvider: {
+          transcribe: jest.fn(() => {
+            signalProviderStarted?.();
+            return providerGate;
+          }),
+        },
+      });
+      const progressEvents: { recordingId: string; stage: TranscriptionStage }[] = [];
+
+      const transcription = orchestrator.transcribe({
+        ...request,
+        onProgress: (progress) => {
+          progressEvents.push(progress);
+        },
+      });
+      await providerStarted;
+
+      try {
+        expect(progressEvents).toContainEqual({
+          recordingId: RECORDING_ID,
+          stage: 'transcribing-interviewer',
+        });
+      } finally {
+        releaseProvider?.([]);
+        await transcription;
+      }
+    });
+
     it('never logs an absolute-path recording ID supplied through IPC', async () => {
       const unsafeRecordingId = '/Users/example/private-interviews/audio.wav';
       const { orchestrator, request, deps } = createOrchestrator();
