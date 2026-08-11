@@ -273,6 +273,12 @@ export class WhisperProcessRunner {
       const onOutputError = (): void => {
         logFailure('LOCAL_TRANSCRIPTION_FAILED', 'runtime');
         failOnce('LOCAL_TRANSCRIPTION_FAILED', 'whisper-cli output stream failed');
+        try {
+          // The stdout/stderr channel is no longer usable, so leave no orphaned CLI behind.
+          child.kill('SIGKILL');
+        } catch {
+          // Preserve the typed stream failure if process termination itself races with exit.
+        }
       };
 
       stdout.on('data', resetInactivityTimer);

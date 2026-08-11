@@ -247,6 +247,8 @@ describe('WhisperProcessRunner', () => {
       code: 'LOCAL_TRANSCRIPTION_FAILED',
       message: 'whisper-cli output stream failed',
     });
+    expect(fakeChild.kill).toHaveBeenCalledWith('SIGKILL');
+    expect(jest.getTimerCount()).toBe(0);
   });
 
   it('spawns whisper-cli with the expected arguments', () => {
