@@ -81,7 +81,7 @@ export class LocalModelManager {
       }
       if (options.recoverInvalidModel) {
         try {
-          await fs.promises.rm(finalPath);
+          await fs.promises.rm(finalPath, { force: true });
         } catch {
           throw new ModelInstallError(
             'MODEL_DOWNLOAD_FAILED',
@@ -98,10 +98,24 @@ export class LocalModelManager {
       }
     }
 
-    await fs.promises.mkdir(this.modelRoot, { recursive: true });
+    try {
+      await fs.promises.mkdir(this.modelRoot, { recursive: true });
+    } catch {
+      throw new ModelInstallError(
+        'MODEL_DOWNLOAD_FAILED',
+        'could not prepare local model storage'
+      );
+    }
 
     const partPath = `${finalPath}.part`;
-    await fs.promises.rm(partPath, { force: true });
+    try {
+      await fs.promises.rm(partPath, { force: true });
+    } catch {
+      throw new ModelInstallError(
+        'MODEL_DOWNLOAD_FAILED',
+        'could not clear incomplete model download'
+      );
+    }
 
     try {
       await this.download(this.artifact.url, partPath, (receivedBytes, totalBytes) => {

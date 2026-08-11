@@ -68,6 +68,48 @@ describe('LocalModelManager', () => {
     expect(fs.existsSync(`${finalPath}.part`)).toBe(false);
   });
 
+  it('returns a typed error without filesystem details when model-root creation fails', async () => {
+    const mkdir = jest.spyOn(fs.promises, 'mkdir')
+      .mockRejectedValueOnce(new Error(`EACCES: ${modelRoot}`));
+    const download = jest.fn();
+    const manager = createManager({
+      artifact: artifactFor(Buffer.from('expected-model')),
+      download,
+    });
+
+    try {
+      await expect(manager.ensureModel(jest.fn())).rejects.toMatchObject({
+        name: 'ModelInstallError',
+        code: 'MODEL_DOWNLOAD_FAILED',
+        message: 'could not prepare local model storage',
+      });
+      expect(download).not.toHaveBeenCalled();
+    } finally {
+      mkdir.mockRestore();
+    }
+  });
+
+  it('returns a typed error and does not download when stale-part cleanup fails', async () => {
+    const rm = jest.spyOn(fs.promises, 'rm')
+      .mockRejectedValueOnce(new Error(`EACCES: ${finalPath}.part`));
+    const download = jest.fn();
+    const manager = createManager({
+      artifact: artifactFor(Buffer.from('expected-model')),
+      download,
+    });
+
+    try {
+      await expect(manager.ensureModel(jest.fn())).rejects.toMatchObject({
+        name: 'ModelInstallError',
+        code: 'MODEL_DOWNLOAD_FAILED',
+        message: 'could not clear incomplete model download',
+      });
+      expect(download).not.toHaveBeenCalled();
+    } finally {
+      rm.mockRestore();
+    }
+  });
+
   it('removes the part file when the checksum is wrong', async () => {
     const manager = createManager({
       artifact: artifactFor(Buffer.from('expected')),
@@ -208,6 +250,33 @@ describe('LocalModelManager', () => {
     expect(download).toHaveBeenCalledTimes(1);
     expect(retryResult).toEqual({ modelPath: finalPath });
     expect(fs.readFileSync(finalPath)).toEqual(expectedBytes);
+  });
+
+  it('continues explicit recovery when the invalid cache disappears before removal', async () => {
+    const expectedBytes = Buffer.from('recovered-after-cache-race');
+    writeModel(Buffer.from('tampered-model'));
+    const realRm = fs.promises.rm;
+    const rm = jest.spyOn(fs.promises, 'rm').mockImplementation(async (filePath, options) => {
+      if (filePath === finalPath) {
+        fs.rmSync(finalPath, { force: true });
+      }
+      await realRm(filePath, options);
+    });
+    const download = jest.fn(async (_url: URL, destination: string) => {
+      fs.writeFileSync(destination, expectedBytes);
+    });
+    const manager = createManager({
+      artifact: artifactFor(expectedBytes),
+      download,
+    });
+
+    try {
+      await expect(manager.ensureModel(jest.fn(), { recoverInvalidModel: true })).resolves.toBe(finalPath);
+      expect(download).toHaveBeenCalledTimes(1);
+      expect(fs.readFileSync(finalPath)).toEqual(expectedBytes);
+    } finally {
+      rm.mockRestore();
+    }
   });
 
   it('recovers when an explicit retry joins an in-flight normal invalid-cache attempt', async () => {
