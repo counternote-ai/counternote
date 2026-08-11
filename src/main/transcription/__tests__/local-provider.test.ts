@@ -207,6 +207,19 @@ describe('LocalWhisperProvider', () => {
     });
   });
 
+  it('rejects negative offsets that otherwise overlap audible audio', async () => {
+    const provider = createProvider({
+      getAudibleIntervals: jest.fn().mockResolvedValue([{ start: 0, end: 2 }]),
+      runProcess: jest.fn().mockResolvedValue({
+        transcription: [{ offsets: { from: -1000, to: 1000 }, text: 'invalid range' }],
+      }),
+    });
+
+    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toMatchObject({
+      code: 'LOCAL_TRANSCRIPTION_FAILED',
+    });
+  });
+
   it('omits zero-duration segments and keeps valid ones', async () => {
     const provider = createProvider({
       runProcess: jest.fn().mockResolvedValue({

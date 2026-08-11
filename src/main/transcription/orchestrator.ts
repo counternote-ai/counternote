@@ -343,11 +343,15 @@ export class TranscriptionOrchestrator {
     stage: TranscriptionStage,
     percent?: number
   ): void {
-    request.onProgress?.({
-      recordingId: request.recordingId,
-      stage,
-      percent,
-    });
+    try {
+      request.onProgress?.({
+        recordingId: request.recordingId,
+        stage,
+        percent,
+      });
+    } catch {
+      // Progress is observational; a closed renderer must not abort audio processing.
+    }
   }
 
   private log(

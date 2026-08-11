@@ -518,6 +518,21 @@ describe('TranscriptionOrchestrator', () => {
   });
 
   describe('progress and safe logging', () => {
+    it('keeps transcribing when a progress listener throws', async () => {
+      const { orchestrator, request, deps } = createOrchestrator({ provider: 'groq' });
+
+      await expect(
+        orchestrator.transcribe({
+          ...request,
+          onProgress: () => {
+            throw new Error('renderer progress listener was destroyed');
+          },
+        })
+      ).resolves.toMatchObject({ id: RECORDING_ID });
+
+      expect(deps.groqProvider.transcribe).toHaveBeenCalledTimes(2);
+    });
+
     it('emits interviewer progress while the Groq provider is still pending', async () => {
       let releaseProvider: ((segments: TranscriptionSegment[]) => void) | undefined;
       let signalProviderStarted: (() => void) | undefined;

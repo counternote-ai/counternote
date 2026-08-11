@@ -141,7 +141,9 @@ export class WhisperProcessRunner {
           killTimer = undefined;
         }
         stdout.removeAllListeners('data');
+        stdout.removeAllListeners('error');
         stderr.removeAllListeners('data');
+        stderr.removeAllListeners('error');
         child.removeAllListeners('close');
         child.removeAllListeners('error');
       };
@@ -268,11 +270,18 @@ export class WhisperProcessRunner {
         failOnce('LOCAL_TRANSCRIPTION_FAILED', 'whisper-cli failed to start');
       };
 
+      const onOutputError = (): void => {
+        logFailure('LOCAL_TRANSCRIPTION_FAILED', 'runtime');
+        failOnce('LOCAL_TRANSCRIPTION_FAILED', 'whisper-cli output stream failed');
+      };
+
       stdout.on('data', resetInactivityTimer);
+      stdout.on('error', onOutputError);
       stderr.on('data', (chunk: string | Buffer) => {
         diagnostics.append(chunk);
         resetInactivityTimer();
       });
+      stderr.on('error', onOutputError);
       child.on('close', onClose);
       child.on('error', onSpawnError);
 

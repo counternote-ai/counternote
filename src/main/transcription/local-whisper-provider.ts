@@ -98,6 +98,13 @@ function normalizeTranscription(
     const start = startMs / 1000;
     const end = endMs / 1000;
 
+    if (start < 0 || end < 0) {
+      throw new LocalTranscriptionError(
+        'LOCAL_TRANSCRIPTION_FAILED',
+        'segment offsets are negative'
+      );
+    }
+
     if (start === end) {
       continue; // whisper repetition artifact: no playable range
     }

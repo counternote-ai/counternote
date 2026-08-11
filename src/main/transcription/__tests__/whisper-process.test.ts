@@ -238,6 +238,17 @@ describe('WhisperProcessRunner', () => {
     });
   });
 
+  it('rejects with a typed failure when a child output stream errors', async () => {
+    const result = runner.run(baseInput);
+
+    fakeChild.stderr.emit('error', new Error('EIO reading whisper stderr'));
+
+    await expect(result).rejects.toMatchObject({
+      code: 'LOCAL_TRANSCRIPTION_FAILED',
+      message: 'whisper-cli output stream failed',
+    });
+  });
+
   it('spawns whisper-cli with the expected arguments', () => {
     runner.run(baseInput).catch(() => {});
 
