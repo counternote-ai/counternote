@@ -115,6 +115,31 @@ describe('LocalModelManager', () => {
     expect(fs.readFileSync(finalPath)).toEqual(Buffer.from('tampered-model'));
   });
 
+  it('replaces an invalid cached model when the user explicitly retries', async () => {
+    const expectedBytes = Buffer.from('verified-retry-model');
+    writeModel(Buffer.from('tampered-model'));
+    const download = jest.fn(async (_url: URL, destination: string) => {
+      fs.writeFileSync(destination, expectedBytes);
+    });
+    const manager = createManager({
+      artifact: artifactFor(expectedBytes),
+      download,
+    });
+
+    await expect(manager.ensureModel(jest.fn())).rejects.toMatchObject({
+      code: 'MODEL_CHECKSUM_FAILED',
+    });
+
+    const retryResult = await manager.ensureModel(jest.fn()).then(
+      (modelPath) => ({ modelPath }),
+      (error: unknown) => ({ error })
+    );
+
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(retryResult).toEqual({ modelPath: finalPath });
+    expect(fs.readFileSync(finalPath)).toEqual(expectedBytes);
+  });
+
   it('coalesces concurrent model installation requests', async () => {
     const bytes = Buffer.from('downloaded-model');
     const download = jest.fn(
