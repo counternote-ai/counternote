@@ -47,6 +47,9 @@ describe('packaging configuration', () => {
     const builderYaml = readRepoFile('electron-builder.yml');
 
     expect(packageJson.build).toBeUndefined();
+    expect(packageJson.directories).toBeUndefined();
+    expect(packageJson.dependencies.electron).toBeUndefined();
+    expect(packageJson.devDependencies.electron).toBe('43.1.0');
     expect(packageJson.scripts.dist).toBeUndefined();
     expect(packageJson.scripts['build:whisper']).toBe(
       'bash scripts/build-whisper-sidecar.sh'
