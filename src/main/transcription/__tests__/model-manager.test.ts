@@ -124,6 +124,51 @@ describe('LocalModelManager', () => {
     expect(fs.existsSync(finalPath)).toBe(false);
   });
 
+  it('preserves the typed transport failure when part cleanup fails', async () => {
+    const rm = jest.spyOn(fs.promises, 'rm')
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error(`EACCES: ${finalPath}.part`));
+    const manager = createManager({
+      artifact: artifactFor(Buffer.from('expected-model')),
+      download: async (_url, destination) => {
+        fs.writeFileSync(destination, Buffer.from('partial-bytes'));
+        throw new Error('connection reset');
+      },
+    });
+
+    try {
+      await expect(manager.ensureModel(jest.fn())).rejects.toMatchObject({
+        name: 'ModelInstallError',
+        code: 'MODEL_DOWNLOAD_FAILED',
+        message: 'model download failed: connection reset',
+      });
+    } finally {
+      rm.mockRestore();
+    }
+  });
+
+  it('preserves the typed checksum failure when part cleanup fails', async () => {
+    const rm = jest.spyOn(fs.promises, 'rm')
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error(`EACCES: ${finalPath}.part`));
+    const manager = createManager({
+      artifact: artifactFor(Buffer.from('expected-model')),
+      download: async (_url, destination) => {
+        fs.writeFileSync(destination, Buffer.from('corrupt-model'));
+      },
+    });
+
+    try {
+      await expect(manager.ensureModel(jest.fn())).rejects.toMatchObject({
+        name: 'ModelInstallError',
+        code: 'MODEL_CHECKSUM_FAILED',
+        message: `downloaded model ${fileName} failed integrity verification`,
+      });
+    } finally {
+      rm.mockRestore();
+    }
+  });
+
   it('rejects an invalid cached model without redownloading in the same attempt', async () => {
     writeModel(Buffer.from('tampered-model'));
     const download = jest.fn();

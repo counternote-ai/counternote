@@ -109,7 +109,7 @@ export class LocalModelManager {
         this.broadcastProgress(percent);
       });
     } catch (error) {
-      await fs.promises.rm(partPath, { force: true });
+      await this.removePartFile(partPath);
       throw new ModelInstallError(
         'MODEL_DOWNLOAD_FAILED',
         `model download failed: ${error instanceof Error ? error.message : String(error)}`
@@ -117,7 +117,7 @@ export class LocalModelManager {
     }
 
     if (!(await this.verifyFile(partPath))) {
-      await fs.promises.rm(partPath, { force: true });
+      await this.removePartFile(partPath);
       throw new ModelInstallError(
         'MODEL_CHECKSUM_FAILED',
         `downloaded model ${this.artifact.fileName} failed integrity verification`
@@ -156,6 +156,14 @@ export class LocalModelManager {
 
   private finalPath(): string {
     return path.join(this.modelRoot, this.artifact.fileName);
+  }
+
+  private async removePartFile(partPath: string): Promise<void> {
+    try {
+      await fs.promises.rm(partPath, { force: true });
+    } catch {
+      // Preserve the primary installation error when cleanup cannot run.
+    }
   }
 
   private broadcastProgress(percent: number): void {
