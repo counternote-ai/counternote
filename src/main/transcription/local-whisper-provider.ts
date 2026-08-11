@@ -34,7 +34,8 @@ export class LocalWhisperProvider {
 
   async transcribe(
     request: LocalChannelRequest,
-    onModelProgress: (percent: number) => void
+    onModelProgress: (percent: number) => void,
+    onInferenceStart: () => void
   ): Promise<TranscriptionSegment[]> {
     const audibleIntervals = await this.deps.getAudibleIntervals(request.audioPath);
     if (audibleIntervals.length === 0) {
@@ -42,6 +43,8 @@ export class LocalWhisperProvider {
     }
 
     const modelPath = await this.deps.ensureModel(onModelProgress);
+
+    onInferenceStart();
 
     const raw = await this.deps.runProcess({
       cliPath: this.deps.cliPath,

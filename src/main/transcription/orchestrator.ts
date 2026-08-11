@@ -48,7 +48,8 @@ export interface TranscriptionOrchestratorDependencies {
   localProvider: {
     transcribe(
       request: LocalChannelRequest,
-      onProgress: (percent: number) => void
+      onProgress: (percent: number) => void,
+      onInferenceStart: () => void
     ): Promise<TranscriptionSegment[]>;
   };
   groqProvider: {
@@ -190,7 +191,6 @@ export class TranscriptionOrchestrator {
           config,
           channelPath: interviewerChannelPath,
           speaker: 'Interviewer',
-          isFirstChannel: true,
           audioPath,
           attemptId,
           registry,
@@ -208,7 +208,6 @@ export class TranscriptionOrchestrator {
           config,
           channelPath: youChannelPath,
           speaker: 'You',
-          isFirstChannel: false,
           audioPath,
           attemptId,
           registry,
@@ -272,7 +271,6 @@ export class TranscriptionOrchestrator {
     config: { transcriptionProvider: TranscriptionProvider; groqModel: string };
     channelPath: string;
     speaker: 'Interviewer' | 'You';
-    isFirstChannel: boolean;
     audioPath: string;
     attemptId: string;
     registry: ArtifactRegistry;
@@ -286,7 +284,6 @@ export class TranscriptionOrchestrator {
       config,
       channelPath,
       speaker,
-      isFirstChannel,
       audioPath,
       attemptId,
       registry,
@@ -302,9 +299,9 @@ export class TranscriptionOrchestrator {
       );
       registry.add(`${outputPrefix}.json`);
 
-      const onModelProgress = isFirstChannel
-        ? (percent: number) => this.emit(request, 'downloading-model', percent)
-        : () => undefined;
+      const onModelProgress = (percent: number): void => {
+        this.emit(request, 'downloading-model', percent);
+      };
 
       const channelRequest: LocalChannelRequest = {
         audioPath: channelPath,
@@ -318,10 +315,13 @@ export class TranscriptionOrchestrator {
 
       const segments = await this.deps.localProvider.transcribe(
         channelRequest,
-        onModelProgress
+        onModelProgress,
+        () => {
+          setCurrentStage(stage);
+          this.emit(request, stage);
+        }
       );
 
-      this.emit(request, stage);
       return segments;
     }
 
@@ -334,10 +334,8 @@ export class TranscriptionOrchestrator {
 
     const stage = `transcribing-${speaker.toLowerCase()}` as TranscriptionStage;
     setCurrentStage(stage);
-    const segments = await this.deps.groqProvider.transcribe(groqRequest);
-
     this.emit(request, stage);
-    return segments;
+    return this.deps.groqProvider.transcribe(groqRequest);
   }
 
   private emit(

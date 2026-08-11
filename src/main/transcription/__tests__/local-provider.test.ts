@@ -8,6 +8,7 @@ const baseRequest: LocalChannelRequest = {
   durationSeconds: 10,
   outputPrefix: '/recordings/attempt/interviewer',
 };
+const onInferenceStart = (): void => undefined;
 
 describe('LocalWhisperProvider', () => {
   const createProvider = (overrides: {
@@ -34,11 +35,61 @@ describe('LocalWhisperProvider', () => {
     });
 
     const onProgress = jest.fn();
-    await expect(provider.transcribe(baseRequest, onProgress)).resolves.toEqual([]);
+    const onInferenceStart = jest.fn();
+    await expect(
+      provider.transcribe(baseRequest, onProgress, onInferenceStart)
+    ).resolves.toEqual([]);
 
     expect(ensureModel).not.toHaveBeenCalled();
     expect(runProcess).not.toHaveBeenCalled();
     expect(onProgress).not.toHaveBeenCalled();
+    expect(onInferenceStart).not.toHaveBeenCalled();
+  });
+
+  it('signals inference immediately after the model is ready and before starting the CPU process', async () => {
+    const order: string[] = [];
+    const provider = createProvider({
+      ensureModel: jest.fn(async () => {
+        order.push('model-ready');
+        return '/models/model.bin';
+      }),
+      runProcess: jest.fn(async (_input: WhisperProcessInput) => {
+        order.push('process-started');
+        return { transcription: [] };
+      }),
+    });
+
+    await provider.transcribe(baseRequest, jest.fn(), () => order.push('inference-started'));
+
+    expect(order).toEqual(['model-ready', 'inference-started', 'process-started']);
+  });
+
+  it('signals inference while a cached-model CPU process is still pending', async () => {
+    let releaseProcess: (() => void) | undefined;
+    let signalProcessStarted: (() => void) | undefined;
+    const processStarted = new Promise<void>((resolve) => {
+      signalProcessStarted = resolve;
+    });
+    const provider = createProvider({
+      runProcess: jest.fn(async (_input: WhisperProcessInput) => {
+        signalProcessStarted?.();
+        await new Promise<void>((resolve) => {
+          releaseProcess = resolve;
+        });
+        return { transcription: [] };
+      }),
+    });
+    const inferenceStarted = jest.fn();
+
+    const transcription = provider.transcribe(baseRequest, jest.fn(), inferenceStarted);
+    await processStarted;
+
+    try {
+      expect(inferenceStarted).toHaveBeenCalledTimes(1);
+    } finally {
+      releaseProcess?.();
+      await transcription;
+    }
   });
 
   it('normalizes whisper-cli JSON into TranscriptionSegment', async () => {
@@ -55,7 +106,7 @@ describe('LocalWhisperProvider', () => {
     const provider = createProvider({ ensureModel, runProcess });
 
     const onProgress = jest.fn();
-    await expect(provider.transcribe(baseRequest, onProgress)).resolves.toEqual([
+    await expect(provider.transcribe(baseRequest, onProgress, onInferenceStart)).resolves.toEqual([
       {
         start: 4.48,
         end: 7.86,
@@ -89,7 +140,7 @@ describe('LocalWhisperProvider', () => {
       }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn())).resolves.toEqual([
+    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).resolves.toEqual([
       {
         start: 3,
         end: 5,
@@ -106,7 +157,7 @@ describe('LocalWhisperProvider', () => {
     const runProcess = jest.fn().mockRejectedValue(failure);
     const provider = createProvider({ runProcess });
 
-    await expect(provider.transcribe(baseRequest, jest.fn())).rejects.toBe(failure);
+    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toBe(failure);
     expect(runProcess).toHaveBeenCalledTimes(1);
   });
 
@@ -115,7 +166,7 @@ describe('LocalWhisperProvider', () => {
       runProcess: jest.fn().mockResolvedValue({ notTranscription: [] }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn())).rejects.toMatchObject({
+    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
   });
@@ -127,7 +178,7 @@ describe('LocalWhisperProvider', () => {
       }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn())).rejects.toMatchObject({
+    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
   });
@@ -139,7 +190,7 @@ describe('LocalWhisperProvider', () => {
       }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn())).rejects.toMatchObject({
+    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
   });
@@ -151,7 +202,7 @@ describe('LocalWhisperProvider', () => {
       }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn())).rejects.toMatchObject({
+    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
   });
@@ -167,7 +218,7 @@ describe('LocalWhisperProvider', () => {
       }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn())).resolves.toEqual([
+    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).resolves.toEqual([
       { start: 1, end: 2, text: 'First.', speaker: 'Interviewer' },
       { start: 4, end: 5, text: 'Second.', speaker: 'Interviewer' },
     ]);
@@ -180,7 +231,7 @@ describe('LocalWhisperProvider', () => {
       }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn())).rejects.toMatchObject({
+    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
   });
@@ -195,7 +246,7 @@ describe('LocalWhisperProvider', () => {
       }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn())).resolves.toEqual([
+    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).resolves.toEqual([
       { start: 3, end: 4, text: 'hello', speaker: 'Interviewer' },
     ]);
   });

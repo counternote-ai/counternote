@@ -310,10 +310,12 @@ describe('TranscriptionOrchestrator', () => {
       expect(deps.convertToFlac).not.toHaveBeenCalled();
       expect(deps.localProvider.transcribe).toHaveBeenCalledWith(
         expect.objectContaining({ audioPath: SYSTEM_PATH }),
+        expect.any(Function),
         expect.any(Function)
       );
       expect(deps.localProvider.transcribe).toHaveBeenCalledWith(
         expect.objectContaining({ audioPath: MIC_PATH }),
+        expect.any(Function),
         expect.any(Function)
       );
     });
@@ -553,6 +555,12 @@ describe('TranscriptionOrchestrator', () => {
         releaseProvider?.([]);
         await transcription;
       }
+
+      expect(
+        progressEvents.filter(({ stage }) => stage === 'transcribing-interviewer')
+      ).toEqual([
+        { recordingId: RECORDING_ID, stage: 'transcribing-interviewer' },
+      ]);
     });
 
     it('never logs an absolute-path recording ID supplied through IPC', async () => {
@@ -571,12 +579,19 @@ describe('TranscriptionOrchestrator', () => {
       expect(JSON.stringify(logs)).not.toContain(unsafeRecordingId);
     });
 
-    it('emits the exact stage sequence for local provider', async () => {
+    it('returns to local transcription progress after model download before each speaker CPU inference', async () => {
       const { orchestrator, request, progressStages } = createOrchestrator({
         provider: 'local',
         localProvider: {
-          transcribe: jest.fn(async (_req: unknown, onProgress: (percent: number) => void) => {
-            onProgress(50);
+          transcribe: jest.fn(async (
+            req: { speaker: 'Interviewer' | 'You' },
+            onProgress: (percent: number) => void,
+            onInferenceStart?: () => void
+          ) => {
+            if (req.speaker === 'Interviewer') {
+              onProgress(50);
+            }
+            onInferenceStart?.();
             return [];
           }),
         },
@@ -590,6 +605,87 @@ describe('TranscriptionOrchestrator', () => {
         'transcribing-interviewer',
         'transcribing-you',
         'finishing-transcript',
+      ]);
+    });
+
+    it('emits model download and transcription progress only for an audible second channel', async () => {
+      const { orchestrator, request, progressStages } = createOrchestrator({
+        provider: 'local',
+        localProvider: {
+          transcribe: jest.fn(async (
+            req: { speaker: 'Interviewer' | 'You' },
+            onProgress: (percent: number) => void,
+            onInferenceStart?: () => void
+          ) => {
+            if (req.speaker === 'Interviewer') {
+              return [];
+            }
+            onProgress(50);
+            onInferenceStart?.();
+            return [];
+          }),
+        },
+      });
+
+      await orchestrator.transcribe(request);
+
+      expect(progressStages).toEqual([
+        'preparing-audio',
+        'downloading-model',
+        'transcribing-you',
+        'finishing-transcript',
+      ]);
+    });
+
+    it('preserves local error classification without emitting transcription progress before inference starts', async () => {
+      const { orchestrator, request } = createOrchestrator({
+        provider: 'local',
+        localProvider: {
+          transcribe: jest.fn(async () => {
+            throw new Error('model loading failed');
+          }),
+        },
+      });
+      const progressStages: TranscriptionStage[] = [];
+
+      await expect(
+        orchestrator.transcribe({
+          ...request,
+          onProgress: (progress) => {
+            progressStages.push(progress.stage);
+          },
+        })
+      ).rejects.toMatchObject({ code: 'LOCAL_TRANSCRIPTION_FAILED' });
+
+      expect(progressStages).toEqual(['preparing-audio']);
+    });
+
+    it('scopes local inference progress to the requested recording ID', async () => {
+      const { orchestrator, request } = createOrchestrator({
+        provider: 'local',
+        localProvider: {
+          transcribe: jest.fn(async (
+            _req: unknown,
+            _onProgress: (percent: number) => void,
+            onInferenceStart?: () => void
+          ) => {
+            onInferenceStart?.();
+            return [];
+          }),
+        },
+      });
+      const progressEvents: { recordingId: string; stage: TranscriptionStage }[] = [];
+
+      await orchestrator.transcribe({
+        ...request,
+        onProgress: (progress) => {
+          progressEvents.push(progress);
+        },
+      });
+
+      expect(progressEvents.filter(({ stage }) => stage.startsWith('transcribing-'))).toEqual([
+        { recordingId: RECORDING_ID, stage: 'transcribing-interviewer' },
+        { recordingId: RECORDING_ID, stage: 'transcribing-you' },
       ]);
     });
 
