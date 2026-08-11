@@ -24,8 +24,13 @@ export interface EnsureModelOptions {
   recoverInvalidModel?: boolean;
 }
 
+interface ModelInstallation {
+  recoverInvalidModel: boolean;
+  promise: Promise<string>;
+}
+
 export class LocalModelManager {
-  private installation: Promise<string> | null = null;
+  private installation: ModelInstallation | null = null;
   private readonly progressListeners = new Map<symbol, (percent: number) => void>();
 
   constructor(
@@ -41,12 +46,19 @@ export class LocalModelManager {
     const key = Symbol();
     this.progressListeners.set(key, onProgress);
     try {
-      if (this.installation === null) {
-        this.installation = this.install(options).finally(() => {
-          this.installation = null;
-        });
+      const recoverInvalidModel = options.recoverInvalidModel === true;
+      while (true) {
+        const installation = this.installation ?? this.startInstallation(recoverInvalidModel);
+        try {
+          return await installation.promise;
+        } catch (error) {
+          if (!recoverInvalidModel || installation.recoverInvalidModel) {
+            throw error;
+          }
+          // An explicit retry joined a weaker normal attempt. Once it finishes,
+          // start the caller-authorized recovery rather than losing that intent.
+        }
       }
-      return await this.installation;
     } finally {
       this.progressListeners.delete(key);
     }
@@ -114,6 +126,20 @@ export class LocalModelManager {
 
     await fs.promises.rename(partPath, finalPath);
     return finalPath;
+  }
+
+  private startInstallation(recoverInvalidModel: boolean): ModelInstallation {
+    const installation: ModelInstallation = {
+      recoverInvalidModel,
+      promise: this.install({ recoverInvalidModel }),
+    };
+    installation.promise = installation.promise.finally(() => {
+      if (this.installation === installation) {
+        this.installation = null;
+      }
+    });
+    this.installation = installation;
+    return installation;
   }
 
   private finalPath(): string {

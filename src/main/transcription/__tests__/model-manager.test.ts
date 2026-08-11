@@ -140,6 +140,83 @@ describe('LocalModelManager', () => {
     expect(fs.readFileSync(finalPath)).toEqual(expectedBytes);
   });
 
+  it('recovers when an explicit retry joins an in-flight normal invalid-cache attempt', async () => {
+    const expectedBytes = Buffer.from('recovered-after-normal-failure');
+    writeModel(Buffer.from('tampered-model'));
+    const normalProgress: number[] = [];
+    const recoveryProgress: number[] = [];
+    const download = jest.fn(async (
+      _url: URL,
+      destination: string,
+      onProgress: (receivedBytes: number, totalBytes: number) => void
+    ) => {
+      fs.writeFileSync(destination, expectedBytes);
+      onProgress(expectedBytes.length / 2, expectedBytes.length);
+      onProgress(expectedBytes.length, expectedBytes.length);
+    });
+    const manager = createManager({
+      artifact: artifactFor(expectedBytes),
+      download,
+    });
+
+    const normal = manager.ensureModel((percent) => normalProgress.push(percent));
+    const recovery = manager.ensureModel(
+      (percent) => recoveryProgress.push(percent),
+      { recoverInvalidModel: true }
+    );
+
+    await expect(normal).rejects.toMatchObject({ code: 'MODEL_CHECKSUM_FAILED' });
+    await expect(recovery).resolves.toBe(finalPath);
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(normalProgress).toEqual([]);
+    expect(recoveryProgress).toEqual([50, 100]);
+    expect(fs.readFileSync(finalPath)).toEqual(expectedBytes);
+  });
+
+  it('lets a normal caller observe an in-flight explicit recovery without another download', async () => {
+    const expectedBytes = Buffer.from('recovered-before-normal-join');
+    writeModel(Buffer.from('tampered-model'));
+    const recoveryProgress: number[] = [];
+    const normalProgress: number[] = [];
+    let releaseDownload: (() => void) | undefined;
+    const downloadStarted = new Promise<void>((resolve) => {
+      releaseDownload = resolve;
+    });
+    let allowDownloadToFinish: (() => void) | undefined;
+    const downloadGate = new Promise<void>((resolve) => {
+      allowDownloadToFinish = resolve;
+    });
+    const download = jest.fn(async (
+      _url: URL,
+      destination: string,
+      onProgress: (receivedBytes: number, totalBytes: number) => void
+    ) => {
+      fs.writeFileSync(destination, expectedBytes);
+      releaseDownload?.();
+      await downloadGate;
+      onProgress(expectedBytes.length / 2, expectedBytes.length);
+      onProgress(expectedBytes.length, expectedBytes.length);
+    });
+    const manager = createManager({
+      artifact: artifactFor(expectedBytes),
+      download,
+    });
+
+    const recovery = manager.ensureModel(
+      (percent) => recoveryProgress.push(percent),
+      { recoverInvalidModel: true }
+    );
+    await downloadStarted;
+    const normal = manager.ensureModel((percent) => normalProgress.push(percent));
+    allowDownloadToFinish?.();
+
+    await expect(Promise.all([recovery, normal])).resolves.toEqual([finalPath, finalPath]);
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(recoveryProgress).toEqual([50, 100]);
+    expect(normalProgress).toEqual([50, 100]);
+    expect(fs.readFileSync(finalPath)).toEqual(expectedBytes);
+  });
+
   it('returns a typed failure without filesystem details when invalid-model cleanup fails', async () => {
     writeModel(Buffer.from('tampered-model'));
     const rm = jest.spyOn(fs.promises, 'rm').mockImplementation(async (filePath) => {
