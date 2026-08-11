@@ -55,7 +55,7 @@ export class GroqProvider {
     }
 
     const audioBuffer = fs.readFileSync(request.audioPath);
-    const audioBlob = new Blob([audioBuffer], { type: 'audio/wav' });
+    const audioBlob = new Blob([audioBuffer], { type: 'audio/flac' });
     const fileName = path.basename(request.audioPath);
 
     const formData = new FormData();

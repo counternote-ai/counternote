@@ -6,7 +6,7 @@ jest.mock('fs', () => ({
 import { GroqProvider, GroqProviderRequest, GroqProviderDependencies } from '../groq-provider';
 
 const baseRequest: GroqProviderRequest = {
-  audioPath: '/recordings/interviewer.wav',
+  audioPath: '/recordings/interviewer.flac',
   speaker: 'Interviewer',
   apiKey: 'sk-test-key',
   model: 'whisper-large-v3-turbo',
@@ -64,6 +64,10 @@ describe('GroqProvider', () => {
     const init = call[1] as RequestInit;
     expect(init.method).toBe('POST');
     expect(init.signal).toBeInstanceOf(AbortSignal);
+    const formData = init.body as FormData;
+    const audioFile = formData.get('file') as File;
+    expect(audioFile.name).toBe('interviewer.flac');
+    expect(audioFile.type).toBe('audio/flac');
   });
 
   it('retries one 429 after a short retry-after delay', async () => {

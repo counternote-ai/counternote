@@ -229,6 +229,7 @@ export class WhisperProcessRunner {
         exitCode = code;
         exitSignal = signal ?? null;
         if (timedOut) {
+          logFailure('LOCAL_TRANSCRIPTION_TIMEOUT', 'runtime');
           failOnce('LOCAL_TRANSCRIPTION_TIMEOUT', 'whisper-cli transcription timed out');
           return;
         }

@@ -124,7 +124,19 @@ export class LocalModelManager {
       );
     }
 
-    await fs.promises.rename(partPath, finalPath);
+    try {
+      await fs.promises.rename(partPath, finalPath);
+    } catch {
+      try {
+        await fs.promises.rm(partPath, { force: true });
+      } catch {
+        // Preserve the stable install error even if best-effort cleanup fails.
+      }
+      throw new ModelInstallError(
+        'MODEL_DOWNLOAD_FAILED',
+        'model installation failed after download'
+      );
+    }
     return finalPath;
   }
 

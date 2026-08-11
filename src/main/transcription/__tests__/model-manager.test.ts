@@ -83,6 +83,31 @@ describe('LocalModelManager', () => {
     expect(fs.existsSync(finalPath)).toBe(false);
   });
 
+  it('removes the part file and returns a typed error when promotion fails', async () => {
+    const bytes = Buffer.from('downloaded-model');
+    const rename = jest
+      .spyOn(fs.promises, 'rename')
+      .mockRejectedValueOnce(new Error(`EACCES: ${finalPath}`));
+    const manager = createManager({
+      artifact: artifactFor(bytes),
+      download: async (_url, destination) => {
+        fs.writeFileSync(destination, bytes);
+      },
+    });
+
+    try {
+      await expect(manager.ensureModel(jest.fn())).rejects.toMatchObject({
+        name: 'ModelInstallError',
+        code: 'MODEL_DOWNLOAD_FAILED',
+        message: 'model installation failed after download',
+      });
+      expect(fs.existsSync(`${finalPath}.part`)).toBe(false);
+      expect(fs.existsSync(finalPath)).toBe(false);
+    } finally {
+      rename.mockRestore();
+    }
+  });
+
   it('removes the part file when the transport is interrupted', async () => {
     const manager = createManager({
       artifact: artifactFor(Buffer.from('expected-model')),

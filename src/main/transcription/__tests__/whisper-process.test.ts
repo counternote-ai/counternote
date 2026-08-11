@@ -383,6 +383,18 @@ describe('WhisperProcessRunner', () => {
     await expect(result).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_TIMEOUT',
     });
+    expect(logger.log).toHaveBeenCalledWith({
+      type: 'exit',
+      code: null,
+      signal: null,
+      elapsedMs: expect.any(Number),
+      jsonRead: false,
+    });
+    expect(logger.log).toHaveBeenCalledWith({
+      type: 'failure',
+      code: 'LOCAL_TRANSCRIPTION_TIMEOUT',
+      phase: 'runtime',
+    });
   });
 
   it('resets the inactivity timer on stdout/stderr output', async () => {
