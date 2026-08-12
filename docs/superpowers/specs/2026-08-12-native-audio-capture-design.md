@@ -1,7 +1,7 @@
 # Native macOS Audio Capture Design
 
 **Date:** 2026-08-12
-**Status:** Draft for written review
+**Status:** Approved
 
 ## Context
 
