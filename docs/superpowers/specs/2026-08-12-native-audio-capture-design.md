@@ -118,7 +118,10 @@ The main process owns a `NativeCaptureSession` supervisor. It:
 8. stops the helper and finalizes the WAV header.
 
 Only one capture session may exist at a time. Start, stop, helper exit, and
-window shutdown converge on one idempotent finalization path.
+window shutdown converge on one idempotent finalization path. Session state is
+an explicit `idle` → `starting` → `recording` → `stopping` → `idle` machine;
+terminal failures may move from `starting` or `recording` directly through
+finalization to `idle`.
 
 ### Swift helper
 
@@ -171,13 +174,30 @@ channel-splitting, and transcription contracts.
 
 ## Synchronization
 
-The helper chooses the first host-time boundary after both native inputs have
-started as recording time zero. It does not derive position by independently
-counting callback frames.
+The shared clock is the macOS host clock backed by `mach_absolute_time()`.
+ScreenCaptureKit requires a non-null `SCStream.synchronizationClock`; absence of
+that clock fails initialization. Sample timestamps are interpreted against that
+clock and converted to `CMClock.hostTimeClock` with `CMSyncConvertTime`. The
+resulting `CMTime` must be valid, numeric, and convertible to host-time system
+units. For microphone callbacks, the helper uses `AVAudioTime.hostTime` when
+`isHostTimeValid == true` and converts it to the same Core Media host-clock
+representation.
+
+If a microphone callback lacks host time but has valid sample time, the helper
+may use `extrapolateTime(fromAnchor:)` only with the most recent callback from
+the same AVAudioEngine generation that contained both valid host time and valid
+sample time. It must not anchor sample time to callback arrival time. If no such
+anchor exists, or if a ScreenCaptureKit presentation timestamp is invalid, the
+buffer is rejected and that source enters the timestamp-failure recovery path.
+
+The helper records the first valid start timestamp from each input and chooses
+the first 20 ms host-time boundary at or after the later timestamp as recording
+time zero. Earlier samples from the faster-starting source are discarded. It
+does not derive position by independently counting callback frames.
 
 Both inputs are placed on a shared sequence of 20 ms host-time windows:
 
-1. Convert source timestamps to the common macOS host-time domain.
+1. Validate and convert source timestamps to the common macOS host-time domain.
 2. Resample source PCM into the target window.
 3. Trim overlap already assigned to an earlier window.
 4. Insert zero only for the missing source portion of a window.
@@ -186,7 +206,16 @@ Both inputs are placed on a shared sequence of 20 ms host-time windows:
 This makes drift correction timestamp-driven. A delayed source cannot move the
 other channel or change the duration of an already emitted block. The helper
 maintains a bounded jitter buffer of 200 ms; data arriving later than that window
-is reported as a source gap rather than rewriting PCM already persisted.
+is reported as a `late-data` source interruption rather than rewriting PCM
+already persisted.
+
+Within one native-input generation, source timestamps must be strictly
+monotonic. The expected start of the next buffer is the prior start plus the
+prior buffer duration. A timestamp that regresses, is nonnumeric, or differs
+from that expected start by more than the 200 ms jitter bound is a
+`timestamp-discontinuity`. The helper closes the interruption range at the last
+valid source sample, zero-fills the affected channel, rebuilds that native
+input, and establishes a new same-source anchor before accepting more samples.
 
 ## Helper Protocol
 
@@ -208,6 +237,9 @@ Frame types are:
 
 - `ready`: validated capture format and initial channel states;
 - `pcm`: exactly one 20 ms interleaved stereo block;
+- `gap`: between 1 and 3,000 consecutive 20 ms blocks that the helper could not
+  deliver, including the closed interruption reason; longer gaps use consecutive
+  frames;
 - `state`: typed channel transition or recent audio-presence summary;
 - `stopped`: final helper counters;
 - `error`: typed, safe failure information.
@@ -221,26 +253,77 @@ payloads, sequence regressions, PCM frames of the wrong length, and unknown
 state values. A protocol violation is treated as helper failure and enters the
 same preservation and finalization path as an unexpected helper exit.
 
+## Buffering, Backpressure, and Persistence
+
+Native realtime callback threads never write to stdout, wait for Electron, or
+perform file I/O. They copy bounded source data into the helper's serial mixer.
+The mixer feeds a separate serial output queue capped at 100 PCM blocks, or two
+seconds. The output worker may block on the stdout pipe without blocking native
+audio callbacks.
+
+If the output queue reaches its cap, the helper stops enqueuing PCM blocks and
+accumulates their exact timeline span in a pending `buffer-overflow` gap. Once
+stdout becomes writable, it emits one or more bounded `gap` frames before later
+PCM. The main process writes the corresponding number of all-zero stereo blocks,
+marks a capture-wide interruption for that exact range, and never labels the
+recording complete. Queue overflow does not shorten or shift the WAV timeline.
+
+The main process consumes one complete frame at a time. WAV persistence is
+asynchronous and backpressure-aware: when the underlying writable stream returns
+false, the supervisor pauses child stdout and resumes it only after `drain`.
+After backpressure begins, no later protocol frame is dispatched until `drain`.
+The parser retains only the unconsumed portion of the current stdout chunk in an
+explicit 64 KiB maximum buffer; exceeding it is a protocol error. The helper's
+pipe and bounded output queue absorb the remaining pressure.
+
+The existing fire-and-forget `WavWriter.write(): void` contract is replaced.
+Opening returns a promise that rejects on open or header failure; each write
+reports whether backpressure began and counts bytes only after the stream accepts
+that block; finalization is idempotent and rejects on flush, stream, reopen,
+header-update, or close failure. The supervisor subscribes to stream errors from
+construction through final close, so an asynchronous error cannot become an
+unhandled event or a false success.
+
+A WAV open, write, stream, flush, header-update, or close error is a terminal
+`persistence-error`. The main process immediately pauses protocol input, asks
+the helper to stop, terminates it after the normal five-second grace period, and
+attempts best-effort closure without reporting success. It atomically writes
+`capture.json` as `failed` when storage remains writable; failure to update the
+metadata does not change the in-memory failed outcome. Any partial files remain
+on disk for possible manual recovery but are not exposed as playable or
+transcribable saved audio. The renderer leaves recording mode and states that
+recording stopped because the file could not be saved. Disk-full and injected
+stream errors follow this same path.
+
 ## Recording Lifecycle
 
 ### Start
 
 1. The visible Record action checks the current screen/audio and microphone
    permission snapshot.
-2. The main process creates the recording directory, opens provisional WAV
+2. The renderer enters `Starting…`, exposes `Cancel`, and keeps the current
+   recordings library available. It does not show `Recording` or the tray's
+   active state yet.
+3. The main process creates the recording directory, opens provisional WAV
    persistence, and writes provisional `capture.json` metadata.
-3. The main process resolves and spawns the helper.
-4. The helper starts ScreenCaptureKit and AVAudioEngine.
-5. The helper reports `ready` only after both sources are running and have
+4. The main process resolves and spawns the helper and starts a 60-second
+   initialization deadline.
+5. The helper starts ScreenCaptureKit and AVAudioEngine.
+6. The helper reports `ready` only after both sources are running and have
    delivered timestamped callbacks. The callbacks may contain silence. It emits
    `ready` before the first buffered `pcm` frame.
-6. The main process validates `ready` and acknowledges recording start.
-7. Only then does the renderer show `Recording` and the tray show the active
+7. The main process validates `ready`, cancels the initialization deadline, and
+   acknowledges recording start.
+8. Only then does the renderer show `Recording` and the tray show the active
    state.
 
-If any step fails, all partially created native resources are stopped. An empty
-or header-only recording is removed from the library; a recording containing
-PCM is finalized and retained as interrupted.
+Cancel during `starting`, expiry of the 60-second deadline, helper exit, window
+shutdown, and any initialization failure all invoke the same idempotent start
+cleanup. Cleanup sends `stop` when possible, terminates the helper after five
+seconds, closes provisional persistence, removes the header-only recording from
+the library, and returns the UI to `idle`. PCM before `ready` is a protocol
+violation and is never written. A late `ready`, `pcm`, or exit event after
+cleanup starts is ignored except for resource closure.
 
 ### Stop
 
@@ -253,12 +336,15 @@ PCM is finalized and retained as interrupted.
 
 Stop has a five-second helper grace period. After that, the main process
 terminates the helper, finalizes all received PCM, and records a helper timeout.
+Repeated Stop, Cancel, helper-exit, and window-shutdown requests share the same
+in-flight finalization promise and cannot close the WAV twice.
 
 ## Health and Recovery
 
 Each channel has one of these runtime states:
 
 - `connected`;
+- `connected-with-gap`;
 - `no-audio-detected`;
 - `reconnecting`;
 - `disconnected`.
@@ -273,9 +359,13 @@ The following are confirmed failures and do create interruptions:
 - an SCStream or AVAudioEngine error;
 - no callback from a running source for two seconds;
 - a native route invalidation;
-- helper exit, protocol failure, or stop timeout.
+- invalid or discontinuous source timestamps;
+- source data arriving outside the jitter window;
+- helper output queue overflow;
+- helper exit, protocol failure, persistence failure, or stop timeout.
 
-For a single-source confirmed failure, the helper:
+For a recoverable native-input failure other than late data, output overflow, or
+a terminal helper failure, the helper:
 
 1. marks the channel `reconnecting`;
 2. continues the shared timeline with zero for that channel;
@@ -285,9 +375,27 @@ For a single-source confirmed failure, the helper:
 6. otherwise leaves the channel `disconnected` while the surviving channel
    continues.
 
-Both channels failing does not discard the file. The UI presents a critical
-recording warning and leaves Stop available. The helper does not automatically
-restart on zero-valued PCM alone.
+Late source data that falls outside the jitter window does not rebuild an
+otherwise healthy input. The helper emits the exact affected `late-data` range,
+zero-fills that channel, and changes its visible state from `connected` to
+`connected-with-gap` for the remainder of the session. Additional late ranges
+are coalesced only when contiguous. The UI uses a persistent warning treatment:
+the channel remains connected, but the recording contains an audio gap.
+
+Output queue overflow similarly changes both visible channel states to
+`connected-with-gap` after protocol output resumes. The channel rows state that
+capture is connected but both channels contain the recorded overflow range.
+
+Both native inputs being disconnected while the helper remains alive is
+recoverable. The UI presents a critical recording warning and leaves Stop
+available while the helper runs the independent retry policies. The helper does
+not automatically restart on zero-valued PCM alone.
+
+Helper exit and protocol failure are terminal, not recoverable channel states.
+The main process automatically finalizes received PCM and `capture.json`, leaves
+recording mode, refreshes the library, and reports that recording stopped. Stop
+is no longer shown after terminal finalization begins. A successfully finalized
+partial file is `interrupted`; a persistence or finalization failure is `failed`.
 
 ## Capture Metadata
 
@@ -323,9 +431,17 @@ helper failure occurred. `failed` means the application cannot claim a playable
 finalized recording; the library must not present that item as saved audio.
 
 Allowed interruption channels are `interviewer`, `you`, and `capture`. Allowed
-reasons are `stream-error`, `callback-stall`, `route-invalidated`, `helper-exit`,
-`protocol-error`, and `stop-timeout`. Arbitrary native error strings are not
-persisted.
+reasons are `stream-error`, `callback-stall`, `route-invalidated`,
+`timestamp-invalid`, `timestamp-discontinuity`, `late-data`, `buffer-overflow`,
+`helper-exit`, `protocol-error`, `persistence-error`, and `stop-timeout`.
+Initialization timeout and start cancellation occur before time zero, remove
+their provisional files, and therefore do not create interruption entries.
+`late-data` is channel-specific; `buffer-overflow` is capture-wide because both
+interleaved channels are omitted.
+Audio-loss reasons record the exact half-open timeline range `[startMs, endMs)`
+that was replaced by zero or could not be persisted. A terminal control failure
+with no additional audio-loss range records a point event with equal start and
+end offsets. Arbitrary native error strings are not persisted.
 
 Metadata writes are atomic. Device names, meeting application names, process
 identifiers, permission database details, raw native errors, private paths, and
@@ -340,6 +456,8 @@ While recording, the control panel shows one compact status row for
 `Interviewer audio` and one for `Microphone` beneath the active recording
 control. Healthy rows read `Connected` without occupying alert space.
 
+- `Connected — audio gap detected` uses a persistent warning treatment while
+  confirming that the channel is currently receiving callbacks.
 - `No audio detected` uses a neutral treatment because silence may be expected.
 - `Reconnecting` uses a warning treatment and explains that recording continues.
 - `Disconnected` uses an error treatment and names the affected channel.
@@ -357,6 +475,17 @@ does not infer missing speech or hide an interruption badge.
 Initialization errors state what failed, what was retained, and the next useful
 action. Raw helper messages, stack traces, native error codes, and internal
 process terms are never shown in the renderer.
+
+During initialization, the primary status reads `Starting…` and the only capture
+action is `Cancel`. Cancel returns to the idle Record state after cleanup. An
+initialization timeout reads: `Recording could not start. No audio was saved.
+Check recording permissions and try again.`
+
+Unexpected helper exit automatically replaces the recording controls with an
+error: `Recording stopped unexpectedly. The audio captured so far was saved.`
+That saved claim appears only after WAV and metadata finalization succeed. A
+persistence failure instead reads: `Recording stopped because the audio file
+could not be saved. Check available disk space before trying again.`
 
 ## Permissions and Packaging
 
@@ -420,10 +549,17 @@ Implementation follows focused TDD at each boundary.
 ### Swift tests
 
 - convert supported native formats to 16 kHz mono PCM;
-- align timestamped sources onto 20 ms host-time windows;
+- validate ScreenCaptureKit PTS and AVAudioTime host/sample representations;
+- convert `SCStream.synchronizationClock` and AVAudioTime values to the common
+  host clock and align them onto 20 ms windows;
+- reject a missing ScreenCaptureKit synchronization clock, invalid PTS, missing
+  microphone anchor, timestamp regression, and timestamp discontinuity;
 - correct drift without moving the other channel;
 - trim overlap and fill source-specific gaps with zero;
-- bound the jitter buffer and report late data;
+- bound the jitter buffer, report exact late-data ranges, and enter
+  `connected-with-gap` without restarting a healthy input;
+- bound the non-realtime output queue, replace overflow spans with `gap` frames,
+  and preserve total timeline duration;
 - transition through callback stall, retry, recovery, and disconnection;
 - frame protocol messages deterministically and reject invalid control input;
 - drain complete blocks and report final counters on Stop.
@@ -432,25 +568,39 @@ Implementation follows focused TDD at each boundary.
 
 - resolve development and packaged helper paths safely;
 - reject missing, non-executable, wrong-architecture, and malformed helpers;
-- validate protocol magic, version, length, sequence, type, and PCM block size;
-- serialize start and stop and prevent concurrent sessions;
+- validate protocol magic, version, length, sequence, type, PCM block size, gap
+  bounds, and the 64 KiB parser limit;
+- serialize start, cancel, stop, and terminal finalization and prevent concurrent
+  sessions;
+- expose `Starting…`, allow Cancel, enforce the 60-second initialization
+  deadline, and ignore late helper events after cleanup begins;
+- pause helper stdout on WAV backpressure, resume only on `drain`, and preserve
+  frame order;
 - finalize WAV and metadata after normal Stop, helper exit, protocol failure,
-  single-channel failure, and stop timeout;
+  single-channel failure, late data, output overflow, and stop timeout;
+- inject open, disk-full, write, stream, flush, header-update, and close failures
+  and verify no path claims that the recording was saved;
 - expose typed renderer status without raw native details;
 - read legacy recordings without `capture.json`;
 - preserve playback and transcription for interrupted recordings;
-- render all channel health and saved interruption states accessibly.
+- render starting, cancellation, all channel health, terminal helper exit,
+  persistence failure, and saved interruption states accessibly.
 
 ### Integration and packaged verification
 
 - feed deterministic dual-rate fixtures through the real helper protocol and
   verify channel order, duration, and a maximum 20 ms drift after 60 minutes;
+- record a synchronized impulse train through real ScreenCaptureKit system audio
+  and the default microphone for 60 minutes, verify that inter-channel offset
+  remains within 20 ms of its calibrated initial offset, then use the helper's
+  test seam to force one timestamp discontinuity and confirm recovery;
 - run `npm test`, `npx tsc --noEmit`, `npm run build`, and the Electron E2E smoke
   test;
 - verify the Swift executable is arm64, executable, embedded at the resolved
   packaged path, and included in packaging checks;
-- inspect the 400 x 600 Electron surface for connected, silent, reconnecting,
-  disconnected, recovered, and saved-interruption states;
+- inspect the 400 x 600 Electron surface for starting, connected,
+  connected-with-gap, silent, reconnecting, disconnected, terminal failure,
+  recovered, and saved-interruption states;
 - verify keyboard order, accessible names, Stop availability, and long recording
   titles in each changed state;
 - run a signed packaged recording for 60 minutes while muting and unmuting the
@@ -459,7 +609,10 @@ Implementation follows focused TDD at each boundary.
   produces a playable WAV, and permission ownership is presented as Interview
   Copilot;
 - induce system and microphone callback failures independently and confirm
-  surviving-channel continuity, recovery metadata, and truthful UI state.
+  surviving-channel continuity, recovery metadata, and truthful UI state;
+- throttle stdout and inject a full-disk persistence failure in a disposable
+  recording directory, then verify bounded memory, zero-filled overflow ranges,
+  automatic terminal cleanup, and the absence of saved-recording claims.
 
 Real ScreenCaptureKit, TCC, signing, and 60-minute audio behavior cannot be
 claimed from mocks or an unsigned package. If credential-gated verification is
@@ -472,6 +625,10 @@ unverified rather than calling the feature production-ready.
   `2026-08-11T02-30-23-541Z/audio.wav` and
   `2026-08-10T03-29-32-709Z/audio.wav`.
 - [Apple ScreenCaptureKit documentation](https://developer.apple.com/documentation/screencapturekit)
+- [Apple `SCStream.synchronizationClock` documentation](https://developer.apple.com/documentation/screencapturekit/scstream/synchronizationclock)
+- [Apple `AVAudioTime` documentation](https://developer.apple.com/documentation/avfaudio/avaudiotime)
+- [Apple `CMSampleBuffer.presentationTimeStamp` documentation](https://developer.apple.com/documentation/coremedia/cmsamplebuffer/presentationtimestamp)
+- [Apple Core Media host-clock documentation](https://developer.apple.com/documentation/coremedia/cmclock-api)
 - [Apple Core Audio Process Tap documentation](https://developer.apple.com/documentation/CoreAudio/capturing-system-audio-with-core-audio-taps)
 - [Apple Developer Forums: Core Audio](https://developer.apple.com/forums/tags/core-audio)
   includes the macOS 26.5 report titled
