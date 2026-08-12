@@ -129,6 +129,17 @@ an explicit `idle` → `starting` → `recording` → `stopping` → `idle` mach
 terminal failures may move from `starting` or `recording` directly through
 finalization to `idle`.
 
+The main entry point calls `app.requestSingleInstanceLock()` synchronously before
+`app.whenReady()`, window/tray creation, capture startup, or recovery scanning.
+If it returns false, that process calls `app.quit()` immediately and performs no
+recordings-root read or mutation. The primary instance holds the lock until
+termination and handles `second-instance` only by restoring and focusing its
+control panel. It never releases the lock for background or tray operation.
+This is required even on macOS because command-line launches can bypass Finder's
+single-instance behavior. Consequently no live second app process can classify
+the primary instance's `.in-progress` capture as abandoned, recover it, or move
+it to Trash.
+
 ### Swift helper
 
 The helper is an app-owned, macOS arm64 executable with no network access. It
@@ -223,6 +234,13 @@ affected block but before the next unaffected `pcm` block. If the reason changes
 while a channel interruption is open, it closes the old range and opens the new
 reason at that block boundary.
 
+Channel interruption ranges are conservative at 20 ms block granularity, not
+sample-accurate loss measurements. If even one of the 320 source frames in a
+block is uncovered, metadata marks the whole block. `startBlock` identifies the
+first affected emitted block and `endBlockExclusive` the first unaffected block;
+the actual missing samples are contained within that reported range. The first
+implementation does not carry within-block frame offsets.
+
 A timestamp hole shorter than 200 ms is a `source-gap`: it changes the channel
 to `connected-with-gap` but does not rebuild an otherwise healthy input. The
 200 ms bound controls jitter expiry and whether a timestamp discontinuity
@@ -230,13 +248,25 @@ triggers source reconstruction; it is never a threshold for whether zero-filled
 audio is reported. Thus a single affected 20 ms block prevents `complete`
 status just as a longer gap does.
 
+The helper assigns the reason exactly once, before it emits the affected window:
+
+- If timestamps from already-buffered or newly arrived source data prove that a
+  span contains no source frames, the uncovered emitted blocks are
+  `source-gap`.
+- If the 200 ms jitter deadline expires without data that could cover the
+  window, the uncovered emitted block is `late-data`, even if a packet for that
+  time arrives afterward.
+
+Data received after its window was emitted is discarded as late and cannot
+reclassify, close, or rewrite the already-emitted interruption. The protocol has
+no update operation because classification is final at emission.
+
 This makes drift correction timestamp-driven. A delayed source cannot move the
 other channel or change the duration of an already emitted block. The helper
 maintains a bounded jitter buffer of 200 ms; data arriving later than that window
 is reported as a `late-data` source interruption rather than rewriting PCM
-already persisted. The already-recorded uncovered blocks and the late-data
-interruption are one metadata range, not duplicate interruptions for the same
-missing coverage.
+already persisted. One uncovered block produces one final interruption reason;
+a discarded late packet does not produce a duplicate record.
 
 Within one native-input generation, source timestamps must be strictly
 monotonic. The expected start of the next buffer is the prior start plus the
@@ -279,16 +309,23 @@ Frame types are:
 
 The protocol uses these conceptual numeric aliases in both Swift validators and
 TypeScript trust-boundary validators. JSON numbers for these fields must be
-finite integers, not strings: `UInt32` is 0 through 4,294,967,295 and
-`BlockIndex` is 0 through JavaScript `Number.MAX_SAFE_INTEGER`. A frame is
-rejected if it contains duplicate JSON keys, unknown fields, missing required
-fields, explicit `null`, or a value outside its stated closed set.
+finite integers, not strings: `UInt32` is 0 through 4,294,967,295;
+`BlockIndex` is a timeline boundary from 0 through `MAX_BLOCKS = 3,355,443`
+inclusive. At most `MAX_BLOCKS` 1,280-byte PCM blocks may be emitted, with block
+starts 0 through 3,355,442 and a final exclusive boundary of 3,355,443. Their
+data and 36-byte RIFF overhead fit in unsigned 32-bit RIFF sizes. The limit is
+67,108,860 ms, or 18:38:28.860. When the next expected block equals
+`MAX_BLOCKS`, the helper emits no more PCM; the supervisor finalizes the
+recording as `interrupted` with a capture-wide `format-limit` point event at that
+boundary. A frame is rejected if it contains duplicate JSON keys, unknown
+fields, missing required fields, explicit `null`, or a value outside its stated
+closed set.
 
 The previously named frame payloads have these normative version 1 schemas:
 
 ```ts
 type UInt32 = number; // validated integer range above
-type BlockIndex = number; // validated safe-integer range above
+type BlockIndex = number; // validated RIFF-limited integer range above
 type SourceChannel = 'interviewer' | 'you';
 type RecoverableReason =
   | 'stream-error'
@@ -342,7 +379,7 @@ type StatePayload =
 
 interface StoppedPayload {
   type: 'stopped';
-  reason: 'stop';
+  reason: 'stop' | 'format-limit';
   finalBlockExclusive: BlockIndex;
   pcmBlocks: BlockIndex;
   gapBlocks: BlockIndex;
@@ -379,6 +416,8 @@ that channel. `reconnecting.attempt >= 1`; `disconnected.attempt` is the number
 of completed attempts. `stopped` is emitted at most once;
 `openInterruptionIds` must be empty, and `finalBlockExclusive` must equal
 `pcmBlocks + gapBlocks` and the end of the consumed PCM/gap timeline. Every
+`stopped` frame with reason `format-limit` must have `finalBlockExclusive ==
+MAX_BLOCKS`; that reason is invalid at any earlier boundary. Every
 `error` is terminal, never contains a native message, errno, path, or arbitrary
 string, and permits no later semantic frame. The Swift and TypeScript
 implementations consume one shared corpus of valid and invalid version 1 frame
@@ -388,19 +427,21 @@ fixtures so the schemas cannot drift independently.
 "opened"`, a session-unique unsigned `id`, `channel`, `startBlock`, and `reason`.
 A closed event repeats the same `id`, `channel`, `startBlock`, and `reason`, and
 adds `phase: "closed"`, `endBlockExclusive`, and `recovered`. Blocks are helper
-timeline block numbers, so the half-open range maps exactly to milliseconds by
-multiplying by 20. `channel` is `interviewer` or `you`; capture-wide output loss
+timeline block numbers, so the conservative half-open range maps safely to
+milliseconds by multiplying by 20. `channel` is `interviewer` or `you`;
+capture-wide output loss
 uses `gap` instead. Late data may emit an opened event immediately followed by
 its closed event without changing the source to `reconnecting`.
 
 The main process permits at most one open interruption per channel, rejects an
 unknown or duplicate ID, requires the fields repeated by a close to match its
-open, and requires `endBlockExclusive >= startBlock`. Only a matched close is
-persisted. If the helper terminates with an open interruption, the main process
-closes it at the next expected timeline block with `recovered: false` before it
-adds the capture-wide terminal point event. Consequently every persisted
-channel interruption has an exact range, reason, and recovery outcome even when
-the helper exits during recovery.
+open, and requires `startBlock <= endBlockExclusive <=` the next emitted timeline
+block. An open event cannot start after the next block to be emitted. Only a
+matched close is persisted. If the helper terminates with an open interruption,
+the main process closes it at the next expected timeline block with `recovered:
+false` before it adds the capture-wide terminal point event. Consequently every
+persisted channel interruption has a validated block range, reason, and recovery
+outcome even when the helper exits during recovery.
 
 A `gap` payload contains `channel: "capture"`, `startBlock`,
 `endBlockExclusive`, `reason: "buffer-overflow"`, and `recovered: true`. It both
@@ -483,6 +524,27 @@ not published, and the next safe action when the category is known.
 
 ## Recording Lifecycle
 
+### Global mutation ownership
+
+A main-process `RecordingMutationCoordinator` provides one exclusive,
+non-reentrant lease for every recordings-root mutation. Capture holds the lease
+from staging-directory creation through publication or failed-item placement.
+Recover and Move to Trash each hold it from final item validation through their
+terminal filesystem result. Read-only library and recovery enumeration may run
+without the lease but cannot mutate or infer that an item is abandoned while a
+lease is active.
+
+Only one mutation can exist, so capture and recovery/Trash are never concurrent.
+While capture owns the lease, recovery actions are disabled with `Available
+after recording stops`. While a recovery action owns it, Record is disabled and
+the affected item reads `Recovering partial recording…` or `Moving partial
+recording to Trash…`. Disabled controls expose the same reason accessibly and do
+not appear to accept input.
+The coordinator exposes `closeAndDrain()`: it synchronously rejects new lease
+requests and returns one promise that settles only after the current lease is
+released. Lease release is in `finally` and follows publication, recovery
+placement, or a surfaced terminal failure; callers cannot resolve it early.
+
 ### Start
 
 1. The visible Record action checks the current screen/audio and microphone
@@ -519,7 +581,9 @@ cleanup starts is ignored except for resource closure.
 1. Stop remains available from the control panel and tray.
 2. The main process sends the helper a `stop` control message.
 3. The helper stops accepting new callbacks, drains complete timeline windows,
-   closes any open interruption, emits `stopped`, closes stdout, and exits.
+   closes any open interruption, emits `stopped` with reason `stop`, closes
+   stdout, and exits. Reaching `MAX_BLOCKS` follows the same orderly sequence
+   with reason `format-limit` without waiting for a control message.
 4. The main process records `exit` only as process status. It does not use that
    event as a finalization signal because child stdio may still be open.
 5. The main process waits for the child's `close` event, stdout EOF, dispatch of
@@ -561,21 +625,24 @@ before any window or tray can request exit. Tray Quit, Cmd-Q, Dock Quit, and the
 non-macOS `window-all-closed` path all call `app.quit()` and converge on this
 listener; no recording path calls `app.exit()`.
 
-The coordinator owns `quitRequested`, `allowQuit`, and one shared cleanup
-promise. On `before-quit`:
+The coordinator owns `quitRequested`, `allowQuit`, and one shared quit promise.
+On `before-quit`:
 
 1. If `allowQuit` is true, it returns and Electron continues terminating.
-2. If the capture supervisor is idle, has no finalization in flight, and the
-   recovery service has no mutation in flight, it returns without preventing the
-   event.
+2. If the mutation coordinator has no owner and capture is idle, it returns
+   without preventing the event.
 3. Otherwise it calls `event.preventDefault()` synchronously, sets
-   `quitRequested`, disables new starts and recovery actions, and obtains the
-   existing start-cleanup, stop/finalization, or recovery-mutation promise.
-   Repeated quit requests remain prevented and do not start a second cleanup.
+   `quitRequested`, calls `RecordingMutationCoordinator.closeAndDrain()`, and
+   asks an active capture owner to stop through its existing idempotent
+   finalization promise. A recovery/Trash owner is allowed to reach its terminal
+   result. Because the mutation lease is global, these owners cannot coexist;
+   the quit promise nevertheless awaits `Promise.allSettled` over both the
+   capture stop request, when present, and the coordinator drain promise.
+   Repeated quit requests remain prevented and reuse that exact promise.
 4. The renderer and tray show `Finishing recording before quitting…`; the tray
    Quit item is disabled, while no success claim is shown.
-5. After the bounded cleanup promise settles, including publication or movement
-   to recovery after failure, the coordinator sets `allowQuit` and calls
+5. After every promise in the quit barrier settles, including publication or
+   movement to recovery after failure, the coordinator sets `allowQuit` and calls
    `app.quit()` exactly once. The second `before-quit` pass is allowed through.
 
 Quit never bypasses the helper grace period, pipe-close deadline, parser drain,
@@ -657,10 +724,9 @@ Every item also offers `Move to Trash`. A confirmation reads: `Move this partial
 recording to Trash? It will no longer appear in Recording recovery. You can
 restore it from Trash until Trash is emptied.` The main process revalidates and
 locks the item immediately before using the platform Trash API. Cancellation or
-Trash failure leaves the item untouched and visible. Recover and Trash operations
-for one item are serialized, and a global publication lock prevents collision
-with normal capture publication. Renderer requests contain an item ID only and
-cannot supply a filesystem path.
+Trash failure leaves the item untouched and visible. The global recording
+mutation lease serializes Recover, Move to Trash, capture, and all publication.
+Renderer requests contain an item ID only and cannot supply a filesystem path.
 
 ## Health and Recovery
 
@@ -709,11 +775,13 @@ after the initial approximately 3.5-second fast-retry window and does not requir
 a renderer-owned reconnect command.
 
 Late source data that falls outside the jitter window does not rebuild an
-otherwise healthy input. The helper emits the exact affected `late-data` range,
-zero-fills that channel, and changes its visible state from `connected` to
-`connected-with-gap` for the remainder of the session. Additional late ranges
-are coalesced only when contiguous. The UI uses a persistent warning treatment:
-the channel remains connected, but the recording contains an audio gap.
+otherwise healthy input. At deadline expiry the helper emits the conservative
+affected `late-data` block range, zero-fills that channel, and changes its visible
+state from `connected` to `connected-with-gap` for the remainder of the session.
+A subsequently arriving packet is discarded without reclassification.
+Additional late ranges are coalesced only when contiguous. The UI uses a
+persistent warning treatment: the channel remains connected, but the recording
+contains an audio gap.
 
 Output queue overflow similarly changes both visible channel states to
 `connected-with-gap` after protocol output resumes. The channel rows state that
@@ -762,22 +830,32 @@ Allowed recording statuses are `provisional`, `complete`, `interrupted`, and
 library item.
 `complete` means WAV finalization succeeded with no confirmed interruption.
 `interrupted` means WAV finalization succeeded but at least one confirmed gap or
-helper failure occurred. `failed` means the application cannot claim a finalized
-recording; the library must not present that item as saved audio.
+helper failure occurred, or the orderly RIFF format limit stopped capture.
+`failed` means the application cannot claim a finalized recording; the library
+must not present that item as saved audio.
 
 Allowed interruption channels are `interviewer`, `you`, and `capture`. Allowed
 reasons are `stream-error`, `callback-stall`, `route-invalidated`,
 `timestamp-invalid`, `timestamp-discontinuity`, `source-gap`, `late-data`,
 `buffer-overflow`, `helper-exit`, `protocol-error`, `persistence-error`, and
-`stop-timeout`.
+`stop-timeout`, plus capture-wide `format-limit`.
 Initialization timeout and start cancellation occur before time zero, remove
 their provisional files, and therefore do not create interruption entries.
 `late-data` is channel-specific; `buffer-overflow` is capture-wide because both
 interleaved channels are omitted.
-Audio-loss reasons record the exact half-open timeline range `[startMs, endMs)`
-that was replaced by zero or could not be persisted. A terminal control failure
-with no additional audio-loss range records a point event with equal start and
-end offsets. Arbitrary native error strings are not persisted.
+Audio-loss reasons record a half-open timeline range `[startMs, endMs)`. For
+channel loss this is the conservative 20 ms block range containing every
+uncovered source frame; for capture-wide `buffer-overflow` it is the exact set of
+whole PCM blocks that could not be delivered. A terminal control failure with no
+additional audio-loss range records a point event with equal start and end
+offsets. Every conversion is validated as `blockIndex * 20 <= 67,108,860`, and
+every range must lie within the emitted timeline. Arbitrary native error strings
+are not persisted.
+
+The `format-limit` point event has `startMs == endMs == 67,108,860` and
+`recovered: false`. It represents the orderly terminal boundary rather than
+missing samples beyond the file; the helper never emits or the writer silently
+drops a block after that boundary.
 
 Metadata writes are atomic. Device names, meeting application names, process
 identifiers, permission database details, raw native errors, private paths, and
@@ -844,6 +922,13 @@ audio channel may be incomplete.` The published card keeps the `Audio
 interrupted` badge and offers transcription under the existing rules. Successful
 Trash movement removes the recovery item and reads: `Partial recording moved to
 Trash.`
+
+Reaching the classic RIFF duration limit stops and finalizes capture before an
+integer overflow. After successful publication the UI reads: `Recording stopped
+after reaching the 18 hour 38 minute file limit. The audio captured so far was
+saved.` The saved card remains `Audio interrupted`; the app does not wrap the
+header fields or continue writing an invalid WAV. The saved claim is shown only
+after the publication barrier succeeds.
 
 ## Permissions and Packaging
 
@@ -917,12 +1002,17 @@ Implementation follows focused TDD at each boundary.
   every partially or fully uncovered 20 ms block;
 - prove 20 ms, 40 ms, and 180 ms timestamp holes prevent `complete` without
   rebuilding the source, while a covered all-zero callback does not;
-- bound the jitter buffer, report exact late-data ranges, and enter
+- classify a provable timestamp hole as `source-gap`, classify an uncovered
+  jitter-deadline expiry as `late-data`, discard a later packet without an
+  update or duplicate interruption, and preserve the final reason;
+- report a one-frame hole as a conservative whole-block interruption and never
+  claim sample-level range precision;
+- bound the jitter buffer, report conservative late-data block ranges, and enter
   `connected-with-gap` without restarting a healthy input;
 - bound the non-realtime output queue, replace overflow spans with `gap` frames,
   and preserve total timeline duration;
-- emit matched interruption open/close frames with exact channel block ranges,
-  reasons, and recovery outcomes;
+- emit matched interruption open/close frames with conservative channel block
+  ranges, reasons, and recovery outcomes;
 - transition through callback stall, fast retries, periodic 10-second retries,
   route-triggered retry, recovery, and disconnection;
 - frame protocol messages deterministically, run the shared valid/invalid
@@ -932,11 +1022,14 @@ Implementation follows focused TDD at each boundary.
 ### TypeScript tests
 
 - resolve development and packaged helper paths safely;
+- acquire the Electron single-instance lock before readiness or recordings-root
+  access; make a losing instance quit without scanning recovery, and focus the
+  primary window on `second-instance`;
 - reject missing, non-executable, wrong-architecture, and malformed helpers;
 - validate protocol magic, version, length, sequence, type, PCM block size, gap
   bounds, interruption lifecycle invariants, all closed payload schemas, exact
-  counter relationships, unknown fields, unsafe integers, and the 64 KiB parser
-  limit;
+  counter relationships, unknown fields, indices above 3,355,443, ranges beyond
+  the emitted timeline, and the 64 KiB parser limit;
 - serialize start, cancel, stop, and terminal finalization and prevent concurrent
   sessions;
 - expose `Starting…`, allow Cancel, enforce the 60-second initialization
@@ -949,8 +1042,11 @@ Implementation follows focused TDD at each boundary.
 - reject a partial protocol frame at EOF and close any still-open source
   interruption as unrecovered after unexpected helper termination;
 - synchronously prevent `before-quit` during starting, recording, stopping, and
-  failed finalization; reuse one cleanup promise across repeated Quit requests;
-  call `app.quit()` once after cleanup and allow the second event through;
+  failed finalization; close the global mutation coordinator, await the capture
+  and drain promises with `allSettled`, reuse one quit promise across repeated
+  Quit requests, and allow the second event through;
+- serialize capture, publication, recovery, and Trash under one mutation lease;
+  disable conflicting actions and release only after terminal cleanup;
 - route tray, Cmd-Q, Dock, and `window-all-closed` quit requests through the same
   coordinator and prohibit `app.exit()` from bypassing it;
 - continuously drain more than one pipe capacity of valid, malformed, and
@@ -1010,7 +1106,11 @@ Implementation follows focused TDD at each boundary.
 - flood helper stderr beyond operating-system pipe capacity during a dual-channel
   fixture and confirm PCM continuity and bounded main-process diagnostics;
 - request Quit from the tray during active capture and confirm the process stays
-  alive until WAV publication or recovery handling completes.
+  alive until WAV publication or recovery handling completes;
+- run capture to the RIFF block cap, reject the next block without numeric
+  overflow, and verify an interrupted valid WAV plus truthful limit copy;
+- attempt a command-line second launch during active capture and confirm it
+  cannot enumerate, recover, or move the primary instance's staging item.
 
 Real ScreenCaptureKit, TCC, signing, and 60-minute audio behavior cannot be
 claimed from mocks or an unsigned package. If credential-gated verification is
@@ -1035,6 +1135,8 @@ unverified rather than calling the feature production-ready.
 - [Electron issue #47490: use ScreenCaptureKit for macOS loopback](https://github.com/electron/electron/issues/47490)
 - [Electron app lifecycle documentation](https://www.electronjs.org/docs/latest/api/app#event-before-quit)
   defines synchronous `before-quit` cancellation with `preventDefault()`.
+- [Electron single-instance documentation](https://www.electronjs.org/docs/latest/api/app#apprequestsingleinstancelockadditionaldata)
+  requires a process that loses the application lock to quit immediately.
 - [Node.js child process events](https://nodejs.org/api/child_process.html#event-close)
   defines `close` after process termination and stdio closure and warns that
   stdio may still be open when `exit` fires.
