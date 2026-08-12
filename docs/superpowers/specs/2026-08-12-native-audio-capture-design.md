@@ -311,13 +311,23 @@ The protocol uses these conceptual numeric aliases in both Swift validators and
 TypeScript trust-boundary validators. JSON numbers for these fields must be
 finite integers, not strings: `UInt32` is 0 through 4,294,967,295;
 `BlockIndex` is a timeline boundary from 0 through `MAX_BLOCKS = 3,355,443`
-inclusive. At most `MAX_BLOCKS` 1,280-byte PCM blocks may be emitted, with block
-starts 0 through 3,355,442 and a final exclusive boundary of 3,355,443. Their
-data and 36-byte RIFF overhead fit in unsigned 32-bit RIFF sizes. The limit is
-67,108,860 ms, or 18:38:28.860. When the next expected block equals
-`MAX_BLOCKS`, the helper emits no more PCM; the supervisor finalizes the
-recording as `interrupted` with a capture-wide `format-limit` point event at that
-boundary. A frame is rejected if it contains duplicate JSON keys, unknown
+inclusive. At most `MAX_BLOCKS` timeline blocks may be persisted, where
+`persistedBlocks = pcmBlocks + gapBlocks`: each `pcm` contributes one 1,280-byte
+block and each block represented by `gap` contributes one synthesized 1,280-byte
+all-zero block. Valid block starts are 0 through 3,355,442 and the final exclusive
+boundary is 3,355,443. Their data and 36-byte RIFF overhead fit in unsigned
+32-bit RIFF sizes. The limit is 67,108,860 ms, or 18:38:28.860.
+
+Before emitting either frame type, the helper verifies that its contribution
+keeps `persistedBlocks <= MAX_BLOCKS`. A pending output-overflow gap that reaches
+or crosses the boundary is emitted as one or more frames of at most 3,000 blocks;
+the final frame is clipped to the remaining positive capacity and ends at
+`MAX_BLOCKS`. Audio after that boundary is outside the recording and is not
+represented by another gap. When the next expected block equals `MAX_BLOCKS`,
+the helper emits no more `pcm` or `gap`; the supervisor finalizes the recording
+as `interrupted` with a capture-wide `format-limit` point event at that boundary.
+The main process independently rejects any frame whose contribution would exceed
+the cap. A frame is also rejected if it contains duplicate JSON keys, unknown
 fields, missing required fields, explicit `null`, or a value outside its stated
 closed set.
 
@@ -337,6 +347,7 @@ type GapReason =
   | 'source-gap'
   | 'late-data'
   | RecoverableReason;
+type SourceInterruptionReason = GapReason;
 
 interface ReadyPayload {
   type: 'ready';
@@ -406,6 +417,35 @@ type ErrorPayload =
       code: 'invalid-control' | 'internal';
       terminal: true;
     };
+
+type InterruptionPayload =
+  | {
+      type: 'interruption';
+      phase: 'opened';
+      id: UInt32;
+      channel: SourceChannel;
+      startBlock: BlockIndex;
+      reason: SourceInterruptionReason;
+    }
+  | {
+      type: 'interruption';
+      phase: 'closed';
+      id: UInt32;
+      channel: SourceChannel;
+      startBlock: BlockIndex;
+      endBlockExclusive: BlockIndex;
+      reason: SourceInterruptionReason;
+      recovered: boolean;
+    };
+
+interface GapPayload {
+  type: 'gap';
+  channel: 'capture';
+  startBlock: BlockIndex;
+  endBlockExclusive: BlockIndex;
+  reason: 'buffer-overflow';
+  recovered: true;
+}
 ```
 
 `ready` is emitted exactly once, is the first non-error semantic frame, and must
@@ -423,31 +463,41 @@ string, and permits no later semantic frame. The Swift and TypeScript
 implementations consume one shared corpus of valid and invalid version 1 frame
 fixtures so the schemas cannot drift independently.
 
-`interruption` is a closed tagged union. An opened event contains `phase:
-"opened"`, a session-unique unsigned `id`, `channel`, `startBlock`, and `reason`.
-A closed event repeats the same `id`, `channel`, `startBlock`, and `reason`, and
-adds `phase: "closed"`, `endBlockExclusive`, and `recovered`. Blocks are helper
-timeline block numbers, so the conservative half-open range maps safely to
-milliseconds by multiplying by 20. `channel` is `interviewer` or `you`;
-capture-wide output loss
-uses `gap` instead. Late data may emit an opened event immediately followed by
-its closed event without changing the source to `reconnecting`.
+`InterruptionPayload` IDs are UInt32 values unique within the session and are
+never reused, including after close. An open must be emitted immediately before
+the first affected `pcm`, with `startBlock` equal to the next persisted timeline
+block and less than `MAX_BLOCKS`. A helper-emitted close must match every field
+from its open and use `startBlock < endBlockExclusive ==` the next persisted
+timeline block. `recovered: true` means timestamped source coverage resumed at
+that exclusive boundary; `false` means the recording stopped while the source
+remained unavailable. Blocks are helper timeline block numbers, so the
+conservative half-open range maps safely to milliseconds by multiplying by 20.
+Capture-wide output loss uses `GapPayload` instead. Late data may emit an open
+immediately before one or more affected `pcm` blocks and close immediately after
+them without changing the source to `reconnecting`.
+
+`source-gap` and `late-data` close with `recovered: true` because the source is
+still connected after the bounded missing range. A `RecoverableReason` closes
+with `true` only when timestamped coverage resumes at `endBlockExclusive`; it
+closes with `false` only at orderly stop or local termination finalization.
 
 The main process permits at most one open interruption per channel, rejects an
-unknown or duplicate ID, requires the fields repeated by a close to match its
-open, and requires `startBlock <= endBlockExclusive <=` the next emitted timeline
-block. An open event cannot start after the next block to be emitted. Only a
-matched close is persisted. If the helper terminates with an open interruption,
-the main process closes it at the next expected timeline block with `recovered:
-false` before it adds the capture-wide terminal point event. Consequently every
-persisted channel interruption has a validated block range, reason, and recovery
-outcome even when the helper exits during recovery.
+unknown, reused, or duplicate ID, and enforces the ordering and equality
+invariants above. Interruption frames contribute no WAV blocks and may not move
+the persisted timeline. Only a matched close is persisted. If the helper
+terminates with an open interruption, the main process closes it locally at the
+next expected timeline block with `recovered: false` before it adds the
+capture-wide terminal point event. Consequently every persisted channel
+interruption has a validated block range, reason, and recovery outcome even when
+the helper exits during recovery.
 
-A `gap` payload contains `channel: "capture"`, `startBlock`,
-`endBlockExclusive`, `reason: "buffer-overflow"`, and `recovered: true`. It both
-instructs the main process to append the corresponding all-zero stereo blocks
-and supplies the complete capture-wide interruption record. Gap ranges must be
-contiguous with the protocol timeline and must not overlap PCM.
+For `GapPayload`, `startBlock` must equal the next persisted timeline block;
+`1 <= endBlockExclusive - startBlock <= 3,000`; and `endBlockExclusive <=
+MAX_BLOCKS`. The main process appends exactly that many all-zero stereo blocks,
+increments `gapBlocks` and the persisted timeline by that count, and persists
+the same capture-wide interruption range. A gap therefore cannot overlap PCM,
+skip a timeline block, use an empty/reversed range, or make `pcmBlocks +
+gapBlocks` exceed `MAX_BLOCKS`.
 
 Control input on stdin is versioned newline-delimited JSON capped at 1 KiB per
 line. The initial implementation supports only `stop`; reconnects are
@@ -1011,6 +1061,9 @@ Implementation follows focused TDD at each boundary.
   `connected-with-gap` without restarting a healthy input;
 - bound the non-realtime output queue, replace overflow spans with `gap` frames,
   and preserve total timeline duration;
+- count PCM and synthesized gap blocks against one RIFF cap; split a long gap
+  into bounded frames, clip its final frame exactly at `MAX_BLOCKS`, then emit
+  `stopped: format-limit` without another timeline frame;
 - emit matched interruption open/close frames with conservative channel block
   ranges, reasons, and recovery outcomes;
 - transition through callback stall, fast retries, periodic 10-second retries,
@@ -1027,9 +1080,17 @@ Implementation follows focused TDD at each boundary.
   primary window on `second-instance`;
 - reject missing, non-executable, wrong-architecture, and malformed helpers;
 - validate protocol magic, version, length, sequence, type, PCM block size, gap
-  bounds, interruption lifecycle invariants, all closed payload schemas, exact
-  counter relationships, unknown fields, indices above 3,355,443, ranges beyond
-  the emitted timeline, and the 64 KiB parser limit;
+  bounds, closed `GapPayload` and `InterruptionPayload` schemas, UInt32
+  interruption ID uniqueness, interruption lifecycle invariants, exact counter
+  relationships, unknown fields, indices above 3,355,443, ranges beyond the
+  emitted timeline, and the 64 KiB parser limit;
+- with `pcmBlocks + gapBlocks == MAX_BLOCKS - 2`, accept a two-block gap ending
+  at the boundary, synthesize exactly two zero blocks, and reject a three-block
+  gap without writing either block; reject empty, reversed, noncontiguous, and
+  greater-than-3,000-block gaps;
+- reject mismatched interruption closes, reused/overflowing IDs, opens away from
+  the next persisted block, closes away from the next persisted boundary, and
+  reason/recovery combinations that violate the closed contract;
 - serialize start, cancel, stop, and terminal finalization and prevent concurrent
   sessions;
 - expose `Starting…`, allow Cancel, enforce the 60-second initialization
