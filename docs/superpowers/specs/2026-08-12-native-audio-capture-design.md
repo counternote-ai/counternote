@@ -58,6 +58,9 @@ later review. A capture failure must not remain hidden until transcription.
   the saved recording.
 - A helper or single-channel failure leaves a structurally valid, finalized WAV
   containing all PCM delivered before and during the surviving-channel period.
+- Failed partial audio is either recoverable through an explicit local UI or can
+  be moved to Trash by the user; it is never retained without visibility or
+  deleted automatically.
 - Existing recordings remain readable without migration.
 
 ## Non-goals
@@ -100,9 +103,10 @@ The renderer owns the visible Record and Stop actions and presents capture
 health. It does not receive raw PCM and no longer creates `AudioContext`,
 `AudioWorkletNode`, display-media, or microphone streams.
 
-The existing context-isolated preload bridge remains narrow. It carries recording
-commands and typed status snapshots only; it does not expose child-process,
-filesystem, ScreenCaptureKit, or AVAudioEngine APIs.
+The existing context-isolated preload bridge remains narrow. It carries
+recording commands, typed status snapshots, typed recovery items, and recovery
+actions addressed by opaque item ID only; it does not expose child-process,
+filesystem path, ScreenCaptureKit, or AVAudioEngine APIs.
 
 ### Electron main process
 
@@ -115,7 +119,9 @@ The main process owns a `NativeCaptureSession` supervisor. It:
 5. writes PCM through the existing WAV persistence boundary;
 6. persists confirmed interruptions;
 7. broadcasts bounded health snapshots to the renderer;
-8. stops the helper and finalizes the WAV header.
+8. stops the helper and finalizes the WAV header;
+9. enumerates, recovers, or moves failed partial recordings to Trash through a
+   narrow recovery service.
 
 Only one capture session may exist at a time. Start, stop, helper exit, and
 window shutdown converge on one idempotent finalization path. Session state is
@@ -204,11 +210,33 @@ Both inputs are placed on a shared sequence of 20 ms host-time windows:
 4. Insert zero only for the missing source portion of a window.
 5. Interleave the completed left and right windows.
 
+Coverage accounting is independent of failure reconstruction. For each source
+and emitted 20 ms block, the mixer records whether converted source frames cover
+the complete target window. If one or more target frames remain uncovered when
+the window is emitted, the helper zero-fills only those frames and emits a
+channel interruption covering that entire affected block. Contiguous affected
+blocks with the same reason may be coalesced; they may never be omitted from
+metadata. A valid callback whose samples are all zero still covers its windows
+and does not create an interruption. The helper emits the opened interruption
+frame before the first affected `pcm` block and emits its close after the last
+affected block but before the next unaffected `pcm` block. If the reason changes
+while a channel interruption is open, it closes the old range and opens the new
+reason at that block boundary.
+
+A timestamp hole shorter than 200 ms is a `source-gap`: it changes the channel
+to `connected-with-gap` but does not rebuild an otherwise healthy input. The
+200 ms bound controls jitter expiry and whether a timestamp discontinuity
+triggers source reconstruction; it is never a threshold for whether zero-filled
+audio is reported. Thus a single affected 20 ms block prevents `complete`
+status just as a longer gap does.
+
 This makes drift correction timestamp-driven. A delayed source cannot move the
 other channel or change the duration of an already emitted block. The helper
 maintains a bounded jitter buffer of 200 ms; data arriving later than that window
 is reported as a `late-data` source interruption rather than rewriting PCM
-already persisted.
+already persisted. The already-recorded uncovered blocks and the late-data
+interruption are one metadata range, not duplicate interruptions for the same
+missing coverage.
 
 Within one native-input generation, source timestamps must be strictly
 monotonic. The expected start of the next buffer is the prior start plus the
@@ -229,7 +257,8 @@ unframed PCM. Each frame begins with this 16-byte header:
 - one-byte frame type;
 - two reserved zero bytes;
 - four-byte unsigned little-endian payload length;
-- four-byte unsigned little-endian, monotonically increasing sequence number.
+- four-byte unsigned little-endian sequence number, starting at zero and
+  increasing by exactly one without wraparound.
 
 `pcm` payloads are exactly 1,280 bytes: 320 frames × two channels × two bytes.
 The other frame types use UTF-8 JSON payloads capped at 4 KiB and validated
@@ -237,7 +266,8 @@ against closed TypeScript interfaces before use.
 
 Frame types are:
 
-- `ready`: validated capture format and initial channel states;
+- `ready`: validated capture format and proof that both sources delivered an
+  initial timestamped callback;
 - `pcm`: exactly one 20 ms interleaved stereo block;
 - `gap`: an exact capture-wide range of between 1 and 3,000 consecutive 20 ms
   blocks that output overflow prevented the helper from delivering; longer gaps
@@ -246,6 +276,113 @@ Frame types are:
 - `state`: typed channel transition or recent audio-presence summary;
 - `stopped`: final helper counters;
 - `error`: typed, safe failure information.
+
+The protocol uses these conceptual numeric aliases in both Swift validators and
+TypeScript trust-boundary validators. JSON numbers for these fields must be
+finite integers, not strings: `UInt32` is 0 through 4,294,967,295 and
+`BlockIndex` is 0 through JavaScript `Number.MAX_SAFE_INTEGER`. A frame is
+rejected if it contains duplicate JSON keys, unknown fields, missing required
+fields, explicit `null`, or a value outside its stated closed set.
+
+The previously named frame payloads have these normative version 1 schemas:
+
+```ts
+type UInt32 = number; // validated integer range above
+type BlockIndex = number; // validated safe-integer range above
+type SourceChannel = 'interviewer' | 'you';
+type RecoverableReason =
+  | 'stream-error'
+  | 'callback-stall'
+  | 'route-invalidated'
+  | 'timestamp-invalid'
+  | 'timestamp-discontinuity';
+type GapReason =
+  | 'source-gap'
+  | 'late-data'
+  | RecoverableReason;
+
+interface ReadyPayload {
+  type: 'ready';
+  sampleRateHz: 16000;
+  framesPerBlock: 320;
+  encoding: 's16le';
+  channelOrder: ['interviewer', 'you'];
+  firstBlock: 0;
+}
+
+type StatePayload =
+  | {
+      type: 'state';
+      channel: SourceChannel;
+      status: 'connected';
+      effectiveBlock: BlockIndex;
+    }
+  | {
+      type: 'state';
+      channel: SourceChannel;
+      status: 'connected-with-gap';
+      effectiveBlock: BlockIndex;
+      reason: GapReason;
+    }
+  | {
+      type: 'state';
+      channel: SourceChannel;
+      status: 'no-audio-detected';
+      effectiveBlock: BlockIndex;
+      silentBlocks: BlockIndex;
+    }
+  | {
+      type: 'state';
+      channel: SourceChannel;
+      status: 'reconnecting' | 'disconnected';
+      effectiveBlock: BlockIndex;
+      reason: RecoverableReason;
+      attempt: UInt32;
+    };
+
+interface StoppedPayload {
+  type: 'stopped';
+  reason: 'stop';
+  finalBlockExclusive: BlockIndex;
+  pcmBlocks: BlockIndex;
+  gapBlocks: BlockIndex;
+  openInterruptionIds: [];
+}
+
+type ErrorPayload =
+  | {
+      type: 'error';
+      phase: 'initialization';
+      code: 'source-start-failed' | 'source-timestamp-unavailable';
+      channel: SourceChannel;
+      terminal: true;
+    }
+  | {
+      type: 'error';
+      phase: 'initialization';
+      code: 'unsupported-format' | 'internal';
+      terminal: true;
+    }
+  | {
+      type: 'error';
+      phase: 'runtime';
+      code: 'invalid-control' | 'internal';
+      terminal: true;
+    };
+```
+
+`ready` is emitted exactly once, is the first non-error semantic frame, and must
+precede `pcm`, `gap`, `interruption`, `state`, or `stopped`. For
+`no-audio-detected`, `silentBlocks >= 1500`. Every state `effectiveBlock` is no
+greater than the next expected protocol timeline block and is nondecreasing for
+that channel. `reconnecting.attempt >= 1`; `disconnected.attempt` is the number
+of completed attempts. `stopped` is emitted at most once;
+`openInterruptionIds` must be empty, and `finalBlockExclusive` must equal
+`pcmBlocks + gapBlocks` and the end of the consumed PCM/gap timeline. Every
+`error` is terminal, never contains a native message, errno, path, or arbitrary
+string, and permits no later semantic frame. The Swift and TypeScript
+implementations consume one shared corpus of valid and invalid version 1 frame
+fixtures so the schemas cannot drift independently.
 
 `interruption` is a closed tagged union. An opened event contains `phase:
 "opened"`, a session-unique unsigned `id`, `channel`, `startBlock`, and `reason`.
@@ -276,11 +413,30 @@ line. The initial implementation supports only `stop`; reconnects are
 helper-owned state transitions rather than arbitrary renderer commands.
 
 The main process rejects invalid magic, unsupported versions, oversized
-payloads, sequence regressions, PCM frames of the wrong length, and unknown
-state values. A protocol violation is treated as helper failure and enters the
-same preservation and finalization path as an unexpected helper exit.
+payloads, any sequence value other than the exact expected successor, PCM frames
+of the wrong length, and any payload that violates its closed schema or
+cross-frame invariant. A protocol violation is treated as helper failure and
+enters the same preservation and finalization path as an unexpected helper exit.
 
 ## Buffering, Backpressure, and Persistence
+
+The main process spawns the helper with stdin, stdout, and stderr as separate
+pipes and attaches stderr `data` and `error` listeners synchronously before it
+waits for `ready`. stderr is drained continuously even while stdout is paused
+for WAV backpressure. It is never inherited by the renderer, left unread, or
+combined with protocol bytes.
+
+Helper diagnostics are newline-delimited JSON objects of at most 1 KiB with
+exactly two fields. `level` is `debug`, `info`, `warn`, or `error`; `code` is
+`helper-started`, `source-restart-attempt`, `source-restart-failed`, or
+`helper-stopping`. They contain no free-form message or value fields. The main
+process retains at most one partial line. If a line exceeds 1 KiB, it discards
+bytes through the next newline while continuing to drain the pipe. Malformed,
+oversized, or unknown diagnostics are dropped. At most 20 valid diagnostics per
+minute are sent to the main-process logger, followed by one count of suppressed
+lines; raw stderr and a raw tail are never retained. A stderr read error disables
+diagnostics but does not stop capture. This keeps memory bounded and prevents a
+chatty helper from filling its pipe and blocking audio output.
 
 Native realtime callback threads never write to stdout, wait for Electron, or
 perform file I/O. They copy bounded source data into the helper's serial mixer.
@@ -320,9 +476,10 @@ the helper to stop, terminates it after the normal five-second grace period, and
 attempts best-effort closure without reporting success. It atomically writes
 `capture.json` as `failed` when storage remains writable; failure to update the
 metadata does not change the in-memory failed outcome. Any partial files remain
-in the hidden recovery location for possible manual recovery but are not exposed
-as saved recordings. The renderer leaves recording mode and states what failed,
-what was not published, and the next safe action when the category is known.
+in the implementation-owned recovery location and are available only through
+the explicit failed-recording recovery flow; they are not exposed as saved
+recordings. The renderer leaves recording mode and states what failed, what was
+not published, and the next safe action when the category is known.
 
 ## Recording Lifecycle
 
@@ -397,6 +554,38 @@ This ordering follows Node's child-process contract: `exit` can precede the end
 of stdio, while `close` is emitted only after the process has ended and its stdio
 streams have closed.
 
+### Quit choreography
+
+A main-process `QuitCoordinator` installs a synchronous `before-quit` listener
+before any window or tray can request exit. Tray Quit, Cmd-Q, Dock Quit, and the
+non-macOS `window-all-closed` path all call `app.quit()` and converge on this
+listener; no recording path calls `app.exit()`.
+
+The coordinator owns `quitRequested`, `allowQuit`, and one shared cleanup
+promise. On `before-quit`:
+
+1. If `allowQuit` is true, it returns and Electron continues terminating.
+2. If the capture supervisor is idle, has no finalization in flight, and the
+   recovery service has no mutation in flight, it returns without preventing the
+   event.
+3. Otherwise it calls `event.preventDefault()` synchronously, sets
+   `quitRequested`, disables new starts and recovery actions, and obtains the
+   existing start-cleanup, stop/finalization, or recovery-mutation promise.
+   Repeated quit requests remain prevented and do not start a second cleanup.
+4. The renderer and tray show `Finishing recording before quitting…`; the tray
+   Quit item is disabled, while no success claim is shown.
+5. After the bounded cleanup promise settles, including publication or movement
+   to recovery after failure, the coordinator sets `allowQuit` and calls
+   `app.quit()` exactly once. The second `before-quit` pass is allowed through.
+
+Quit never bypasses the helper grace period, pipe-close deadline, parser drain,
+WAV finalization, metadata write, or publication/recovery decision. A
+persistence failure still permits exit after its failed outcome and recovery
+artifact are handled; it does not leave the application open indefinitely.
+Forced process termination, machine power loss, and operating-system shutdown
+paths that do not deliver `before-quit` remain outside the guarantee stated in
+Non-goals.
+
 ### Publication and library visibility
 
 Provisional data is never written directly to a public recording directory.
@@ -409,10 +598,9 @@ overwrite an existing recording.
 If persistence or publication fails after useful PCM exists, the supervisor
 best-effort writes `status: "failed"` and moves the staging directory to
 `.recovery/<session-uuid>`. If even that move fails, it leaves the data under
-`.in-progress`. Both locations are hidden implementation-owned recovery areas,
-are excluded from normal library and transcription flows, and are not deleted
-automatically. Start cancellation and initialization failure with only a WAV
-header remove their staging data.
+`.in-progress`. Both locations remain excluded from normal library and
+transcription flows. Start cancellation and initialization failure with no PCM
+remove their staging data.
 
 The recordings library enumerates only direct child directories whose names
 match the recording ID grammar. A new-format item is returned only when
@@ -422,6 +610,57 @@ or malformed metadata are excluded with a bounded diagnostic. For backward
 compatibility, a matching directory with a regular `audio.wav` and no
 `capture.json` is treated as legacy. Hidden staging/recovery directories and
 symlinked audio files are never library items.
+
+### Failed-recording recovery
+
+Failed partial audio is local user data. It does not expire and is never deleted
+automatically. The retention policy is explicit: Interview Copilot retains it
+until the user successfully recovers it or moves it to the macOS Trash. This
+avoids silently destroying a potentially valuable interview while giving the
+user control over storage.
+
+On startup and after any failed finalization, a main-process `RecoveryService`
+enumerates `.recovery` and inactive `.in-progress` session directories. The
+currently active session UUID is always excluded. An inactive in-progress item
+is best-effort normalized into `.recovery`; failure to move it does not hide it
+from the recovery service. The service rejects symlinks and paths outside the
+recordings root, and exposes only a narrow typed item to the preload bridge:
+
+```ts
+interface RecordingRecoveryItem {
+  id: string; // validated session UUID, never a path
+  createdAt: string; // ISO 8601
+  bytes: number; // non-negative safe integer
+  state: 'recoverable' | 'not-recoverable';
+}
+```
+
+The recordings home shows a compact `Recording recovery` notice whenever at
+least one item exists, including item count and total local storage. Its review
+view lists date, size, and either `Partial audio can be recovered` or `Partial
+audio could not be repaired`. This is an inline recordings-home state rather
+than a modal or a normal recording card.
+
+`Recover recording` is available only for `recoverable` items. The recovery
+service exclusively locks the item, verifies a regular `audio.wav`, derives PCM
+length after the writer's fixed 44-byte provisional header rather than trusting
+its stale length fields, rejects short, misaligned, or empty stereo PCM, repairs
+the WAV into a new temporary file, and validates the result through the normal
+WAV reader. It then writes
+`capture.json` as `interrupted` with the original known interruptions plus a
+`persistence-error` point event when one is not already present, and atomically
+publishes the directory under a collision-checked recording ID. The item appears
+in the library only after that rename succeeds. Recovery never relabels the item
+`complete` and never promises that the ending or both channels are intact.
+
+Every item also offers `Move to Trash`. A confirmation reads: `Move this partial
+recording to Trash? It will no longer appear in Recording recovery. You can
+restore it from Trash until Trash is emptied.` The main process revalidates and
+locks the item immediately before using the platform Trash API. Cancellation or
+Trash failure leaves the item untouched and visible. Recover and Trash operations
+for one item are serialized, and a global publication lock prevents collision
+with normal capture publication. Renderer requests contain an item ID only and
+cannot supply a filesystem path.
 
 ## Health and Recovery
 
@@ -528,8 +767,9 @@ recording; the library must not present that item as saved audio.
 
 Allowed interruption channels are `interviewer`, `you`, and `capture`. Allowed
 reasons are `stream-error`, `callback-stall`, `route-invalidated`,
-`timestamp-invalid`, `timestamp-discontinuity`, `late-data`, `buffer-overflow`,
-`helper-exit`, `protocol-error`, `persistence-error`, and `stop-timeout`.
+`timestamp-invalid`, `timestamp-discontinuity`, `source-gap`, `late-data`,
+`buffer-overflow`, `helper-exit`, `protocol-error`, `persistence-error`, and
+`stop-timeout`.
 Initialization timeout and start cancellation occur before time zero, remove
 their provisional files, and therefore do not create interruption entries.
 `late-data` is channel-specific; `buffer-overflow` is capture-wide because both
@@ -593,9 +833,17 @@ identified a capacity condition:
   saved. No recording was added. Try again. If it happens again, restart
   Interview Copilot.`
 
-The UI uses the safe category, not a raw errno or helper message. If a partial
-file remains in the hidden recovery area, the app does not imply that the user
-can open it from the recordings library.
+The UI uses the safe category, not a raw errno or helper message. When useful
+partial PCM was retained, the error appends: `Partial audio is available under
+Recording recovery.` Otherwise it appends: `No usable audio was retained.` The
+partial item is not described as saved or available in the normal recordings
+library.
+
+Successful recovery reads: `Partial recording recovered. The ending or one
+audio channel may be incomplete.` The published card keeps the `Audio
+interrupted` badge and offers transcription under the existing rules. Successful
+Trash movement removes the recovery item and reads: `Partial recording moved to
+Trash.`
 
 ## Permissions and Packaging
 
@@ -665,7 +913,10 @@ Implementation follows focused TDD at each boundary.
 - reject a missing ScreenCaptureKit synchronization clock, invalid PTS, missing
   microphone anchor, timestamp regression, and timestamp discontinuity;
 - correct drift without moving the other channel;
-- trim overlap and fill source-specific gaps with zero;
+- trim overlap, fill source-specific gaps with zero, and emit an interruption for
+  every partially or fully uncovered 20 ms block;
+- prove 20 ms, 40 ms, and 180 ms timestamp holes prevent `complete` without
+  rebuilding the source, while a covered all-zero callback does not;
 - bound the jitter buffer, report exact late-data ranges, and enter
   `connected-with-gap` without restarting a healthy input;
 - bound the non-realtime output queue, replace overflow spans with `gap` frames,
@@ -674,7 +925,8 @@ Implementation follows focused TDD at each boundary.
   reasons, and recovery outcomes;
 - transition through callback stall, fast retries, periodic 10-second retries,
   route-triggered retry, recovery, and disconnection;
-- frame protocol messages deterministically and reject invalid control input;
+- frame protocol messages deterministically, run the shared valid/invalid
+  payload fixture corpus, and reject invalid control input;
 - drain complete blocks and report final counters on Stop.
 
 ### TypeScript tests
@@ -682,7 +934,9 @@ Implementation follows focused TDD at each boundary.
 - resolve development and packaged helper paths safely;
 - reject missing, non-executable, wrong-architecture, and malformed helpers;
 - validate protocol magic, version, length, sequence, type, PCM block size, gap
-  bounds, interruption lifecycle invariants, and the 64 KiB parser limit;
+  bounds, interruption lifecycle invariants, all closed payload schemas, exact
+  counter relationships, unknown fields, unsafe integers, and the 64 KiB parser
+  limit;
 - serialize start, cancel, stop, and terminal finalization and prevent concurrent
   sessions;
 - expose `Starting…`, allow Cancel, enforce the 60-second initialization
@@ -694,6 +948,14 @@ Implementation follows focused TDD at each boundary.
   header update in that order;
 - reject a partial protocol frame at EOF and close any still-open source
   interruption as unrecovered after unexpected helper termination;
+- synchronously prevent `before-quit` during starting, recording, stopping, and
+  failed finalization; reuse one cleanup promise across repeated Quit requests;
+  call `app.quit()` once after cleanup and allow the second event through;
+- route tray, Cmd-Q, Dock, and `window-all-closed` quit requests through the same
+  coordinator and prohibit `app.exit()` from bypassing it;
+- continuously drain more than one pipe capacity of valid, malformed, and
+  oversized stderr while stdout PCM continues; verify bounded memory, rate
+  limiting, sanitization, and no raw-tail retention;
 - finalize WAV and metadata after normal Stop, helper exit, protocol failure,
   single-channel failure, late data, output overflow, and stop timeout;
 - inject open, disk-full, write, stream, flush, header-update, and close failures
@@ -701,12 +963,21 @@ Implementation follows focused TDD at each boundary.
 - stage provisional files outside the public ID namespace, atomically publish
   complete/interrupted recordings, and exclude provisional, failed, malformed,
   hidden, and symlinked items while retaining legacy recordings;
+- enumerate failed and inactive provisional recovery items without exposing
+  paths; exclude the active session and retain items across restart until the
+  user acts;
+- recover aligned partial PCM through a repaired temporary WAV and atomic
+  interrupted publication; reject empty, misaligned, symlinked, and escaping
+  artifacts without modifying them;
+- confirm Move to Trash, preserve the item on cancellation or platform failure,
+  and serialize recovery, Trash, and capture operations;
 - map capacity, access, and generic persistence failures to distinct safe copy;
 - expose typed renderer status without raw native details;
 - read legacy recordings without `capture.json`;
 - preserve transcription for interrupted recordings;
 - render starting, cancellation, all channel health, terminal helper exit,
-  persistence failure, and saved interruption states accessibly.
+  persistence failure, recovery notice/list, confirmation, recovery outcome,
+  Trash failure, and saved interruption states accessibly.
 
 ### Integration and packaged verification
 
@@ -722,7 +993,7 @@ Implementation follows focused TDD at each boundary.
   packaged path, and included in packaging checks;
 - inspect the 400 x 600 Electron surface for starting, connected,
   connected-with-gap, silent, reconnecting, disconnected, terminal failure,
-  recovered, and saved-interruption states;
+  recovered, failed-recording recovery, and saved-interruption states;
 - verify keyboard order, accessible names, Stop availability, and long recording
   titles in each changed state;
 - run a signed packaged recording for 60 minutes while muting and unmuting the
@@ -734,7 +1005,12 @@ Implementation follows focused TDD at each boundary.
   surviving-channel continuity, recovery metadata, and truthful UI state;
 - throttle stdout and inject a full-disk persistence failure in a disposable
   recording directory, then verify bounded memory, zero-filled overflow ranges,
-  automatic terminal cleanup, and the absence of saved-recording claims.
+  automatic terminal cleanup, the absence of saved-recording claims, and the
+  explicit recovery/Trash flow after restart;
+- flood helper stderr beyond operating-system pipe capacity during a dual-channel
+  fixture and confirm PCM continuity and bounded main-process diagnostics;
+- request Quit from the tray during active capture and confirm the process stays
+  alive until WAV publication or recovery handling completes.
 
 Real ScreenCaptureKit, TCC, signing, and 60-minute audio behavior cannot be
 claimed from mocks or an unsigned package. If credential-gated verification is
@@ -757,6 +1033,8 @@ unverified rather than calling the feature production-ready.
   `AudioHardwareCreateProcessTap delivers all-zero buffers while system audio is audible`.
 - [Electron `setDisplayMediaRequestHandler` documentation](https://www.electronjs.org/docs/latest/api/session#sessetdisplaymediarequesthandlerhandler-opts)
 - [Electron issue #47490: use ScreenCaptureKit for macOS loopback](https://github.com/electron/electron/issues/47490)
+- [Electron app lifecycle documentation](https://www.electronjs.org/docs/latest/api/app#event-before-quit)
+  defines synchronous `before-quit` cancellation with `preventDefault()`.
 - [Node.js child process events](https://nodejs.org/api/child_process.html#event-close)
   defines `close` after process termination and stdio closure and warns that
   stdio may still be open when `exit` fires.
