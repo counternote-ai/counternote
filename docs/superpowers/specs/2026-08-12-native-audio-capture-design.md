@@ -56,8 +56,8 @@ later review. A capture failure must not remain hidden until transcription.
   system audio from the recording.
 - A confirmed stream failure is visible during recording and remains visible on
   the saved recording.
-- A helper or single-channel failure leaves a finalized, playable WAV containing
-  all PCM delivered before and during the surviving-channel period.
+- A helper or single-channel failure leaves a structurally valid, finalized WAV
+  containing all PCM delivered before and during the surviving-channel period.
 - Existing recordings remain readable without migration.
 
 ## Non-goals
@@ -69,7 +69,7 @@ later review. A capture failure must not remain hidden until transcription.
 - Installing BlackHole, Loopback, or another virtual audio driver.
 - Eliminating legitimate acoustic leakage from speakers into the microphone.
 - Automatically treating sample-level silence as proof of capture failure.
-- Changing playback, transcription providers, export formats, or the existing
+- Changing transcription providers, export formats, or the existing
   `audio.wav` channel convention.
 - Crash-proofing an abrupt loss of the Electron main process or machine power.
   This design guarantees finalization for helper and input failures that the
@@ -169,8 +169,9 @@ converted independently with AVAudioConverter to:
 - fixed 20 ms blocks, or 320 frames per channel.
 
 The helper emits stereo blocks with system audio on channel 0/left and microphone
-audio on channel 1/right. This preserves the existing WAV, playback,
-channel-splitting, and transcription contracts.
+audio on channel 1/right. This preserves the existing WAV, channel-splitting,
+and transcription contracts. In-app audio playback is not part of the shipped
+product or this design.
 
 ## Synchronization
 
@@ -213,9 +214,10 @@ Within one native-input generation, source timestamps must be strictly
 monotonic. The expected start of the next buffer is the prior start plus the
 prior buffer duration. A timestamp that regresses, is nonnumeric, or differs
 from that expected start by more than the 200 ms jitter bound is a
-`timestamp-discontinuity`. The helper closes the interruption range at the last
-valid source sample, zero-fills the affected channel, rebuilds that native
-input, and establishes a new same-source anchor before accepting more samples.
+`timestamp-discontinuity`. The helper opens the interruption at the first 20 ms
+block not covered by the last valid source sample, zero-fills the affected
+channel, rebuilds that native input, and closes the interruption only after it
+establishes a new same-source anchor and accepts timestamped samples again.
 
 ## Helper Protocol
 
@@ -237,12 +239,37 @@ Frame types are:
 
 - `ready`: validated capture format and initial channel states;
 - `pcm`: exactly one 20 ms interleaved stereo block;
-- `gap`: between 1 and 3,000 consecutive 20 ms blocks that the helper could not
-  deliver, including the closed interruption reason; longer gaps use consecutive
-  frames;
+- `gap`: an exact capture-wide range of between 1 and 3,000 consecutive 20 ms
+  blocks that output overflow prevented the helper from delivering; longer gaps
+  use consecutive frames;
+- `interruption`: a channel-specific interruption lifecycle event;
 - `state`: typed channel transition or recent audio-presence summary;
 - `stopped`: final helper counters;
 - `error`: typed, safe failure information.
+
+`interruption` is a closed tagged union. An opened event contains `phase:
+"opened"`, a session-unique unsigned `id`, `channel`, `startBlock`, and `reason`.
+A closed event repeats the same `id`, `channel`, `startBlock`, and `reason`, and
+adds `phase: "closed"`, `endBlockExclusive`, and `recovered`. Blocks are helper
+timeline block numbers, so the half-open range maps exactly to milliseconds by
+multiplying by 20. `channel` is `interviewer` or `you`; capture-wide output loss
+uses `gap` instead. Late data may emit an opened event immediately followed by
+its closed event without changing the source to `reconnecting`.
+
+The main process permits at most one open interruption per channel, rejects an
+unknown or duplicate ID, requires the fields repeated by a close to match its
+open, and requires `endBlockExclusive >= startBlock`. Only a matched close is
+persisted. If the helper terminates with an open interruption, the main process
+closes it at the next expected timeline block with `recovered: false` before it
+adds the capture-wide terminal point event. Consequently every persisted
+channel interruption has an exact range, reason, and recovery outcome even when
+the helper exits during recovery.
+
+A `gap` payload contains `channel: "capture"`, `startBlock`,
+`endBlockExclusive`, `reason: "buffer-overflow"`, and `recovered: true`. It both
+instructs the main process to append the corresponding all-zero stereo blocks
+and supplies the complete capture-wide interruption record. Gap ranges must be
+contiguous with the protocol timeline and must not overlap PCM.
 
 Control input on stdin is versioned newline-delimited JSON capped at 1 KiB per
 line. The initial implementation supports only `stop`; reconnects are
@@ -285,15 +312,17 @@ construction through final close, so an asynchronous error cannot become an
 unhandled event or a false success.
 
 A WAV open, write, stream, flush, header-update, or close error is a terminal
-`persistence-error`. The main process immediately pauses protocol input, asks
+`persistence-error`. The main process retains an internal safe failure category
+of `capacity`, `access`, or `io-finalization` for accurate UI recovery guidance;
+raw error details never cross the preload bridge. The main process immediately
+pauses protocol input, asks
 the helper to stop, terminates it after the normal five-second grace period, and
 attempts best-effort closure without reporting success. It atomically writes
 `capture.json` as `failed` when storage remains writable; failure to update the
 metadata does not change the in-memory failed outcome. Any partial files remain
-on disk for possible manual recovery but are not exposed as playable or
-transcribable saved audio. The renderer leaves recording mode and states that
-recording stopped because the file could not be saved. Disk-full and injected
-stream errors follow this same path.
+in the hidden recovery location for possible manual recovery but are not exposed
+as saved recordings. The renderer leaves recording mode and states what failed,
+what was not published, and the next safe action when the category is known.
 
 ## Recording Lifecycle
 
@@ -304,8 +333,11 @@ stream errors follow this same path.
 2. The renderer enters `Starting…`, exposes `Cancel`, and keeps the current
    recordings library available. It does not show `Recording` or the tray's
    active state yet.
-3. The main process creates the recording directory, opens provisional WAV
-   persistence, and writes provisional `capture.json` metadata.
+3. The main process creates `.in-progress/<session-uuid>` beneath the recordings
+   root, opens provisional WAV persistence there, and atomically writes
+   provisional `capture.json` metadata. The staging directory is on the same
+   filesystem as its eventual recording directory and never matches a public
+   recording ID.
 4. The main process resolves and spawns the helper and starts a 60-second
    initialization deadline.
 5. The helper starts ScreenCaptureKit and AVAudioEngine.
@@ -320,8 +352,8 @@ stream errors follow this same path.
 Cancel during `starting`, expiry of the 60-second deadline, helper exit, window
 shutdown, and any initialization failure all invoke the same idempotent start
 cleanup. Cleanup sends `stop` when possible, terminates the helper after five
-seconds, closes provisional persistence, removes the header-only recording from
-the library, and returns the UI to `idle`. PCM before `ready` is a protocol
+seconds, closes provisional persistence, removes the header-only staging
+directory, and returns the UI to `idle`. PCM before `ready` is a protocol
 violation and is never written. A late `ready`, `pcm`, or exit event after
 cleanup starts is ignored except for resource closure.
 
@@ -330,14 +362,66 @@ cleanup starts is ignored except for resource closure.
 1. Stop remains available from the control panel and tray.
 2. The main process sends the helper a `stop` control message.
 3. The helper stops accepting new callbacks, drains complete timeline windows,
-   emits `stopped`, and exits.
-4. The main process closes the WAV writer, updates the WAV header, finalizes
-   `capture.json`, and refreshes the recordings library.
+   closes any open interruption, emits `stopped`, closes stdout, and exits.
+4. The main process records `exit` only as process status. It does not use that
+   event as a finalization signal because child stdio may still be open.
+5. The main process waits for the child's `close` event, stdout EOF, dispatch of
+   every complete parsed frame, and an empty parser buffer. A partial frame at
+   EOF is a protocol failure, never a clean stop.
+6. After parser drain, the main process waits for every accepted WAV write and
+   backpressure `drain` to settle, then ends the stream and waits for `finish`.
+   It updates the WAV header only after those writes have settled.
+7. The main process atomically replaces provisional `capture.json` with the
+   terminal metadata and publishes a `complete` or `interrupted` recording by
+   atomically renaming the staging directory to its timestamp recording ID.
+   Only after rename succeeds does it refresh the recordings library and make a
+   saved claim.
 
 Stop has a five-second helper grace period. After that, the main process
 terminates the helper, finalizes all received PCM, and records a helper timeout.
 Repeated Stop, Cancel, helper-exit, and window-shutdown requests share the same
 in-flight finalization promise and cannot close the WAV twice.
+
+Clean finalization therefore requires, in order: `stopped`; child `close` and
+stdout EOF; parser drain; settled WAV writes; stream `finish`; header update;
+terminal metadata; and publication rename. An unexpected exit, missing
+`stopped`, non-empty parser tail, timeout, or forced pipe closure enters the same
+barrier but produces `interrupted` if the accepted PCM can still be finalized.
+If `close` or EOF does not arrive within five seconds after termination, the
+supervisor destroys its pipe, rejects any partial frame, marks the recording
+interrupted, and continues the barrier using only fully validated frames. A WAV
+or publication failure produces `failed` and never exposes the staging directory
+as a saved recording.
+
+This ordering follows Node's child-process contract: `exit` can precede the end
+of stdio, while `close` is emitted only after the process has ended and its stdio
+streams have closed.
+
+### Publication and library visibility
+
+Provisional data is never written directly to a public recording directory.
+Completed and interrupted recordings are published only by the same-filesystem
+directory rename described above. The target ID is selected and collision-
+checked before capture, then checked again immediately before rename. A
+collision or rename failure is terminal `persistence-error`, not permission to
+overwrite an existing recording.
+
+If persistence or publication fails after useful PCM exists, the supervisor
+best-effort writes `status: "failed"` and moves the staging directory to
+`.recovery/<session-uuid>`. If even that move fails, it leaves the data under
+`.in-progress`. Both locations are hidden implementation-owned recovery areas,
+are excluded from normal library and transcription flows, and are not deleted
+automatically. Start cancellation and initialization failure with only a WAV
+header remove their staging data.
+
+The recordings library enumerates only direct child directories whose names
+match the recording ID grammar. A new-format item is returned only when
+`audio.wav` is a regular file, `capture.json` parses and validates, and its status
+is `complete` or `interrupted`. Directories with provisional, failed, unknown,
+or malformed metadata are excluded with a bounded diagnostic. For backward
+compatibility, a matching directory with a regular `audio.wav` and no
+`capture.json` is treated as legacy. Hidden staging/recovery directories and
+symlinked audio files are never library items.
 
 ## Health and Recovery
 
@@ -372,8 +456,18 @@ a terminal helper failure, the helper:
 3. tears down and recreates that native input;
 4. retries after 500 ms, 1 second, and 2 seconds;
 5. marks the interruption recovered when timestamped callbacks resume;
-6. otherwise leaves the channel `disconnected` while the surviving channel
-   continues.
+6. after the fast retries are exhausted, leaves the channel `disconnected` and
+   retries every 10 seconds until it recovers or recording stops; a relevant
+   macOS route-change notification triggers an immediate attempt without
+   resetting or multiplying the periodic retry loop.
+
+The UI reads `Disconnected — retrying automatically` between low-frequency
+attempts and `Reconnecting` only while an attempt is active. The surviving
+channel continues throughout. Recovery closes the original interruption with
+`recovered: true`; stopping while still disconnected closes it at the final
+timeline block with `recovered: false`. The implementation does not stop trying
+after the initial approximately 3.5-second fast-retry window and does not require
+a renderer-owned reconnect command.
 
 Late source data that falls outside the jitter window does not rebuild an
 otherwise healthy input. The helper emits the exact affected `late-data` range,
@@ -424,11 +518,13 @@ Each new recording directory contains a local `capture.json` alongside
 }
 ```
 
-Allowed recording statuses are `complete`, `interrupted`, and `failed`.
+Allowed recording statuses are `provisional`, `complete`, `interrupted`, and
+`failed`. `provisional` is valid only inside `.in-progress` and is never a
+library item.
 `complete` means WAV finalization succeeded with no confirmed interruption.
 `interrupted` means WAV finalization succeeded but at least one confirmed gap or
-helper failure occurred. `failed` means the application cannot claim a playable
-finalized recording; the library must not present that item as saved audio.
+helper failure occurred. `failed` means the application cannot claim a finalized
+recording; the library must not present that item as saved audio.
 
 Allowed interruption channels are `interviewer`, `you`, and `capture`. Allowed
 reasons are `stream-error`, `callback-stall`, `route-invalidated`,
@@ -447,8 +543,8 @@ Metadata writes are atomic. Device names, meeting application names, process
 identifiers, permission database details, raw native errors, private paths, and
 audio-derived content are excluded.
 
-Recordings without `capture.json` are legacy recordings. They remain playable
-and transcribable and are not retroactively labeled complete or interrupted.
+Recordings without `capture.json` are legacy recordings. They remain
+transcribable and are not retroactively labeled complete or interrupted.
 
 ## User Experience
 
@@ -468,7 +564,7 @@ recording continued, and a short gap may exist. It does not claim the audio is
 complete.
 
 A saved recording whose metadata status is `interrupted` shows `Audio
-interrupted` on its library card. Playback and transcription remain available.
+interrupted` on its library card. Transcription remains available.
 The transcript UI continues to label channels as `Interviewer` and `You`; it
 does not infer missing speech or hide an interruption badge.
 
@@ -484,8 +580,22 @@ Check recording permissions and try again.`
 Unexpected helper exit automatically replaces the recording controls with an
 error: `Recording stopped unexpectedly. The audio captured so far was saved.`
 That saved claim appears only after WAV and metadata finalization succeed. A
-persistence failure instead reads: `Recording stopped because the audio file
-could not be saved. Check available disk space before trying again.`
+persistence failure never recommends disk cleanup unless the operating system
+identified a capacity condition:
+
+- `ENOSPC` or `EDQUOT`: `Recording stopped because your Mac ran out of available
+  storage. No recording was added. Free up space, then try again.`
+- `EACCES`, `EPERM`, or a read-only destination: `Recording stopped because
+  Interview Copilot could not write to the recordings folder. No recording was
+  added. Check folder access, then try again.`
+- write, stream, flush, header, close, or publication failures without a known
+  capacity/access cause: `Recording stopped because the audio file could not be
+  saved. No recording was added. Try again. If it happens again, restart
+  Interview Copilot.`
+
+The UI uses the safe category, not a raw errno or helper message. If a partial
+file remains in the hidden recovery area, the app does not imply that the user
+can open it from the recordings library.
 
 ## Permissions and Packaging
 
@@ -560,7 +670,10 @@ Implementation follows focused TDD at each boundary.
   `connected-with-gap` without restarting a healthy input;
 - bound the non-realtime output queue, replace overflow spans with `gap` frames,
   and preserve total timeline duration;
-- transition through callback stall, retry, recovery, and disconnection;
+- emit matched interruption open/close frames with exact channel block ranges,
+  reasons, and recovery outcomes;
+- transition through callback stall, fast retries, periodic 10-second retries,
+  route-triggered retry, recovery, and disconnection;
 - frame protocol messages deterministically and reject invalid control input;
 - drain complete blocks and report final counters on Stop.
 
@@ -569,20 +682,29 @@ Implementation follows focused TDD at each boundary.
 - resolve development and packaged helper paths safely;
 - reject missing, non-executable, wrong-architecture, and malformed helpers;
 - validate protocol magic, version, length, sequence, type, PCM block size, gap
-  bounds, and the 64 KiB parser limit;
+  bounds, interruption lifecycle invariants, and the 64 KiB parser limit;
 - serialize start, cancel, stop, and terminal finalization and prevent concurrent
   sessions;
 - expose `Starting…`, allow Cancel, enforce the 60-second initialization
   deadline, and ignore late helper events after cleanup begins;
 - pause helper stdout on WAV backpressure, resume only on `drain`, and preserve
   frame order;
+- simulate `exit` before trailing stdout data and prove finalization waits for
+  child `close`, stdout EOF, parser drain, pending writes, stream `finish`, and
+  header update in that order;
+- reject a partial protocol frame at EOF and close any still-open source
+  interruption as unrecovered after unexpected helper termination;
 - finalize WAV and metadata after normal Stop, helper exit, protocol failure,
   single-channel failure, late data, output overflow, and stop timeout;
 - inject open, disk-full, write, stream, flush, header-update, and close failures
   and verify no path claims that the recording was saved;
+- stage provisional files outside the public ID namespace, atomically publish
+  complete/interrupted recordings, and exclude provisional, failed, malformed,
+  hidden, and symlinked items while retaining legacy recordings;
+- map capacity, access, and generic persistence failures to distinct safe copy;
 - expose typed renderer status without raw native details;
 - read legacy recordings without `capture.json`;
-- preserve playback and transcription for interrupted recordings;
+- preserve transcription for interrupted recordings;
 - render starting, cancellation, all channel health, terminal helper exit,
   persistence failure, and saved interruption states accessibly.
 
@@ -606,8 +728,8 @@ Implementation follows focused TDD at each boundary.
 - run a signed packaged recording for 60 minutes while muting and unmuting the
   meeting microphone at least 20 times;
 - confirm both channels remain audible, channel drift stays within 20 ms, Stop
-  produces a playable WAV, and permission ownership is presented as Interview
-  Copilot;
+  produces a structurally valid finalized WAV, and permission ownership is
+  presented as Interview Copilot;
 - induce system and microphone callback failures independently and confirm
   surviving-channel continuity, recovery metadata, and truthful UI state;
 - throttle stdout and inject a full-disk persistence failure in a disposable
@@ -635,6 +757,9 @@ unverified rather than calling the feature production-ready.
   `AudioHardwareCreateProcessTap delivers all-zero buffers while system audio is audible`.
 - [Electron `setDisplayMediaRequestHandler` documentation](https://www.electronjs.org/docs/latest/api/session#sessetdisplaymediarequesthandlerhandler-opts)
 - [Electron issue #47490: use ScreenCaptureKit for macOS loopback](https://github.com/electron/electron/issues/47490)
+- [Node.js child process events](https://nodejs.org/api/child_process.html#event-close)
+  defines `close` after process termination and stdio closure and warns that
+  stdio may still be open when `exit` fires.
 
 ## Risks
 
