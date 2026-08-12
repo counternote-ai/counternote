@@ -231,8 +231,12 @@ metadata. A valid callback whose samples are all zero still covers its windows
 and does not create an interruption. The helper emits the opened interruption
 frame before the first affected `pcm` block and emits its close after the last
 affected block but before the next unaffected `pcm` block. If the reason changes
-while a channel interruption is open, it closes the old range and opens the new
-reason at that block boundary.
+while a channel interruption is open, the helper retains the reason from the
+open frame until timestamped source coverage resumes or recording terminates.
+The newer condition may change runtime `state` and trigger stronger recovery
+behavior, but it does not close, relabel, or nest another interruption for that
+channel. This keeps one truthful continuous loss range without requiring a
+reclassification or superseded protocol operation.
 
 Channel interruption ranges are conservative at 20 ms block granularity, not
 sample-accurate loss measurements. If even one of the 320 source frames in a
@@ -476,10 +480,12 @@ Capture-wide output loss uses `GapPayload` instead. Late data may emit an open
 immediately before one or more affected `pcm` blocks and close immediately after
 them without changing the source to `reconnecting`.
 
-`source-gap` and `late-data` close with `recovered: true` because the source is
-still connected after the bounded missing range. A `RecoverableReason` closes
-with `true` only when timestamped coverage resumes at `endBlockExclusive`; it
-closes with `false` only at orderly stop or local termination finalization.
+Every source interruption reason may close with either recovery outcome.
+`recovered: true` is valid only when timestamped source coverage resumes at
+`endBlockExclusive`. `recovered: false` is valid only when orderly Stop,
+format-limit termination, or local unexpected-termination finalization closes
+the range without resumed coverage. In-session reason escalation is not a valid
+cause for close and never claims recovery.
 
 The main process permits at most one open interruption per channel, rejects an
 unknown, reused, or duplicate ID, and enforces the ordering and equality
@@ -631,9 +637,10 @@ cleanup starts is ignored except for resource closure.
 1. Stop remains available from the control panel and tray.
 2. The main process sends the helper a `stop` control message.
 3. The helper stops accepting new callbacks, drains complete timeline windows,
-   closes any open interruption, emits `stopped` with reason `stop`, closes
-   stdout, and exits. Reaching `MAX_BLOCKS` follows the same orderly sequence
-   with reason `format-limit` without waiting for a control message.
+   closes every open source interruption at `finalBlockExclusive` with its
+   original reason and `recovered: false`, emits `stopped` with reason `stop`,
+   closes stdout, and exits. Reaching `MAX_BLOCKS` follows the same orderly
+   sequence with reason `format-limit` without waiting for a control message.
 4. The main process records `exit` only as process status. It does not use that
    event as a finalization signal because child stdio may still be open.
 5. The main process waits for the child's `close` event, stdout EOF, dispatch of
@@ -793,7 +800,9 @@ silence. It clears when non-zero PCM returns. It does not trigger reconstruction
 stop the recording, or create a confirmed interruption because legitimate
 participant silence is indistinguishable from a zero-producing capture defect.
 
-The following are confirmed failures and do create interruptions:
+The following are confirmed failures and create an interruption when the
+channel has none open, or strengthen runtime recovery behavior while preserving
+the existing open interruption's ID and reason:
 
 - an SCStream or AVAudioEngine error;
 - no callback from a running source for two seconds;
@@ -832,6 +841,13 @@ A subsequently arriving packet is discarded without reclassification.
 Additional late ranges are coalesced only when contiguous. The UI uses a
 persistent warning treatment: the channel remains connected, but the recording
 contains an audio gap.
+
+If contiguous missing coverage first classified as `source-gap` or `late-data`
+later meets callback-stall or another rebuild criterion, the channel state moves
+to `reconnecting` with that newer runtime reason and reconstruction begins. The
+open interruption retains its original ID and reason. Resumed timestamped
+coverage closes it with `recovered: true`; Stop or termination closes it with
+`recovered: false`. No second interruption is opened for the escalation.
 
 Output queue overflow similarly changes both visible channel states to
 `connected-with-gap` after protocol output resumes. The channel rows state that
@@ -1055,6 +1071,11 @@ Implementation follows focused TDD at each boundary.
 - classify a provable timestamp hole as `source-gap`, classify an uncovered
   jitter-deadline expiry as `late-data`, discard a later packet without an
   update or duplicate interruption, and preserve the final reason;
+- stop during open `source-gap` and `late-data` ranges and close each at the
+  final timeline boundary with its original reason and `recovered: false`;
+- escalate an open `late-data` loss to runtime `callback-stall`, retain the
+  original interruption ID/reason without nesting or closing it, then verify a
+  true close on resumed coverage and a false close on Stop;
 - report a one-frame hole as a conservative whole-block interruption and never
   claim sample-level range precision;
 - bound the jitter buffer, report conservative late-data block ranges, and enter
@@ -1091,6 +1112,9 @@ Implementation follows focused TDD at each boundary.
 - reject mismatched interruption closes, reused/overflowing IDs, opens away from
   the next persisted block, closes away from the next persisted boundary, and
   reason/recovery combinations that violate the closed contract;
+- accept unrecovered Stop/termination closes for every source reason, reject an
+  in-session unrecovered close, and reject any attempt to replace or nest an
+  open `late-data` interruption when runtime state escalates to callback stall;
 - serialize start, cancel, stop, and terminal finalization and prevent concurrent
   sessions;
 - expose `Starting…`, allow Cancel, enforce the 60-second initialization
