@@ -20,21 +20,21 @@ export function getRecordingPermissionNotice(
 
   if (screenBlocked && microphoneBlocked) {
     return {
-      tone: 'error',
+      tone: 'info',
       message: `Screen, system audio, and microphone access are off. Allow ${snapshot.permissionOwnerName} in System Settings, then restart the app.`,
       settingsPermission: 'screen',
     };
   }
   if (screenBlocked) {
     return {
-      tone: 'error',
+      tone: 'info',
       message: `Screen and system audio access is off. Allow ${snapshot.permissionOwnerName} in System Settings, then restart the app.`,
       settingsPermission: 'screen',
     };
   }
   if (microphoneBlocked) {
     return {
-      tone: 'error',
+      tone: 'info',
       message: `Microphone access is off. Allow ${snapshot.permissionOwnerName} in System Settings, then restart the app.`,
       settingsPermission: 'microphone',
     };

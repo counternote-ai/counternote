@@ -7,6 +7,8 @@ import { Card, CardContent } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { formatDuration, getRecordingStatus, type RecordingStatusTone } from '../recording-utils';
+import { getTranscriptionStageLabel } from '../transcription-ui';
+import { cn } from '@/lib/utils';
 import { type RecordingPermissionNotice } from '../recording-permissions';
 import { type TranscriptionProgress } from '../../types/transcription';
 import { RecordingHealth } from './RecordingHealth';
@@ -40,6 +42,7 @@ interface ControlPanelProps {
   transcriptionProgress?: TranscriptionProgress | null;
   localTranscriptionUnavailable?: boolean;
   permissionNotice?: RecordingPermissionNotice | null;
+  permissionEscalated?: boolean;
   onOpenPermissionSettings: () => void;
   onDismissPermissionNotice: () => void;
 }
@@ -69,6 +72,7 @@ export function ControlPanel({
   transcriptionProgress,
   localTranscriptionUnavailable = false,
   permissionNotice,
+  permissionEscalated = false,
   onOpenPermissionSettings,
   onDismissPermissionNotice,
 }: ControlPanelProps) {
@@ -146,7 +150,7 @@ export function ControlPanel({
         )}
 
         {permissionNotice && (
-          <Alert variant={permissionNotice.tone === 'error' ? 'destructive' : 'default'}>
+          <Alert variant={permissionEscalated || permissionNotice.tone === 'error' ? 'destructive' : 'default'}>
             <AlertDescription className="space-y-3">
               <p>{permissionNotice.message}</p>
               <div className="flex flex-wrap gap-2">
@@ -209,7 +213,7 @@ export function ControlPanel({
                 return (
                   <Card
                     key={rec.id}
-                    className="overflow-hidden transition-colors hover:bg-card/90"
+                    className={cn('overflow-hidden transition-colors', canOpen && 'hover:bg-card/90')}
                     aria-busy={isTranscribing || undefined}
                   >
                     <CardContent className="p-0">
@@ -221,7 +225,7 @@ export function ControlPanel({
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 space-y-1">
-                            <div className="flex items-center gap-2">
+                            <div className="flex min-w-0 items-center gap-2">
                               <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                               <h2 className="truncate text-sm font-semibold text-foreground">{rec.title}</h2>
                               {isInterrupted && (
@@ -246,8 +250,8 @@ export function ControlPanel({
                             {isTranscribing && <LoaderCircle className="animate-spin" />}
                             {localTranscriptionUnavailable
                               ? 'Local transcription unavailable'
-                              : isTranscribing
-                                ? status.label
+                              : isTranscribing && progress
+                                ? getTranscriptionStageLabel(progress)
                                 : 'Transcribe audio'}
                           </Button>
                           {localTranscriptionUnavailable && (

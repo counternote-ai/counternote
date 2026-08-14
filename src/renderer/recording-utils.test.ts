@@ -16,7 +16,7 @@ describe('recording renderer utilities', () => {
       transcribed: false,
       transcriptionProgress: { recordingId: 'active', stage: 'preparing-audio' },
     })).toEqual({
-      label: 'Preparing audio',
+      label: 'Transcribing',
       tone: 'loading',
     });
     expect(getRecordingStatus({ transcribed: false })).toEqual({
@@ -25,12 +25,12 @@ describe('recording renderer utilities', () => {
     });
   });
 
-  it('uses the active recording progress label and returns to needs transcript after failure clears it', () => {
+  it('uses a quiet badge label while progress detail stays on the transcribe action', () => {
     expect(getRecordingStatus({
       transcribed: false,
       transcriptionProgress: { recordingId: 'active', stage: 'transcribing-you' },
     })).toEqual({
-      label: 'Transcribing you',
+      label: 'Transcribing',
       tone: 'loading',
     });
     expect(getRecordingStatus({ transcribed: false, transcriptionProgress: null })).toEqual({

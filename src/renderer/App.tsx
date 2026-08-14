@@ -52,6 +52,7 @@ export default function App() {
   const [localModelStatus, setLocalModelStatus] = useState<LocalModelStatus>({ state: 'not-downloaded' });
   const [permissions, setPermissions] = useState<RecordingPermissionSnapshot | null>(null);
   const [permissionNoticeDismissed, setPermissionNoticeDismissed] = useState(false);
+  const [permissionEscalated, setPermissionEscalated] = useState(false);
 
   /* ── Native capture state ─────────────────────────────────── */
   const [statusSnapshot, setStatusSnapshot] = useState<RecordingStatusSnapshot | null>(null);
@@ -68,6 +69,9 @@ export default function App() {
         throw new Error(result.error || 'Unable to check recording permissions');
       }
       setPermissions(result.permissions);
+      if (result.permissions.canAttemptRecording) {
+        setPermissionEscalated(false);
+      }
       return result.permissions;
     } catch {
       console.error('Renderer permission refresh failed.');
@@ -186,6 +190,7 @@ export default function App() {
     const currentPermissions = await refreshRecordingPermissions();
     if (!currentPermissions.canAttemptRecording) {
       setPermissionNoticeDismissed(false);
+      setPermissionEscalated(true);
       return;
     }
 
@@ -378,9 +383,10 @@ export default function App() {
     ? toRecordingHealthView(statusSnapshot)
     : null;
 
-  // Error banner component
+  // Recoverable error banner: inline at the top of the frame so it never
+  // covers the current task or header actions.
   const ErrorBanner = error ? (
-    <Alert variant="destructive" className="fixed left-4 right-4 top-4 z-50 shadow-md">
+    <Alert variant="destructive">
       <AlertDescription className="flex items-center justify-between gap-3">
         <span>{error}</span>
         <Button variant="ghost" size="sm" onClick={() => setError(null)}>
@@ -392,7 +398,7 @@ export default function App() {
 
   if (view === 'settings') {
     return (
-      <>
+      <div className="app-frame">
         {ErrorBanner}
         <Settings
           apiKey={settings.apiKey}
@@ -403,13 +409,13 @@ export default function App() {
           onSave={handleSaveSettings}
           onBack={() => setView('recordings')}
         />
-      </>
+      </div>
     );
   }
 
   if (view === 'transcript' && selectedRecording) {
     return (
-      <>
+      <div className="app-frame">
         {ErrorBanner}
         <TranscriptView
           title={selectedRecording.title}
@@ -418,12 +424,12 @@ export default function App() {
           onBack={() => setView('recordings')}
           onExport={handleExport}
         />
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="app-frame">
       {ErrorBanner}
       <ControlPanel
         recordings={recordings}
@@ -446,9 +452,10 @@ export default function App() {
           settings.transcriptionProvider === 'local' && localModelStatus.state === 'unavailable'
         }
         permissionNotice={permissionNoticeDismissed ? null : permissionNotice}
+        permissionEscalated={permissionEscalated}
         onOpenPermissionSettings={handleOpenPermissionSettings}
         onDismissPermissionNotice={() => setPermissionNoticeDismissed(true)}
       />
-    </>
+    </div>
   );
 }

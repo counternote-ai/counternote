@@ -19,7 +19,7 @@ describe('getRecordingPermissionNotice', () => {
       screen: 'denied',
       canAttemptRecording: false,
     })).toEqual({
-      tone: 'error',
+      tone: 'info',
       message: 'Screen and system audio access is off. Allow Electron in System Settings, then restart the app.',
       settingsPermission: 'screen',
     });
@@ -32,7 +32,7 @@ describe('getRecordingPermissionNotice', () => {
       permissionOwnerName: 'Interview Copilot',
       canAttemptRecording: false,
     })).toEqual({
-      tone: 'error',
+      tone: 'info',
       message: 'Microphone access is off. Allow Interview Copilot in System Settings, then restart the app.',
       settingsPermission: 'microphone',
     });
@@ -45,7 +45,7 @@ describe('getRecordingPermissionNotice', () => {
       microphone: 'denied',
       canAttemptRecording: false,
     })).toEqual({
-      tone: 'error',
+      tone: 'info',
       message: 'Screen, system audio, and microphone access are off. Allow Electron in System Settings, then restart the app.',
       settingsPermission: 'screen',
     });

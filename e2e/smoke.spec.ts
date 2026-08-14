@@ -240,6 +240,7 @@ test('transcribes a local recording through the loopback model server and fake s
   try {
     await window.getByRole('button', { name: 'Transcribe audio' }).click();
     await expect(window.getByText(/^Downloading model/).first()).toBeVisible();
+    await window.screenshot({ path: 'test-results/local-transcription-progress.png' });
 
     releaseSecondModelChunk?.();
 
@@ -286,6 +287,77 @@ test('navigates to settings and back', async () => {
 
     await window.getByRole('button', { name: 'Back' }).click();
     await expect(window.getByRole('button', { name: 'Record', exact: true })).toBeVisible();
+  } finally {
+    await electronApp.close();
+  }
+});
+
+test('opens a ready transcript in the reading view', async () => {
+  const seededSegments = [
+    { start: 0, end: 9, speaker: 'Interviewer', text: 'Thanks for making time today. To start, could you walk me through your background and what you have been working on recently?' },
+    { start: 9, end: 31, speaker: 'You', text: 'Of course. I have spent the last six years building backend systems, and for the past two I led the redesign of our billing platform. We moved from a nightly batch job to event-driven invoicing, which cut revenue recognition delays from a day to about a minute.' },
+    { start: 31, end: 38, speaker: 'Interviewer', text: 'That is a solid result. What was the hardest technical trade-off in that migration?' },
+    { start: 38, end: 65, speaker: 'You', text: 'Honestly, consistency. The old system could tolerate duplicates because the batch job deduplicated at the end, but the event-driven path had to be idempotent end to end. We introduced exactly-once semantics at the consumer level, added a reconciliation job that compared ledger entries against source events every hour, and staged the cutover behind a feature flag so we could replay traffic against both pipelines before trusting the new one.' },
+    { start: 65, end: 72, speaker: 'Interviewer', text: 'How did you validate correctness during the cutover?' },
+    { start: 72, end: 86, speaker: 'You', text: 'We ran shadow traffic for three weeks and diffed the outputs. Any mismatch paged the team, and we did not move a customer cohort until it produced two clean weeks.' },
+    { start: 86, end: 92, speaker: 'Interviewer', text: 'Makes sense. Last one: what would you do differently if you started over?' },
+    { start: 92, end: 105, speaker: 'You', text: 'I would invest in the reconciliation tooling earlier. We built it as a safety net, but it ended up being the thing that gave everyone confidence to ship.' },
+  ];
+
+  const { electronApp, window } = await launchTestApp('default', (testHome) => {
+    const recordingDir = path.join(
+      testHome, 'InterviewCopilot', 'recordings', '2026-07-27T00-00-00-000Z',
+    );
+    fs.writeFileSync(
+      path.join(recordingDir, 'transcript.json'),
+      JSON.stringify({ segments: seededSegments }),
+    );
+  });
+
+  try {
+    await window.getByRole('button', { name: /Interview —/ }).click();
+    await expect(window.getByRole('button', { name: 'Export' })).toBeVisible();
+    await expect(window.getByText(/8 segments/)).toBeVisible();
+    await expect(window.getByText('Interviewer').first()).toBeVisible();
+    await expect(window.getByText('You').first()).toBeVisible();
+    await window.screenshot({ path: 'test-results/transcript-reader.png' });
+  } finally {
+    await electronApp.close();
+  }
+});
+
+test('renders the empty library state', async () => {
+  const { electronApp, window } = await launchTestApp('default', (testHome) => {
+    fs.rmSync(
+      path.join(testHome, 'InterviewCopilot', 'recordings', '2026-07-27T00-00-00-000Z'),
+      { recursive: true, force: true },
+    );
+  });
+
+  try {
+    await expect(window.getByText('No recordings yet')).toBeVisible();
+    await expect(window.getByRole('button', { name: 'Start recording' })).toBeVisible();
+    await window.screenshot({ path: 'test-results/recordings-empty.png' });
+  } finally {
+    await electronApp.close();
+  }
+});
+
+test('shows a recoverable error when local transcription fails', async () => {
+  const { electronApp, window } = await launchTestApp('default', (testHome) => {
+    // Point the model download at an unreachable URL so transcription fails.
+    fs.writeFileSync(path.join(testHome, 'model-manifest.json'), JSON.stringify({
+      url: 'http://127.0.0.1:1/model.bin',
+      fileName: 'model.bin',
+      byteSize: 128,
+      sha256: '0'.repeat(64),
+    }));
+  });
+
+  try {
+    await window.getByRole('button', { name: 'Transcribe audio' }).click();
+    await expect(window.getByText(/Your recording is still saved/)).toBeVisible({ timeout: 10_000 });
+    await window.screenshot({ path: 'test-results/transcription-error.png' });
   } finally {
     await electronApp.close();
   }
@@ -384,6 +456,15 @@ test('One-channel interruption remaining visible after save', async () => {
 
     // The published recording should have an "Interrupted" badge
     await expect(window.getByText('Interrupted')).toBeVisible({ timeout: 5_000 });
+
+    // Layout invariant: no badge may overflow the 400px window.
+    const overflowingBadges = await window.evaluate(() =>
+      [...document.querySelectorAll('main div')]
+        .filter((el) => el.className.includes('rounded-full'))
+        .filter((el) => el.getBoundingClientRect().right > window.innerWidth)
+        .length
+    );
+    expect(overflowingBadges).toBe(0);
 
     // The seeded legacy recording remains transcribable; the newly interrupted
     // recording does not add a second Transcribe action.

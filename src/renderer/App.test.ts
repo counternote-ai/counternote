@@ -15,6 +15,7 @@ interface MockElement {
 interface MockControlPanelProps {
   recordings: Array<{ id: string; title: string; duration?: number; captureStatus?: string }>;
   permissionNotice: { tone: string; message: string; settingsPermission?: string } | null;
+  permissionEscalated?: boolean;
   localTranscriptionUnavailable?: boolean;
   transcriptionProgress?: { recordingId: string; stage: string } | null;
   isRecording?: boolean;
@@ -78,6 +79,7 @@ const mockSelectItem = (): null => null;
 const mockSelectTrigger = (): null => null;
 const mockSelectValue = (): null => null;
 const mockSeparator = (): null => null;
+const mockScrollArea = (): null => null;
 
 jest.mock('react', () => ({
   __esModule: true,
@@ -118,6 +120,7 @@ jest.mock('./components/ui/select', () => ({
   SelectValue: mockSelectValue,
 }));
 jest.mock('./components/ui/separator', () => ({ Separator: mockSeparator }));
+jest.mock('./components/ui/scroll-area', () => ({ ScrollArea: mockScrollArea }));
 jest.mock('lucide-react', () => ({
   ChevronLeft: mockIcon,
   Download: mockIcon,
@@ -330,7 +333,8 @@ describe('recording permission lifecycle', () => {
 
     expect(mockElectronAPI.getRecordingPermissions).toHaveBeenCalledTimes(1);
     expect(mockElectronAPI.recordingStart).not.toHaveBeenCalled();
-    expect(getControlPanelProps().permissionNotice?.tone).toBe('error');
+    expect(getControlPanelProps().permissionNotice?.tone).toBe('info');
+    expect(getControlPanelProps().permissionEscalated).toBe(true);
     expect(getControlPanelProps().recordings).toEqual([
       { id: 'saved-recording', title: 'Saved interview' },
     ]);
@@ -342,6 +346,32 @@ describe('recording permission lifecycle', () => {
     expect(getControlPanelProps().recordings).toEqual([
       { id: 'saved-recording', title: 'Saved interview' },
     ]);
+  });
+
+  it('clears the escalated permission warning once permissions become usable again', async () => {
+    mockElectronAPI.getRecordingPermissions
+      .mockResolvedValueOnce({
+        success: true,
+        permissions: blockedPermissions(),
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        permissions: blockedPermissions(),
+      });
+
+    renderApp();
+    mockEffects[2]();
+    await Promise.resolve();
+    await getControlPanelProps().onStartRecording();
+    renderApp();
+
+    expect(getControlPanelProps().permissionEscalated).toBe(true);
+
+    mockEventListeners.get('focus')?.();
+    await Promise.resolve();
+    renderApp();
+
+    expect(getControlPanelProps().permissionEscalated).toBe(false);
   });
 
   it('only opens settings from the explicit recovery action', async () => {
