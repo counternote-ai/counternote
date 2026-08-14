@@ -4,7 +4,9 @@ function createMockEvent(): Electron.Event {
   return { preventDefault: jest.fn() } as unknown as Electron.Event;
 }
 
-function createMockDeps(overrides: Partial<QuitCoordinatorDependencies> = {}): QuitCoordinatorDependencies {
+function createMockDeps(
+  overrides: Partial<QuitCoordinatorDependencies> = {},
+): QuitCoordinatorDependencies {
   return {
     app: { quit: jest.fn(), on: jest.fn() },
     isIdle: jest.fn().mockReturnValue(false),

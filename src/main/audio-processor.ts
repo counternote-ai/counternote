@@ -2,11 +2,9 @@ import { execFile as childProcessExecFile } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
+import ffmpegPath from 'ffmpeg-static';
 
 const execFileAsync = promisify(childProcessExecFile);
-
-// Get ffmpeg path from ffmpeg-static
-const ffmpegPath = require('ffmpeg-static');
 
 export interface AudioProcessorDependencies {
   execFile: (file: string, args: string[]) => Promise<{ stdout: string; stderr: string }>;
@@ -26,7 +24,7 @@ function defaultDependencies(): AudioProcessorDependencies {
 export async function splitChannels(
   audioPath: string,
   deps: AudioProcessorDependencies = defaultDependencies(),
-  output?: { system?: string; mic?: string }
+  output?: { system?: string; mic?: string },
 ): Promise<{ system: string; mic: string }> {
   const dir = path.dirname(audioPath);
   const systemPath = output?.system ?? path.join(dir, 'channel-system.wav');
@@ -71,7 +69,7 @@ export async function splitChannels(
 
 export async function convertToFlac(
   wavPath: string,
-  deps: AudioProcessorDependencies = defaultDependencies()
+  deps: AudioProcessorDependencies = defaultDependencies(),
 ): Promise<string> {
   const flacPath = wavPath.replace('.wav', '.flac');
 
@@ -94,14 +92,14 @@ export async function convertToFlac(
 
 export async function isChannelSilent(
   audioPath: string,
-  deps: AudioProcessorDependencies = defaultDependencies()
+  deps: AudioProcessorDependencies = defaultDependencies(),
 ): Promise<boolean> {
   return (await getAudibleIntervals(audioPath, deps)).length === 0;
 }
 
 export async function getAudibleIntervals(
   audioPath: string,
-  deps: AudioProcessorDependencies = defaultDependencies()
+  deps: AudioProcessorDependencies = defaultDependencies(),
 ): Promise<AudioInterval[]> {
   const durationSeconds = await getAudioDuration(audioPath);
 
@@ -120,10 +118,7 @@ export async function getAudibleIntervals(
   return parseAudibleIntervals(stderr, durationSeconds);
 }
 
-export function parseAudibleIntervals(
-  stderr: string,
-  durationSeconds: number
-): AudioInterval[] {
+export function parseAudibleIntervals(stderr: string, durationSeconds: number): AudioInterval[] {
   const intervals: AudioInterval[] = [];
   let audibleStart = 0;
   let inSilence = false;
@@ -153,7 +148,7 @@ export function parseAudibleIntervals(
 export function parseSilenceResult(
   stderr: string,
   durationSeconds: number,
-  toleranceSeconds = 0.1
+  toleranceSeconds = 0.1,
 ): boolean {
   const starts: number[] = [];
   const ends: number[] = [];
@@ -234,7 +229,7 @@ export async function getAudioDuration(audioPath: string): Promise<number> {
 async function readWavBytes(
   fd: fs.promises.FileHandle,
   position: number,
-  length: number
+  length: number,
 ): Promise<Buffer> {
   const buffer = Buffer.alloc(length);
   const { bytesRead } = await fd.read(buffer, 0, length, position);

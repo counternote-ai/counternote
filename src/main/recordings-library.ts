@@ -73,13 +73,21 @@ export class RecordingsLibrary {
       const directory = path.join(root, id);
       try {
         const stat = await fs.lstat(directory);
-        if (!stat.isDirectory() || stat.isSymbolicLink() || !isContained(root, await fs.realpath(directory))) {
+        if (
+          !stat.isDirectory() ||
+          stat.isSymbolicLink() ||
+          !isContained(root, await fs.realpath(directory))
+        ) {
           this.diagnostic('Skipped unsafe recording directory.');
           continue;
         }
         const audio = path.join(directory, 'audio.wav');
         const audioStat = await fs.lstat(audio);
-        if (!audioStat.isFile() || audioStat.isSymbolicLink() || !isContained(directory, await fs.realpath(audio))) {
+        if (
+          !audioStat.isFile() ||
+          audioStat.isSymbolicLink() ||
+          !isContained(directory, await fs.realpath(audio))
+        ) {
           this.diagnostic('Skipped unsafe recording audio.');
           continue;
         }
@@ -94,17 +102,29 @@ export class RecordingsLibrary {
           }
           throw error;
         }
-        if (!metadataStat.isFile() || metadataStat.isSymbolicLink() || !isContained(directory, await fs.realpath(metadataPath))) {
+        if (
+          !metadataStat.isFile() ||
+          metadataStat.isSymbolicLink() ||
+          !isContained(directory, await fs.realpath(metadataPath))
+        ) {
           this.diagnostic('Skipped unsafe capture metadata.');
           continue;
         }
         const parsedJson = JSON.parse(await fs.readFile(metadataPath, 'utf8')) as unknown;
-        const metadata = parseCaptureMetadata(parsedJson) ?? parseRecoveredMetadata(parsedJson, audioStat.size);
-        if (metadata === null || (metadata.status !== 'complete' && metadata.status !== 'interrupted')) {
+        const metadata =
+          parseCaptureMetadata(parsedJson) ?? parseRecoveredMetadata(parsedJson, audioStat.size);
+        if (
+          metadata === null ||
+          (metadata.status !== 'complete' && metadata.status !== 'interrupted')
+        ) {
           this.diagnostic('Skipped unpublished or invalid capture metadata.');
           continue;
         }
-        recordings.push({ id, captureStatus: metadata.status, interruptions: metadata.interruptions });
+        recordings.push({
+          id,
+          captureStatus: metadata.status,
+          interruptions: metadata.interruptions,
+        });
       } catch {
         this.diagnostic('Skipped unreadable recording directory.');
       }
@@ -112,7 +132,10 @@ export class RecordingsLibrary {
     return recordings;
   }
 
-  private resolveRecordingFile(recordingId: string, fileName: 'audio.wav' | 'transcript.json'): string {
+  private resolveRecordingFile(
+    recordingId: string,
+    fileName: 'audio.wav' | 'transcript.json',
+  ): string {
     if (!isRecordingId(recordingId)) {
       throw new Error('INVALID_RECORDING_ID');
     }
@@ -141,10 +164,18 @@ function isContained(root: string, candidate: string): boolean {
 }
 
 function isNotFound(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === 'ENOENT';
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'ENOENT'
+  );
 }
 
-function parseRecoveredMetadata(value: unknown, audioBytes: number): ReturnType<typeof validateRecoveredCaptureMetadata> | null {
+function parseRecoveredMetadata(
+  value: unknown,
+  audioBytes: number,
+): ReturnType<typeof validateRecoveredCaptureMetadata> | null {
   const pcmBytes = audioBytes - 44;
   if (!Number.isSafeInteger(pcmBytes) || pcmBytes < 0 || pcmBytes % 4 !== 0) return null;
   try {

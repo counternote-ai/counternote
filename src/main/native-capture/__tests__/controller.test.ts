@@ -5,7 +5,11 @@ import type {
   CaptureStatusSnapshot,
 } from '../session';
 import type { RecordingMutationLease } from '../../recording-mutation-coordinator';
-import type { RecordingRecoveryItem, RecoverRecordingResult, TrashRecoveryResult } from '../../recovery-service';
+import type {
+  RecordingRecoveryItem,
+  RecoverRecordingResult,
+  TrashRecoveryResult,
+} from '../../recovery-service';
 import type {
   NativeCaptureController,
   NativeCaptureControllerDeps,
@@ -156,9 +160,12 @@ describe('NativeCaptureController', () => {
   let controller: NativeCaptureController;
   let now: Date;
 
-  function createDeps(overrides?: Partial<NativeCaptureControllerDeps>): NativeCaptureControllerDeps {
+  function createDeps(
+    overrides?: Partial<NativeCaptureControllerDeps>,
+  ): NativeCaptureControllerDeps {
     return {
-      mutationCoordinator: coordinator as unknown as NativeCaptureControllerDeps['mutationCoordinator'],
+      mutationCoordinator:
+        coordinator as unknown as NativeCaptureControllerDeps['mutationCoordinator'],
       recoveryService: recovery as unknown as NativeCaptureControllerDeps['recoveryService'],
       now: () => now,
       createSession: () => session,
@@ -200,7 +207,9 @@ describe('NativeCaptureController', () => {
       session.setStartResult({ ok: true });
       session.start = () => {
         session.setSnapshot({ state: 'starting', canCancel: true });
-        return new Promise<StartCaptureResult>((resolve) => { startResolve = resolve; });
+        return new Promise<StartCaptureResult>((resolve) => {
+          startResolve = resolve;
+        });
       };
 
       const first = controller.startRecording();
@@ -225,7 +234,9 @@ describe('NativeCaptureController', () => {
       let stopResolve: (r: StopCaptureResult) => void;
       session.stop = () => {
         session.setSnapshot({ state: 'stopping' });
-        return new Promise<StopCaptureResult>((resolve) => { stopResolve = resolve; });
+        return new Promise<StopCaptureResult>((resolve) => {
+          stopResolve = resolve;
+        });
       };
 
       const stopPromise = controller.stopRecording();
@@ -264,7 +275,9 @@ describe('NativeCaptureController', () => {
       let startResolve: (r: StartCaptureResult) => void;
       session.start = () => {
         session.setSnapshot({ state: 'starting', canCancel: true });
-        return new Promise<StartCaptureResult>((resolve) => { startResolve = resolve; });
+        return new Promise<StartCaptureResult>((resolve) => {
+          startResolve = resolve;
+        });
       };
 
       const startPromise = controller.startRecording();
@@ -384,7 +397,9 @@ describe('NativeCaptureController', () => {
       let resolveStart: (result: StartCaptureResult) => void;
       session.start = () => {
         session.setSnapshot({ state: 'starting', canCancel: true });
-        return new Promise<StartCaptureResult>((resolve) => { resolveStart = resolve; });
+        return new Promise<StartCaptureResult>((resolve) => {
+          resolveStart = resolve;
+        });
       };
       const snapshots: ControllerSnapshot[] = [];
       controller.onStatusChange((snapshot) => snapshots.push(snapshot));
@@ -426,7 +441,9 @@ describe('NativeCaptureController', () => {
 
     it('returns unsubscribe function that stops delivery', () => {
       const snapshots: ControllerSnapshot[] = [];
-      const unsubscribe = controller.onStatusChange((snapshot: ControllerSnapshot) => snapshots.push(snapshot));
+      const unsubscribe = controller.onStatusChange((snapshot: ControllerSnapshot) =>
+        snapshots.push(snapshot),
+      );
 
       const countBefore = snapshots.length;
       unsubscribe();
@@ -443,7 +460,12 @@ describe('NativeCaptureController', () => {
   describe('listRecovery', () => {
     it('returns recovery items from the recovery service', async () => {
       recovery.listResult = [
-        { id: '12345678-1234-1234-1234-123456789abc', createdAt: '2026-08-13T00:00:00.000Z', bytes: 1024, state: 'recoverable' },
+        {
+          id: '12345678-1234-1234-1234-123456789abc',
+          createdAt: '2026-08-13T00:00:00.000Z',
+          bytes: 1024,
+          state: 'recoverable',
+        },
       ];
 
       const items = await controller.listRecovery();
@@ -497,7 +519,9 @@ describe('NativeCaptureController', () => {
       let stopResolve: (r: StopCaptureResult) => void;
       session.stop = () => {
         session.setSnapshot({ state: 'stopping' });
-        return new Promise<StopCaptureResult>((resolve) => { stopResolve = resolve; });
+        return new Promise<StopCaptureResult>((resolve) => {
+          stopResolve = resolve;
+        });
       };
 
       const stopPromise = controller.stopRecording();
@@ -577,7 +601,9 @@ describe('NativeCaptureController', () => {
       let startResolve: (r: StartCaptureResult) => void;
       session.start = () => {
         session.setSnapshot({ state: 'starting', canCancel: true });
-        return new Promise<StartCaptureResult>((resolve) => { startResolve = resolve; });
+        return new Promise<StartCaptureResult>((resolve) => {
+          startResolve = resolve;
+        });
       };
 
       const startPromise = controller.startRecording();
@@ -605,7 +631,9 @@ describe('NativeCaptureController', () => {
       let stopResolve: (r: StopCaptureResult) => void;
       session.stop = () => {
         session.setSnapshot({ state: 'stopping' });
-        return new Promise<StopCaptureResult>((resolve) => { stopResolve = resolve; });
+        return new Promise<StopCaptureResult>((resolve) => {
+          stopResolve = resolve;
+        });
       };
 
       const stopPromise = controller.stopRecording();

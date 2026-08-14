@@ -16,19 +16,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listRecordings: () => ipcRenderer.invoke('list-recordings'),
   transcribe: (recordingId: string): Promise<TranscriptionIpcResult> =>
     ipcRenderer.invoke('transcribe', recordingId),
-  onTranscriptionProgress: (
-    callback: (progress: TranscriptionProgress) => void
-  ): (() => void) => {
+  onTranscriptionProgress: (callback: (progress: TranscriptionProgress) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: TranscriptionProgress): void =>
       callback(progress);
     ipcRenderer.on('transcription-progress', listener);
     return () => ipcRenderer.removeListener('transcription-progress', listener);
   },
-  getLocalModelStatus: (): Promise<LocalModelStatus> => ipcRenderer.invoke('get-local-model-status'),
-  installLocalModel: (): Promise<TranscriptionIpcResult> => ipcRenderer.invoke('install-local-model'),
-  onLocalModelStatus: (
-    callback: (status: LocalModelStatus) => void
-  ): (() => void) => {
+  getLocalModelStatus: (): Promise<LocalModelStatus> =>
+    ipcRenderer.invoke('get-local-model-status'),
+  installLocalModel: (): Promise<TranscriptionIpcResult> =>
+    ipcRenderer.invoke('install-local-model'),
+  onLocalModelStatus: (callback: (status: LocalModelStatus) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: LocalModelStatus): void =>
       callback(status);
     ipcRenderer.on('local-model-status', listener);

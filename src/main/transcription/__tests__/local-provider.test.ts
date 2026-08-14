@@ -36,9 +36,9 @@ describe('LocalWhisperProvider', () => {
 
     const onProgress = jest.fn();
     const onInferenceStart = jest.fn();
-    await expect(
-      provider.transcribe(baseRequest, onProgress, onInferenceStart)
-    ).resolves.toEqual([]);
+    await expect(provider.transcribe(baseRequest, onProgress, onInferenceStart)).resolves.toEqual(
+      [],
+    );
 
     expect(ensureModel).not.toHaveBeenCalled();
     expect(runProcess).not.toHaveBeenCalled();
@@ -157,7 +157,9 @@ describe('LocalWhisperProvider', () => {
     const runProcess = jest.fn().mockRejectedValue(failure);
     const provider = createProvider({ runProcess });
 
-    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toBe(failure);
+    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toBe(
+      failure,
+    );
     expect(runProcess).toHaveBeenCalledTimes(1);
   });
 
@@ -166,7 +168,9 @@ describe('LocalWhisperProvider', () => {
       runProcess: jest.fn().mockResolvedValue({ notTranscription: [] }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toMatchObject({
+    await expect(
+      provider.transcribe(baseRequest, jest.fn(), onInferenceStart),
+    ).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
   });
@@ -178,7 +182,9 @@ describe('LocalWhisperProvider', () => {
       }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toMatchObject({
+    await expect(
+      provider.transcribe(baseRequest, jest.fn(), onInferenceStart),
+    ).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
   });
@@ -190,7 +196,9 @@ describe('LocalWhisperProvider', () => {
       }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toMatchObject({
+    await expect(
+      provider.transcribe(baseRequest, jest.fn(), onInferenceStart),
+    ).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
   });
@@ -202,7 +210,9 @@ describe('LocalWhisperProvider', () => {
       }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toMatchObject({
+    await expect(
+      provider.transcribe(baseRequest, jest.fn(), onInferenceStart),
+    ).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
   });
@@ -215,7 +225,9 @@ describe('LocalWhisperProvider', () => {
       }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toMatchObject({
+    await expect(
+      provider.transcribe(baseRequest, jest.fn(), onInferenceStart),
+    ).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
   });
@@ -244,7 +256,9 @@ describe('LocalWhisperProvider', () => {
       }),
     });
 
-    await expect(provider.transcribe(baseRequest, jest.fn(), onInferenceStart)).rejects.toMatchObject({
+    await expect(
+      provider.transcribe(baseRequest, jest.fn(), onInferenceStart),
+    ).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
   });

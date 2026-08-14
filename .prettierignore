@@ -1,0 +1,10 @@
+dist/
+release/
+build/
+coverage/
+test-results/
+e2e/smoke.spec.ts-snapshots/
+package-lock.json
+# Curated skill files and historical design specs: keep their hand formatting.
+.agents/
+docs/superpowers/

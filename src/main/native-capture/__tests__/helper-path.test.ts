@@ -22,18 +22,18 @@ function makeOptions(
 
 describe('resolveAudioCaptureHelper', () => {
   it('rejects unsupported architecture', () => {
-    expect(() =>
-      resolveAudioCaptureHelper(makeOptions({ arch: 'x64' })),
-    ).toThrow(AudioCaptureHelperError);
-    expect(() =>
-      resolveAudioCaptureHelper(makeOptions({ arch: 'x64' })),
-    ).toThrow(/only supported on macOS Apple Silicon/);
+    expect(() => resolveAudioCaptureHelper(makeOptions({ arch: 'x64' }))).toThrow(
+      AudioCaptureHelperError,
+    );
+    expect(() => resolveAudioCaptureHelper(makeOptions({ arch: 'x64' }))).toThrow(
+      /only supported on macOS Apple Silicon/,
+    );
   });
 
   it('rejects unsupported platform', () => {
-    expect(() =>
-      resolveAudioCaptureHelper(makeOptions({ platform: 'linux' })),
-    ).toThrow(AudioCaptureHelperError);
+    expect(() => resolveAudioCaptureHelper(makeOptions({ platform: 'linux' }))).toThrow(
+      AudioCaptureHelperError,
+    );
   });
 
   it('resolves from INTERVIEW_COPILOT_AUDIO_CAPTURE_HELPER in development', async () => {
@@ -107,9 +107,7 @@ describe('resolveAudioCaptureHelper', () => {
     await fs.writeFile(helperPath, 'fake binary');
     await fs.chmod(helperPath, 0o755);
 
-    const resolved = resolveAudioCaptureHelper(
-      makeOptions({ projectRoot: dir }),
-    );
+    const resolved = resolveAudioCaptureHelper(makeOptions({ projectRoot: dir }));
     expect(resolved).toBe(helperPath);
 
     await fs.rm(dir, { recursive: true });
@@ -132,16 +130,12 @@ describe('resolveAudioCaptureHelper', () => {
   });
 
   it('throws when helper is missing', () => {
-    expect(() =>
-      resolveAudioCaptureHelper(
-        makeOptions({ projectRoot: '/nonexistent' }),
-      ),
-    ).toThrow(AudioCaptureHelperError);
-    expect(() =>
-      resolveAudioCaptureHelper(
-        makeOptions({ projectRoot: '/nonexistent' }),
-      ),
-    ).toThrow(/missing or not executable/);
+    expect(() => resolveAudioCaptureHelper(makeOptions({ projectRoot: '/nonexistent' }))).toThrow(
+      AudioCaptureHelperError,
+    );
+    expect(() => resolveAudioCaptureHelper(makeOptions({ projectRoot: '/nonexistent' }))).toThrow(
+      /missing or not executable/,
+    );
   });
 
   it('throws when helper exists but is not executable', async () => {
@@ -152,9 +146,9 @@ describe('resolveAudioCaptureHelper', () => {
     await fs.writeFile(helperPath, 'fake binary');
     // Not chmod +x
 
-    expect(() =>
-      resolveAudioCaptureHelper(makeOptions({ projectRoot: dir })),
-    ).toThrow(/missing or not executable/);
+    expect(() => resolveAudioCaptureHelper(makeOptions({ projectRoot: dir }))).toThrow(
+      /missing or not executable/,
+    );
 
     await fs.rm(dir, { recursive: true });
   });
@@ -167,9 +161,9 @@ describe('resolveAudioCaptureHelper', () => {
     const helperPath = path.join(buildDir, 'interview-audio-capture');
     await fs.mkdir(helperPath);
 
-    expect(() =>
-      resolveAudioCaptureHelper(makeOptions({ projectRoot: dir })),
-    ).toThrow(/missing or not executable/);
+    expect(() => resolveAudioCaptureHelper(makeOptions({ projectRoot: dir }))).toThrow(
+      /missing or not executable/,
+    );
 
     await fs.rm(dir, { recursive: true });
   });

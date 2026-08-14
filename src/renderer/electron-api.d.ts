@@ -9,7 +9,8 @@ type TranscriptionSettings = import('../types/settings').TranscriptionSettings;
 type SettingsSaveIpcResult = import('../types/settings').SettingsSaveIpcResult;
 type SettingsLoadIpcResult = import('../types/settings').SettingsLoadIpcResult;
 type TranscriptExportIpcResult = import('../types/settings').TranscriptExportIpcResult;
-type PersistedInterruption = import('../main/native-capture/capture-metadata').PersistedInterruption;
+type PersistedInterruption =
+  import('../main/native-capture/capture-metadata').PersistedInterruption;
 
 // CSS module declarations
 declare module '*.css' {}
@@ -47,7 +48,17 @@ interface RecordingStatusSnapshot {
 
 type RecordingStartResult =
   | { readonly ok: true; readonly recordingId: string }
-  | { readonly ok: false; readonly reason: 'busy' | 'cancelled' | 'timeout' | 'helper-error' | 'protocol-violation' | 'persistence-error' | 'mutation-unavailable' };
+  | {
+      readonly ok: false;
+      readonly reason:
+        | 'busy'
+        | 'cancelled'
+        | 'timeout'
+        | 'helper-error'
+        | 'protocol-violation'
+        | 'persistence-error'
+        | 'mutation-unavailable';
+    };
 
 type RecordingStopResult =
   | { readonly status: 'complete' }
@@ -55,9 +66,7 @@ type RecordingStopResult =
   | { readonly status: 'failed'; readonly category: 'capacity' | 'access' | 'io-finalization' }
   | { readonly status: 'not-active' };
 
-type RecordingCancelResult =
-  | { readonly status: 'complete' }
-  | { readonly status: 'not-active' };
+type RecordingCancelResult = { readonly status: 'complete' } | { readonly status: 'not-active' };
 
 interface RecordingRecoveryItem {
   readonly id: string;
@@ -98,7 +107,7 @@ interface ElectronAPI {
     error?: string;
   }>;
   openRecordingPermissionSettings: (
-    permission: RecordingPermission
+    permission: RecordingPermission,
   ) => Promise<{ success: boolean; error?: string }>;
   onOpenSettings: (callback: () => void) => void;
 

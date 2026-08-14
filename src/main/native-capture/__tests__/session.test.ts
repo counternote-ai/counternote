@@ -1,8 +1,7 @@
 import { EventEmitter } from 'events';
-import { PassThrough, type Readable, type Writable } from 'stream';
-import { PCM_BLOCK_BYTES, type CaptureFrame } from '../../../types/native-capture';
+import { PassThrough } from 'stream';
+import { PCM_BLOCK_BYTES } from '../../../types/native-capture';
 import { CaptureFrameType } from '../protocol';
-import type { WavPersistenceError } from '../wav-writer';
 import type { CaptureStoreSession } from '../capture-store';
 import type { RecordingMutationLease } from '../../recording-mutation-coordinator';
 import type { LibraryRecording } from '../../recordings-library';
@@ -11,7 +10,6 @@ import type {
   ChildProcessLike,
   WavWriterLike,
   SpawnOptions,
-  NativeCaptureSession,
 } from '../session';
 import { createNativeCaptureSession } from '../session';
 
@@ -30,10 +28,20 @@ function buildFrame(type: number, sequence: number, payload: Buffer): Buffer {
 }
 
 function buildReady(seq = 0): Buffer {
-  return buildFrame(CaptureFrameType.ready, seq, Buffer.from(JSON.stringify({
-    type: 'ready', sampleRateHz: 16000, framesPerBlock: 320,
-    encoding: 's16le', channelOrder: ['interviewer', 'you'], firstBlock: 0,
-  })));
+  return buildFrame(
+    CaptureFrameType.ready,
+    seq,
+    Buffer.from(
+      JSON.stringify({
+        type: 'ready',
+        sampleRateHz: 16000,
+        framesPerBlock: 320,
+        encoding: 's16le',
+        channelOrder: ['interviewer', 'you'],
+        firstBlock: 0,
+      }),
+    ),
+  );
 }
 
 function buildPcm(seq: number, data?: Buffer): Buffer {
@@ -41,17 +49,42 @@ function buildPcm(seq: number, data?: Buffer): Buffer {
 }
 
 function buildGap(seq: number, startBlock: number, endBlockExclusive: number): Buffer {
-  return buildFrame(CaptureFrameType.gap, seq, Buffer.from(JSON.stringify({
-    type: 'gap', channel: 'capture', startBlock, endBlockExclusive,
-    reason: 'buffer-overflow', recovered: true,
-  })));
+  return buildFrame(
+    CaptureFrameType.gap,
+    seq,
+    Buffer.from(
+      JSON.stringify({
+        type: 'gap',
+        channel: 'capture',
+        startBlock,
+        endBlockExclusive,
+        reason: 'buffer-overflow',
+        recovered: true,
+      }),
+    ),
+  );
 }
 
-function buildStopped(seq: number, finalBlock: number, pcmBlocks: number, gapBlocks: number): Buffer {
-  return buildFrame(CaptureFrameType.stopped, seq, Buffer.from(JSON.stringify({
-    type: 'stopped', reason: 'stop', finalBlockExclusive: finalBlock,
-    pcmBlocks, gapBlocks, openInterruptionIds: [],
-  })));
+function buildStopped(
+  seq: number,
+  finalBlock: number,
+  pcmBlocks: number,
+  gapBlocks: number,
+): Buffer {
+  return buildFrame(
+    CaptureFrameType.stopped,
+    seq,
+    Buffer.from(
+      JSON.stringify({
+        type: 'stopped',
+        reason: 'stop',
+        finalBlockExclusive: finalBlock,
+        pcmBlocks,
+        gapBlocks,
+        openInterruptionIds: [],
+      }),
+    ),
+  );
 }
 
 function buildError(seq: number, phase: string, code: string, channel?: string): Buffer {
@@ -60,22 +93,49 @@ function buildError(seq: number, phase: string, code: string, channel?: string):
   return buildFrame(CaptureFrameType.error, seq, Buffer.from(JSON.stringify(payload)));
 }
 
-function buildInterruptionOpen(seq: number, id: number, channel: string, startBlock: number, reason: string): Buffer {
-  return buildFrame(CaptureFrameType.interruption, seq, Buffer.from(JSON.stringify({
-    type: 'interruption', phase: 'opened', id, channel, startBlock, reason,
-  })));
+function buildInterruptionOpen(
+  seq: number,
+  id: number,
+  channel: string,
+  startBlock: number,
+  reason: string,
+): Buffer {
+  return buildFrame(
+    CaptureFrameType.interruption,
+    seq,
+    Buffer.from(
+      JSON.stringify({
+        type: 'interruption',
+        phase: 'opened',
+        id,
+        channel,
+        startBlock,
+        reason,
+      }),
+    ),
+  );
 }
 
-function buildInterruptionClosed(seq: number, id: number, channel: string, startBlock: number, endBlockExclusive: number, reason: string, recovered: boolean): Buffer {
-  return buildFrame(CaptureFrameType.interruption, seq, Buffer.from(JSON.stringify({
-    type: 'interruption', phase: 'closed', id, channel, startBlock, endBlockExclusive, reason, recovered,
-  })));
-}
-
-function buildState(seq: number, channel: string, status: string, effectiveBlock: number, extra?: Record<string, unknown>): Buffer {
-  return buildFrame(CaptureFrameType.state, seq, Buffer.from(JSON.stringify({
-    type: 'state', channel, status, effectiveBlock, ...extra,
-  })));
+function buildState(
+  seq: number,
+  channel: string,
+  status: string,
+  effectiveBlock: number,
+  extra?: Record<string, unknown>,
+): Buffer {
+  return buildFrame(
+    CaptureFrameType.state,
+    seq,
+    Buffer.from(
+      JSON.stringify({
+        type: 'state',
+        channel,
+        status,
+        effectiveBlock,
+        ...extra,
+      }),
+    ),
+  );
 }
 
 /* ── Test doubles ──────────────────────────────────────────────── */
@@ -178,7 +238,11 @@ class FakeStore {
     return this.beginResult;
   }
 
-  async publish(session: CaptureStoreSession, metadata: unknown, finalBlockExclusive: number): Promise<void> {
+  async publish(
+    session: CaptureStoreSession,
+    metadata: unknown,
+    finalBlockExclusive: number,
+  ): Promise<void> {
     if (this.publishError) throw this.publishError;
     this.publishCalls.push({ session, metadata, finalBlockExclusive });
   }
@@ -188,7 +252,10 @@ class FakeStore {
     this.retainFailedCalls.push({ session, metadata });
   }
 
-  async discardEmpty(session: CaptureStoreSession, blocks: number): Promise<'discarded' | 'retained'> {
+  async discardEmpty(
+    session: CaptureStoreSession,
+    blocks: number,
+  ): Promise<'discarded' | 'retained'> {
     if (this.discardEmptyError) throw this.discardEmptyError;
     this.discardEmptyCalls.push({ session, blocks });
     return 'discarded';
@@ -236,7 +303,10 @@ interface PendingTimer {
 let timerId = 0;
 let pendingTimers: PendingTimer[] = [];
 
-function createTimerFns(): { setTimeout: (cb: () => void, ms: number) => unknown; clearTimeout: (id: unknown) => void } {
+function createTimerFns(): {
+  setTimeout: (cb: () => void, ms: number) => unknown;
+  clearTimeout: (id: unknown) => void;
+} {
   pendingTimers = [];
   return {
     setTimeout(cb: () => void, ms: number): unknown {
@@ -256,12 +326,6 @@ function fireTimer(id: unknown): void {
     pendingTimers = pendingTimers.filter((t) => t.id !== id);
     timer.callback();
   }
-}
-
-function advanceTime(ms: number): void {
-  const toFire = pendingTimers.filter((t) => t.ms <= ms);
-  pendingTimers = pendingTimers.filter((t) => t.ms > ms);
-  for (const t of toFire) t.callback();
 }
 
 function flushMicrotasks(): Promise<void> {
@@ -310,11 +374,15 @@ function createDeps(overrides?: Partial<NativeCaptureSessionDeps>): NativeCaptur
   };
 }
 
-function createSession(overrides?: Partial<NativeCaptureSessionDeps>): ReturnType<typeof createNativeCaptureSession> {
+function createSession(
+  overrides?: Partial<NativeCaptureSessionDeps>,
+): ReturnType<typeof createNativeCaptureSession> {
   return createNativeCaptureSession(recordingId, createDeps(overrides));
 }
 
-async function startAndReady(overrides?: Partial<NativeCaptureSessionDeps>): Promise<ReturnType<typeof createNativeCaptureSession>> {
+async function startAndReady(
+  overrides?: Partial<NativeCaptureSessionDeps>,
+): Promise<ReturnType<typeof createNativeCaptureSession>> {
   const session = createSession(overrides);
   const startPromise = session.start();
   await flushMicrotasks();
@@ -480,9 +548,7 @@ describe('NativeCaptureSession', () => {
       });
 
       await expect(session.start()).resolves.toEqual({ ok: false, reason: 'persistence-error' });
-      expect(fakeStore.discardEmptyCalls).toEqual([
-        { session: fakeStore.beginResult, blocks: 0 },
-      ]);
+      expect(fakeStore.discardEmptyCalls).toEqual([{ session: fakeStore.beginResult, blocks: 0 }]);
       expect(fakeCoordinator.lease.released).toBe(true);
     });
   });
@@ -631,7 +697,7 @@ describe('NativeCaptureSession', () => {
     });
 
     it('does not dispatch frames before drain', async () => {
-      const session = await startAndReady();
+      await startAndReady();
       fakeWriter.setBackpressure(true);
 
       // Push two PCM frames
@@ -649,7 +715,6 @@ describe('NativeCaptureSession', () => {
     });
 
     it('continues draining stderr during backpressure', async () => {
-      const stderrDiagnostics: unknown[] = [];
       const session = createSession();
       const startPromise = session.start();
       await flushMicrotasks();
@@ -663,7 +728,9 @@ describe('NativeCaptureSession', () => {
       await flushMicrotasks();
 
       // stderr should still accept data during backpressure
-      fakeChild.stderr.push(Buffer.from(JSON.stringify({ level: 'info', code: 'helper-started' }) + '\n'));
+      fakeChild.stderr.push(
+        Buffer.from(JSON.stringify({ level: 'info', code: 'helper-started' }) + '\n'),
+      );
       await flushMicrotasks();
 
       // Drain and continue
@@ -674,7 +741,7 @@ describe('NativeCaptureSession', () => {
     });
 
     it('resumes stdout after waitForDrain resolves', async () => {
-      const session = await startAndReady();
+      await startAndReady();
       fakeWriter.setBackpressure(true);
 
       const resumeSpy = jest.spyOn(fakeChild.stdout, 'resume');
@@ -745,8 +812,13 @@ describe('NativeCaptureSession', () => {
 
       const afterParser = events.slice(parserIdx);
       expect(afterParser).toEqual([
-        'parser-finished', 'writes-settled', 'stream-finish', 'header-updated',
-        'metadata-replaced', 'directory-published', 'library-refreshed',
+        'parser-finished',
+        'writes-settled',
+        'stream-finish',
+        'header-updated',
+        'metadata-replaced',
+        'directory-published',
+        'library-refreshed',
       ]);
     }
 
@@ -763,7 +835,7 @@ describe('NativeCaptureSession', () => {
 
   describe('gap persistence', () => {
     it('writes exactly zero blocks for validated gap range', async () => {
-      const session = await startAndReady();
+      await startAndReady();
 
       // Push PCM then gap
       fakeChild.stdout.push(buildPcm(1));
@@ -801,7 +873,13 @@ describe('NativeCaptureSession', () => {
       expect(fakeStore.publishCalls).toHaveLength(1);
       const metadata = fakeStore.publishCalls[0].metadata as {
         status: string;
-        interruptions: Array<{ channel: string; startMs: number; endMs: number; recovered: boolean; reason: string }>;
+        interruptions: Array<{
+          channel: string;
+          startMs: number;
+          endMs: number;
+          recovered: boolean;
+          reason: string;
+        }>;
       };
       expect(metadata.status).toBe('interrupted');
 
@@ -893,7 +971,7 @@ describe('NativeCaptureSession', () => {
 
   describe('spawn environment', () => {
     it('passes only PATH, TMPDIR, and locale keys', async () => {
-      const session = await startAndReady();
+      await startAndReady();
       expect(capturedSpawnOptions).toBeDefined();
       const env = capturedSpawnOptions!.env;
 
@@ -911,7 +989,7 @@ describe('NativeCaptureSession', () => {
       process.env.DYLD_LIBRARY_PATH = '/usr/local/lib';
       process.env.DYLD_FALLBACK_LIBRARY_PATH = '/usr/lib';
 
-      const session = await startAndReady();
+      await startAndReady();
       const env = capturedSpawnOptions!.env;
 
       expect(env).not.toHaveProperty('HOME');
@@ -931,7 +1009,7 @@ describe('NativeCaptureSession', () => {
       process.env.GROQ_API_KEY = 'provider-secret-value';
       process.env.INTERVIEW_RECORDING_PATH = '/recordings';
 
-      const session = await startAndReady();
+      await startAndReady();
       const env = capturedSpawnOptions!.env;
 
       expect(env).not.toHaveProperty('OPENAI_API_KEY');
@@ -1231,9 +1309,11 @@ describe('NativeCaptureSession', () => {
     it('handles writer error categories', async () => {
       // Override writer to fail on finalize
       const failWriter = new FakeWriter();
-      const origFinalize = failWriter.finalize.bind(failWriter);
       failWriter.finalize = () => {
-        const err = Object.assign(new Error('disk full'), { name: 'WavPersistenceError', category: 'capacity' });
+        const err = Object.assign(new Error('disk full'), {
+          name: 'WavPersistenceError',
+          category: 'capacity',
+        });
         return Promise.reject(err);
       };
 
@@ -1416,8 +1496,8 @@ describe('NativeCaptureSession', () => {
   describe('writer and store interaction', () => {
     it('opens writer exactly once', async () => {
       let openWriterCalls = 0;
-      const session = await startAndReady({
-        openWriter: (path) => {
+      await startAndReady({
+        openWriter: () => {
           openWriterCalls++;
           return Promise.resolve(fakeWriter);
         },

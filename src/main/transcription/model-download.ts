@@ -9,7 +9,7 @@ export interface ModelDownloadTransport {
   download(
     source: URL,
     destination: string,
-    onProgress: (receivedBytes: number, totalBytes: number) => void
+    onProgress: (receivedBytes: number, totalBytes: number) => void,
   ): Promise<void>;
 }
 
@@ -26,7 +26,7 @@ export class HttpsModelDownloadTransport implements ModelDownloadTransport {
   async download(
     source: URL,
     destination: string,
-    onProgress: (receivedBytes: number, totalBytes: number) => void
+    onProgress: (receivedBytes: number, totalBytes: number) => void,
   ): Promise<void> {
     const controller = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -63,7 +63,7 @@ export class HttpsModelDownloadTransport implements ModelDownloadTransport {
       controller.signal.addEventListener(
         'abort',
         () => body.destroy(new Error('model download timed out')),
-        { once: true }
+        { once: true },
       );
 
       let receivedBytes = 0;
@@ -77,7 +77,7 @@ export class HttpsModelDownloadTransport implements ModelDownloadTransport {
       await pipeline(body, file);
     } catch (error) {
       if (controller.signal.aborted) {
-        throw new Error('model download timed out');
+        throw Object.assign(new Error('model download timed out'), { cause: error });
       }
       throw error;
     } finally {

@@ -1,21 +1,19 @@
 import { EventEmitter } from 'events';
 import type { Readable, Writable } from 'stream';
 import { PCM_BLOCK_BYTES, type CaptureFrame, type SourceChannel } from '../../types/native-capture';
-import {
-  CaptureProtocolDecoder,
-  CaptureProtocolError,
-} from './protocol';
-import type { WavWriter } from './wav-writer';
+import { CaptureProtocolDecoder } from './protocol';
 import { WavPersistenceError } from './wav-writer';
 import type { CaptureStore, CaptureStoreSession } from './capture-store';
-import type { RecordingMutationCoordinator, RecordingMutationLease } from '../recording-mutation-coordinator';
+import type {
+  RecordingMutationCoordinator,
+  RecordingMutationLease,
+} from '../recording-mutation-coordinator';
 import type { RecordingsLibrary } from '../recordings-library';
 import {
   type CaptureMetadata,
   type CaptureTerminalMetadata,
   type PersistedInterruption,
   blockIndexToMilliseconds,
-  BLOCK_DURATION_MS,
 } from './capture-metadata';
 import { createStderrDrain, type StderrDrainHandle } from './stderr-drain';
 
@@ -30,8 +28,7 @@ export type StartFailureReason =
   | 'mutation-unavailable';
 
 export type StartCaptureResult =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly reason: StartFailureReason };
+  { readonly ok: true } | { readonly ok: false; readonly reason: StartFailureReason };
 
 export type StopCaptureResult =
   | { readonly status: 'complete' }
@@ -162,7 +159,6 @@ export function createNativeCaptureSession(
   /* backpressure */
   let frameQueue: CaptureFrame[] = [];
   let queueProcessing = false;
-  let drainResolve: (() => void) | undefined;
 
   /* cleanup guard */
   let initCleanupDone = false;
@@ -183,7 +179,11 @@ export function createNativeCaptureSession(
 
   function notifyStatusSubscribers(): void {
     for (const callback of statusSubscribers) {
-      try { callback(); } catch { /* observer errors are non-fatal */ }
+      try {
+        callback();
+      } catch {
+        /* observer errors are non-fatal */
+      }
     }
   }
 
@@ -192,18 +192,30 @@ export function createNativeCaptureSession(
   }
 
   function clearTimers(): void {
-    if (initTimer !== undefined) { deps.clearTimeout(initTimer); initTimer = undefined; }
-    if (graceTimer !== undefined) { deps.clearTimeout(graceTimer); graceTimer = undefined; }
-    if (closeTimer !== undefined) { deps.clearTimeout(closeTimer); closeTimer = undefined; }
+    if (initTimer !== undefined) {
+      deps.clearTimeout(initTimer);
+      initTimer = undefined;
+    }
+    if (graceTimer !== undefined) {
+      deps.clearTimeout(graceTimer);
+      graceTimer = undefined;
+    }
+    if (closeTimer !== undefined) {
+      deps.clearTimeout(closeTimer);
+      closeTimer = undefined;
+    }
   }
 
   function classifyInitFailure(): StartCaptureResult {
-    const reason: StartFailureReason =
-      events.includes('init-timeout') ? 'timeout'
-      : events.includes('helper-error') ? 'helper-error'
-      : events.includes('protocol-error') ? 'protocol-violation'
-      : events.includes('persistence-error') ? 'persistence-error'
-      : 'cancelled';
+    const reason: StartFailureReason = events.includes('init-timeout')
+      ? 'timeout'
+      : events.includes('helper-error')
+        ? 'helper-error'
+        : events.includes('protocol-error')
+          ? 'protocol-violation'
+          : events.includes('persistence-error')
+            ? 'persistence-error'
+            : 'cancelled';
     return { ok: false, reason };
   }
 
@@ -232,7 +244,9 @@ export function createNativeCaptureSession(
 
   function waitForBarrier(): Promise<void> {
     if (stdoutEof && childClosed) return Promise.resolve();
-    return new Promise<void>((r) => { barrierResolve = r; });
+    return new Promise<void>((r) => {
+      barrierResolve = r;
+    });
   }
 
   function checkBarrier(): void {
@@ -253,7 +267,7 @@ export function createNativeCaptureSession(
         frameQueue.push(...frames);
         if (!queueProcessing) void drainFrameQueue();
       }
-    } catch (error) {
+    } catch {
       if (phase === 'starting') {
         emit('protocol-error');
         void performInitCleanup('protocol-violation');
@@ -290,19 +304,35 @@ export function createNativeCaptureSession(
 
   function dispatchFrame(frame: CaptureFrame): boolean {
     switch (frame.frameType) {
-      case 'ready': onReady(); return false;
-      case 'pcm': return onPcm(frame.payload as Buffer);
-      case 'gap': onGap(frame.payload as { startBlock: number; endBlockExclusive: number }); return false;
-      case 'interruption': onInterruption(frame.payload as InterruptionPayload); return false;
-      case 'state': onState(frame.payload as StatePayload); return false;
-      case 'stopped': onStopped(frame.payload as StoppedPayload); return false;
-      case 'error': onError(frame.payload as ErrorPayload); return false;
+      case 'ready':
+        onReady();
+        return false;
+      case 'pcm':
+        return onPcm(frame.payload as Buffer);
+      case 'gap':
+        onGap(frame.payload as { startBlock: number; endBlockExclusive: number });
+        return false;
+      case 'interruption':
+        onInterruption(frame.payload as InterruptionPayload);
+        return false;
+      case 'state':
+        onState(frame.payload as StatePayload);
+        return false;
+      case 'stopped':
+        onStopped(frame.payload as StoppedPayload);
+        return false;
+      case 'error':
+        onError(frame.payload as ErrorPayload);
+        return false;
     }
   }
 
   function onReady(): void {
     if (phase !== 'starting' || initCleanupDone) return;
-    if (initTimer !== undefined) { deps.clearTimeout(initTimer); initTimer = undefined; }
+    if (initTimer !== undefined) {
+      deps.clearTimeout(initTimer);
+      initTimer = undefined;
+    }
     phase = 'recording';
     emit('ready');
     notifyStatusSubscribers();
@@ -353,17 +383,23 @@ export function createNativeCaptureSession(
   }
 
   interface InterruptionPayload {
-    phase: string; id: number; channel: SourceChannel;
-    startBlock: number; endBlockExclusive?: number;
-    reason: string; recovered?: boolean;
+    phase: string;
+    id: number;
+    channel: SourceChannel;
+    startBlock: number;
+    endBlockExclusive?: number;
+    reason: string;
+    recovered?: boolean;
   }
 
   function onInterruption(p: InterruptionPayload): void {
     if (phase !== 'recording' && phase !== 'stopping') return;
     if (p.phase === 'opened') {
       openInterruptions.set(p.channel, {
-        id: p.id, channel: p.channel,
-        startBlock: p.startBlock, reason: p.reason,
+        id: p.id,
+        channel: p.channel,
+        startBlock: p.startBlock,
+        reason: p.reason,
       });
     } else {
       openInterruptions.delete(p.channel);
@@ -378,8 +414,12 @@ export function createNativeCaptureSession(
   }
 
   interface StatePayload {
-    channel: SourceChannel; status: string; effectiveBlock: number;
-    reason?: string; silentBlocks?: number; attempt?: number;
+    channel: SourceChannel;
+    status: string;
+    effectiveBlock: number;
+    reason?: string;
+    silentBlocks?: number;
+    attempt?: number;
   }
 
   function onState(p: StatePayload): void {
@@ -392,8 +432,10 @@ export function createNativeCaptureSession(
   }
 
   interface StoppedPayload {
-    reason: string; finalBlockExclusive: number;
-    pcmBlocks: number; gapBlocks: number;
+    reason: string;
+    finalBlockExclusive: number;
+    pcmBlocks: number;
+    gapBlocks: number;
   }
 
   function onStopped(_p: StoppedPayload): void {
@@ -408,7 +450,10 @@ export function createNativeCaptureSession(
   }
 
   interface ErrorPayload {
-    phase: string; code: string; channel?: SourceChannel; terminal: true;
+    phase: string;
+    code: string;
+    channel?: SourceChannel;
+    terminal: true;
   }
 
   function onError(_p: ErrorPayload): void {
@@ -427,7 +472,7 @@ export function createNativeCaptureSession(
     checkBarrier();
   }
 
-  function onClose(code: number | null): void {
+  function onClose(_code: number | null): void {
     childClosed = true;
     emit('child-close');
     checkBarrier();
@@ -439,7 +484,7 @@ export function createNativeCaptureSession(
 
   /* ── init cleanup ─────────────────────────────────────────── */
 
-  async function performInitCleanup(reason: StartFailureReason): Promise<void> {
+  async function performInitCleanup(_reason: StartFailureReason): Promise<void> {
     if (initCleanupDone) return;
     initCleanupDone = true;
     clearTimers();
@@ -469,9 +514,17 @@ export function createNativeCaptureSession(
 
     // Terminate child
     if (child) {
-      try { child.kill('SIGTERM'); } catch { /* noop */ }
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        /* noop */
+      }
       graceTimer = deps.setTimeout(() => {
-        try { child?.kill('SIGKILL'); } catch { /* noop */ }
+        try {
+          child?.kill('SIGKILL');
+        } catch {
+          /* noop */
+        }
       }, HELPER_GRACE_MS);
     }
 
@@ -503,9 +556,12 @@ export function createNativeCaptureSession(
       openInterruptions.clear();
 
       // Add capture-wide terminal event
-      if (!closedInterruptions.some((i) =>
-        i.channel === 'capture' && i.reason === interruptionReason && i.recovered === false
-      )) {
+      if (
+        !closedInterruptions.some(
+          (i) =>
+            i.channel === 'capture' && i.reason === interruptionReason && i.recovered === false,
+        )
+      ) {
         closedInterruptions.push({
           channel: 'capture',
           startMs: blockIndexToMilliseconds(nextBlock),
@@ -528,12 +584,19 @@ export function createNativeCaptureSession(
         }, CLOSE_DEADLINE_MS);
       });
       await Promise.race([barrier, deadline]);
-      if (closeTimer !== undefined) { deps.clearTimeout(closeTimer); closeTimer = undefined; }
+      if (closeTimer !== undefined) {
+        deps.clearTimeout(closeTimer);
+        closeTimer = undefined;
+      }
     } else {
       // Grace period for orderly stop
       graceTimer = deps.setTimeout(() => {
         emit('grace-timeout');
-        try { child?.kill('SIGTERM'); } catch { /* noop */ }
+        try {
+          child?.kill('SIGTERM');
+        } catch {
+          /* noop */
+        }
       }, HELPER_GRACE_MS);
 
       // Also set a close deadline after grace period
@@ -547,8 +610,14 @@ export function createNativeCaptureSession(
         }, HELPER_GRACE_MS + CLOSE_DEADLINE_MS);
       });
       await Promise.race([barrier, deadline]);
-      if (graceTimer !== undefined) { deps.clearTimeout(graceTimer); graceTimer = undefined; }
-      if (closeTimer !== undefined) { deps.clearTimeout(closeTimer); closeTimer = undefined; }
+      if (graceTimer !== undefined) {
+        deps.clearTimeout(graceTimer);
+        graceTimer = undefined;
+      }
+      if (closeTimer !== undefined) {
+        deps.clearTimeout(closeTimer);
+        closeTimer = undefined;
+      }
 
       // If orderly stop but stopped was never received, treat as unexpected termination
       if (!stoppedReceived) {
@@ -564,9 +633,11 @@ export function createNativeCaptureSession(
           });
         }
         openInterruptions.clear();
-        if (!closedInterruptions.some((i) =>
-          i.channel === 'capture' && i.reason === 'helper-exit' && i.recovered === false
-        )) {
+        if (
+          !closedInterruptions.some(
+            (i) => i.channel === 'capture' && i.reason === 'helper-exit' && i.recovered === false,
+          )
+        ) {
           closedInterruptions.push({
             channel: 'capture',
             startMs: blockIndexToMilliseconds(nextBlock),
@@ -580,7 +651,9 @@ export function createNativeCaptureSession(
 
     // Parser drain
     if (decoder) {
-      try { decoder.finish(); } catch {
+      try {
+        decoder.finish();
+      } catch {
         // Partial frame at EOF is a protocol failure
         emit('protocol-error');
         if (!interruptionReason) {
@@ -631,12 +704,12 @@ export function createNativeCaptureSession(
     try {
       await deps.recordingsLibrary.list();
       emit('library-refreshed');
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
 
     cleanupFinal();
-    return terminalStatus === 'complete'
-      ? { status: 'complete' }
-      : { status: 'interrupted' };
+    return terminalStatus === 'complete' ? { status: 'complete' } : { status: 'interrupted' };
   }
 
   function determineStatus(interruptionReason: string | undefined): 'complete' | 'interrupted' {
@@ -661,7 +734,7 @@ export function createNativeCaptureSession(
     await deps.store.publish(storeSession, metadata, acceptedBlocks());
   }
 
-  async function persistFailed(category: PersistenceFailureCategory): Promise<void> {
+  async function persistFailed(_category: PersistenceFailureCategory): Promise<void> {
     if (!storeSession) return;
     // Add persistence-error if not already present
     if (!closedInterruptions.some((i) => i.reason === 'persistence-error')) {
@@ -687,7 +760,9 @@ export function createNativeCaptureSession(
     try {
       await deps.store.retainFailed(storeSession, metadata);
       emit('retained-failed');
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
   }
 
   function cleanupFinal(): void {
@@ -721,7 +796,7 @@ export function createNativeCaptureSession(
     try {
       storeSession = await deps.store.begin(recordingId);
       writer = await deps.openWriter(storeSession.audioFilePath);
-    } catch (error) {
+    } catch {
       emit('persistence-error');
       if (storeSession) {
         try {
@@ -786,7 +861,9 @@ export function createNativeCaptureSession(
       return Promise.resolve({ status: 'complete' as const });
     }
     if (phase === 'starting') {
-      sharedStopPromise = performInitCleanup('cancelled').then(() => ({ status: 'complete' as const }));
+      sharedStopPromise = performInitCleanup('cancelled').then(() => ({
+        status: 'complete' as const,
+      }));
       return sharedStopPromise;
     }
 
@@ -803,7 +880,7 @@ export function createNativeCaptureSession(
 
   function snapshot(): CaptureStatusSnapshot {
     return {
-      state: phase === 'done' ? 'idle' : phase as SessionState,
+      state: phase === 'done' ? 'idle' : (phase as SessionState),
       channels: {
         interviewer: { ...channelStates.interviewer },
         you: { ...channelStates.you },
@@ -832,6 +909,8 @@ export function createNativeCaptureSession(
       statusSubscribers.add(callback);
       return () => statusSubscribers.delete(callback);
     },
-    get events(): readonly string[] { return events; },
+    get events(): readonly string[] {
+      return events;
+    },
   };
 }

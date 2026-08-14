@@ -16,7 +16,14 @@
  */
 
 const PCM_BLOCK_BYTES = 1280;
-const FRAME_TYPE = { ready: 0x01, pcm: 0x02, gap: 0x03, interruption: 0x04, stopped: 0x06, error: 0x07 };
+const FRAME_TYPE = {
+  ready: 0x01,
+  pcm: 0x02,
+  gap: 0x03,
+  interruption: 0x04,
+  stopped: 0x06,
+  error: 0x07,
+};
 
 let sequenceCounter = 0;
 
@@ -40,14 +47,17 @@ function writeFrame(frameType, payload) {
 }
 
 function writeReady() {
-  writeFrame(FRAME_TYPE.ready, JSON.stringify({
-    type: 'ready',
-    sampleRateHz: 16000,
-    framesPerBlock: 320,
-    encoding: 's16le',
-    channelOrder: ['interviewer', 'you'],
-    firstBlock: 0,
-  }));
+  writeFrame(
+    FRAME_TYPE.ready,
+    JSON.stringify({
+      type: 'ready',
+      sampleRateHz: 16000,
+      framesPerBlock: 320,
+      encoding: 's16le',
+      channelOrder: ['interviewer', 'you'],
+      firstBlock: 0,
+    }),
+  );
 }
 
 function writePcm(data) {
@@ -56,49 +66,61 @@ function writePcm(data) {
 }
 
 function writeInterruptionOpen(id, channel, startBlock, reason) {
-  writeFrame(FRAME_TYPE.interruption, JSON.stringify({
-    type: 'interruption',
-    phase: 'opened',
-    id,
-    channel,
-    startBlock,
-    reason,
-  }));
+  writeFrame(
+    FRAME_TYPE.interruption,
+    JSON.stringify({
+      type: 'interruption',
+      phase: 'opened',
+      id,
+      channel,
+      startBlock,
+      reason,
+    }),
+  );
 }
 
 function writeInterruptionClosed(id, channel, startBlock, endBlockExclusive, reason, recovered) {
-  writeFrame(FRAME_TYPE.interruption, JSON.stringify({
-    type: 'interruption',
-    phase: 'closed',
-    id,
-    channel,
-    startBlock,
-    endBlockExclusive,
-    reason,
-    recovered,
-  }));
+  writeFrame(
+    FRAME_TYPE.interruption,
+    JSON.stringify({
+      type: 'interruption',
+      phase: 'closed',
+      id,
+      channel,
+      startBlock,
+      endBlockExclusive,
+      reason,
+      recovered,
+    }),
+  );
 }
 
 function writeGap(startBlock, endBlockExclusive) {
-  writeFrame(FRAME_TYPE.gap, JSON.stringify({
-    type: 'gap',
-    channel: 'capture',
-    startBlock,
-    endBlockExclusive,
-    reason: 'buffer-overflow',
-    recovered: true,
-  }));
+  writeFrame(
+    FRAME_TYPE.gap,
+    JSON.stringify({
+      type: 'gap',
+      channel: 'capture',
+      startBlock,
+      endBlockExclusive,
+      reason: 'buffer-overflow',
+      recovered: true,
+    }),
+  );
 }
 
 function writeStopped(finalBlockExclusive, pcmBlocks, gapBlocks) {
-  writeFrame(FRAME_TYPE.stopped, JSON.stringify({
-    type: 'stopped',
-    reason: 'stop',
-    finalBlockExclusive,
-    pcmBlocks,
-    gapBlocks,
-    openInterruptionIds: [],
-  }));
+  writeFrame(
+    FRAME_TYPE.stopped,
+    JSON.stringify({
+      type: 'stopped',
+      reason: 'stop',
+      finalBlockExclusive,
+      pcmBlocks,
+      gapBlocks,
+      openInterruptionIds: [],
+    }),
+  );
 }
 
 function writeError(phase, code, channel) {

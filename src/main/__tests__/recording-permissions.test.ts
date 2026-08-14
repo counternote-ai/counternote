@@ -21,7 +21,7 @@ describe('recording permissions', () => {
 
   it('reports screen and microphone status with the development permission owner', () => {
     systemPreferencesMock.getMediaAccessStatus.mockImplementation((permission: string) =>
-      permission === 'screen' ? 'denied' : 'granted'
+      permission === 'screen' ? 'denied' : 'granted',
     );
 
     expect(getRecordingPermissionSnapshot()).toEqual({
@@ -56,29 +56,29 @@ describe('recording permissions', () => {
     'allows an attempt when screen access is %s',
     (status) => {
       systemPreferencesMock.getMediaAccessStatus.mockImplementation((permission: string) =>
-        permission === 'screen' ? status : 'granted'
+        permission === 'screen' ? status : 'granted',
       );
 
       expect(getRecordingPermissionSnapshot().canAttemptRecording).toBe(true);
-    }
+    },
   );
 
   it.each(['denied', 'restricted'] as const)(
     'blocks an attempt when microphone access is %s',
     (status) => {
       systemPreferencesMock.getMediaAccessStatus.mockImplementation((permission: string) =>
-        permission === 'microphone' ? status : 'granted'
+        permission === 'microphone' ? status : 'granted',
       );
 
       expect(getRecordingPermissionSnapshot().canAttemptRecording).toBe(false);
-    }
+    },
   );
 
   it('opens the Screen Recording settings pane', async () => {
     await openRecordingPermissionSettings('screen');
 
     expect(shellMock.openExternal).toHaveBeenCalledWith(
-      'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+      'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
     );
   });
 
@@ -86,7 +86,7 @@ describe('recording permissions', () => {
     await openRecordingPermissionSettings('microphone');
 
     expect(shellMock.openExternal).toHaveBeenCalledWith(
-      'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'
+      'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
     );
   });
 });

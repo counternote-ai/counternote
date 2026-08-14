@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, LoaderCircle, Mic, Plus, Settings, Square, X, RotateCcw, Trash2 } from 'lucide-react';
+import { FileText, LoaderCircle, Mic, Plus, Settings, Square, X } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
 import { Button } from './ui/button';
@@ -13,7 +13,11 @@ import { type RecordingPermissionNotice } from '../recording-permissions';
 import { type TranscriptionProgress } from '../../types/transcription';
 import { RecordingHealth } from './RecordingHealth';
 import { RecordingRecovery } from './RecordingRecovery';
-import { formatBytes, type RecordingHealthView, type RecoveryItemView } from '../native-capture-view-model';
+import {
+  formatBytes,
+  type RecordingHealthView,
+  type RecoveryItemView,
+} from '../native-capture-view-model';
 
 interface Recording {
   id: string;
@@ -97,11 +101,12 @@ export function ControlPanel({
     return base;
   });
 
-  const recoveryNotice = recoveryItems.length === 0
-    ? 'No recordings to recover'
-    : recoveryItems.length === 1
-      ? `1 recording, ${formatBytes(sumBytes(recoveryItems))}`
-      : `${recoveryItems.length} recordings, ${formatBytes(sumBytes(recoveryItems))}`;
+  const recoveryNotice =
+    recoveryItems.length === 0
+      ? 'No recordings to recover'
+      : recoveryItems.length === 1
+        ? `1 recording, ${formatBytes(sumBytes(recoveryItems))}`
+        : `${recoveryItems.length} recordings, ${formatBytes(sumBytes(recoveryItems))}`;
 
   return (
     <TooltipProvider>
@@ -110,11 +115,18 @@ export function ControlPanel({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Interview Copilot</p>
-              <h1 className="truncate text-xl font-semibold tracking-normal text-foreground">Past Interviews</h1>
+              <h1 className="truncate text-xl font-semibold tracking-normal text-foreground">
+                Past Interviews
+              </h1>
             </div>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={onOpenSettings} aria-label="Open settings">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onOpenSettings}
+                  aria-label="Open settings"
+                >
                   <Settings />
                 </Button>
               </TooltipTrigger>
@@ -124,7 +136,9 @@ export function ControlPanel({
 
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
-              {recordings.length === 1 ? '1 saved interview' : `${recordings.length} saved interviews`}
+              {recordings.length === 1
+                ? '1 saved interview'
+                : `${recordings.length} saved interviews`}
             </p>
             {isStarting && onCancelRecording ? (
               <Button variant="outline" size="pill" onClick={onCancelRecording}>
@@ -132,7 +146,12 @@ export function ControlPanel({
                 Cancel
               </Button>
             ) : isRecording || isFinishing ? (
-              <Button variant="destructive" size="pill" onClick={onStopRecording} disabled={isFinishing}>
+              <Button
+                variant="destructive"
+                size="pill"
+                onClick={onStopRecording}
+                disabled={isFinishing}
+              >
                 <Square />
                 Stop
               </Button>
@@ -150,7 +169,11 @@ export function ControlPanel({
         )}
 
         {permissionNotice && (
-          <Alert variant={permissionEscalated || permissionNotice.tone === 'error' ? 'destructive' : 'default'}>
+          <Alert
+            variant={
+              permissionEscalated || permissionNotice.tone === 'error' ? 'destructive' : 'default'
+            }
+          >
             <AlertDescription className="space-y-3">
               <p>{permissionNotice.message}</p>
               <div className="flex flex-wrap gap-2">
@@ -186,10 +209,16 @@ export function ControlPanel({
               <div className="space-y-1">
                 <h2 className="text-base font-semibold">No recordings yet</h2>
                 <p className="text-sm leading-relaxed text-muted-foreground">
-                  Start a recording when your next interview begins. Transcripts will appear here afterward.
+                  Start a recording when your next interview begins. Transcripts will appear here
+                  afterward.
                 </p>
               </div>
-              <Button variant="outline" size="pill" onClick={onStartRecording} disabled={isRecording}>
+              <Button
+                variant="outline"
+                size="pill"
+                onClick={onStartRecording}
+                disabled={isRecording}
+              >
                 <Plus />
                 Start recording
               </Button>
@@ -199,9 +228,8 @@ export function ControlPanel({
           <ScrollArea className="app-scroll-shadow min-h-0 flex-1 pr-1">
             <div className="space-y-3 pb-1">
               {recordings.map((rec) => {
-                const progress = transcriptionProgress?.recordingId === rec.id
-                  ? transcriptionProgress
-                  : null;
+                const progress =
+                  transcriptionProgress?.recordingId === rec.id ? transcriptionProgress : null;
                 const isTranscribing = progress !== null;
                 const status = getRecordingStatus({
                   transcribed: rec.transcribed,
@@ -213,7 +241,10 @@ export function ControlPanel({
                 return (
                   <Card
                     key={rec.id}
-                    className={cn('overflow-hidden transition-colors', canOpen && 'hover:bg-card/90')}
+                    className={cn(
+                      'overflow-hidden transition-colors',
+                      canOpen && 'hover:bg-card/90',
+                    )}
                     aria-busy={isTranscribing || undefined}
                   >
                     <CardContent className="p-0">
@@ -227,12 +258,14 @@ export function ControlPanel({
                           <div className="min-w-0 space-y-1">
                             <div className="flex min-w-0 items-center gap-2">
                               <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                              <h2 className="truncate text-sm font-semibold text-foreground">{rec.title}</h2>
-                              {isInterrupted && (
-                                <Badge variant="destructive">Interrupted</Badge>
-                              )}
+                              <h2 className="truncate text-sm font-semibold text-foreground">
+                                {rec.title}
+                              </h2>
+                              {isInterrupted && <Badge variant="destructive">Interrupted</Badge>}
                             </div>
-                            <p className="text-xs text-muted-foreground">{formatDuration(rec.duration)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatDuration(rec.duration)}
+                            </p>
                           </div>
                           <Badge variant={statusVariant[status.tone]}>{status.label}</Badge>
                         </div>
@@ -245,7 +278,9 @@ export function ControlPanel({
                             size="sm"
                             className="w-full"
                             onClick={() => onTranscribe(rec.id)}
-                            disabled={Boolean(transcriptionProgress) || localTranscriptionUnavailable}
+                            disabled={
+                              Boolean(transcriptionProgress) || localTranscriptionUnavailable
+                            }
                           >
                             {isTranscribing && <LoaderCircle className="animate-spin" />}
                             {localTranscriptionUnavailable

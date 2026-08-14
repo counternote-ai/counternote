@@ -17,9 +17,7 @@ export class AudioCaptureHelperError extends Error {
   }
 }
 
-export function resolveAudioCaptureHelper(
-  options: AudioCaptureHelperOptions,
-): string {
+export function resolveAudioCaptureHelper(options: AudioCaptureHelperOptions): string {
   if (options.platform !== 'darwin' || options.arch !== 'arm64') {
     throw new AudioCaptureHelperError(
       'Audio capture helper is only supported on macOS Apple Silicon',

@@ -60,17 +60,25 @@ export class CaptureStore {
     return { sessionId, recordingId, stagingDirectory, audioFilePath, startedAt };
   }
 
-  public async publish(session: CaptureStoreSession, metadata: CaptureMetadata, finalBlockExclusive: number): Promise<void> {
+  public async publish(
+    session: CaptureStoreSession,
+    metadata: CaptureMetadata,
+    finalBlockExclusive: number,
+  ): Promise<void> {
     const root = await this.prepareRoot();
     await this.assertSession(root, session);
     const terminal = validateTerminalMetadata(metadata, finalBlockExclusive);
-    if (terminal.status !== 'complete' && terminal.status !== 'interrupted') throw new Error('INVALID_PUBLICATION_STATUS');
+    if (terminal.status !== 'complete' && terminal.status !== 'interrupted')
+      throw new Error('INVALID_PUBLICATION_STATUS');
     await writeMetadataAtomically(session.stagingDirectory, terminal);
     const destination = path.join(root, session.recordingId);
     await this.publishReservedDirectory(session, destination, terminal, 'RECORDING_ID_COLLISION');
   }
 
-  public async retainFailed(session: CaptureStoreSession, metadata: CaptureMetadata): Promise<void> {
+  public async retainFailed(
+    session: CaptureStoreSession,
+    metadata: CaptureMetadata,
+  ): Promise<void> {
     const root = await this.prepareRoot();
     await this.assertSession(root, session);
     const terminal = validateTerminalMetadata(metadata, MAX_BLOCKS);
@@ -86,8 +94,12 @@ export class CaptureStore {
     await this.publishReservedDirectory(session, destination, terminal, 'RECOVERY_ID_COLLISION');
   }
 
-  public async discardEmpty(session: CaptureStoreSession, acceptedTimelineBlocks: number): Promise<'discarded' | 'retained'> {
-    if (!Number.isSafeInteger(acceptedTimelineBlocks) || acceptedTimelineBlocks < 0) return 'retained';
+  public async discardEmpty(
+    session: CaptureStoreSession,
+    acceptedTimelineBlocks: number,
+  ): Promise<'discarded' | 'retained'> {
+    if (!Number.isSafeInteger(acceptedTimelineBlocks) || acceptedTimelineBlocks < 0)
+      return 'retained';
     const root = await this.prepareRoot();
     if (!(await isMissingOrValidSession(root, session))) return 'retained';
     try {
@@ -99,15 +111,25 @@ export class CaptureStore {
     }
     if (acceptedTimelineBlocks !== 0) return 'retained';
     const entries = await fs.readdir(session.stagingDirectory);
-    if (entries.length !== 2 || !entries.includes(AUDIO_FILE) || !entries.includes(METADATA_FILE)) return 'retained';
+    if (entries.length !== 2 || !entries.includes(AUDIO_FILE) || !entries.includes(METADATA_FILE))
+      return 'retained';
     const audioPath = path.join(session.stagingDirectory, AUDIO_FILE);
     const metadataPath = path.join(session.stagingDirectory, METADATA_FILE);
     try {
       const audio = await fs.lstat(audioPath);
       const metadata = await fs.lstat(metadataPath);
-      if (!audio.isFile() || audio.isSymbolicLink() || audio.size !== 44 || !metadata.isFile() || metadata.isSymbolicLink()) return 'retained';
+      if (
+        !audio.isFile() ||
+        audio.isSymbolicLink() ||
+        audio.size !== 44 ||
+        !metadata.isFile() ||
+        metadata.isSymbolicLink()
+      )
+        return 'retained';
       if (!isFixedProvisionalWavHeader(await fs.readFile(audioPath))) return 'retained';
-      const parsed = parseCaptureMetadata(JSON.parse(await fs.readFile(metadataPath, 'utf8')) as unknown);
+      const parsed = parseCaptureMetadata(
+        JSON.parse(await fs.readFile(metadataPath, 'utf8')) as unknown,
+      );
       if (parsed === null || parsed.status !== 'provisional') return 'retained';
     } catch {
       return 'retained';
@@ -123,10 +145,15 @@ export class CaptureStore {
   }
 
   private async assertSession(root: string, session: CaptureStoreSession): Promise<void> {
-    if (!isRecordingId(session.recordingId) || !isUuid(session.sessionId)) throw new Error('INVALID_CAPTURE_SESSION');
+    if (!isRecordingId(session.recordingId) || !isUuid(session.sessionId))
+      throw new Error('INVALID_CAPTURE_SESSION');
     const expectedDirectory = path.join(root, '.in-progress', session.sessionId);
     const expectedAudio = path.join(expectedDirectory, AUDIO_FILE);
-    if (session.stagingDirectory !== expectedDirectory || session.audioFilePath !== expectedAudio || !isInside(root, expectedDirectory)) {
+    if (
+      session.stagingDirectory !== expectedDirectory ||
+      session.audioFilePath !== expectedAudio ||
+      !isInside(root, expectedDirectory)
+    ) {
       throw new Error('INVALID_CAPTURE_SESSION');
     }
     const stat = await fs.lstat(expectedDirectory);
@@ -144,13 +171,9 @@ export class CaptureStore {
   ): Promise<void> {
     await reserveDirectory(this.operations, destination, collisionCode);
     await assertRegularFile(session.audioFilePath);
-    try {
-      await writeMetadataAtomically(destination, metadata);
-      await this.operations.linkAudio(session.audioFilePath, path.join(destination, AUDIO_FILE));
-    } catch (error) {
-      // Keep staging intact; without both terminal metadata and audio this reservation is not a library item.
-      throw error;
-    }
+    // Keep staging intact on failure; without both terminal metadata and audio this reservation is not a library item.
+    await writeMetadataAtomically(destination, metadata);
+    await this.operations.linkAudio(session.audioFilePath, path.join(destination, AUDIO_FILE));
     try {
       await fs.rm(session.stagingDirectory, { recursive: true, force: false });
     } catch {
@@ -169,7 +192,10 @@ function provisionalMetadata(startedAt: string): CaptureMetadata {
   };
 }
 
-async function writeMetadataAtomically(directory: string, metadata: CaptureMetadata): Promise<void> {
+async function writeMetadataAtomically(
+  directory: string,
+  metadata: CaptureMetadata,
+): Promise<void> {
   const target = path.join(directory, METADATA_FILE);
   const temporary = path.join(directory, `.${METADATA_FILE}.tmp-${randomUUID()}`);
   const handle = await fs.open(temporary, 'wx', 0o600);
@@ -214,7 +240,7 @@ async function reserveDirectory(
   try {
     await operations.reserveDirectory(destination);
   } catch (error) {
-    if (isAlreadyExists(error)) throw new Error(collisionCode);
+    if (isAlreadyExists(error)) throw Object.assign(new Error(collisionCode), { cause: error });
     throw error;
   }
 }
@@ -224,10 +250,17 @@ async function assertRegularFile(filePath: string): Promise<void> {
   if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('UNSAFE_AUDIO_FILE');
 }
 
-async function isMissingOrValidSession(root: string, session: CaptureStoreSession): Promise<boolean> {
+async function isMissingOrValidSession(
+  root: string,
+  session: CaptureStoreSession,
+): Promise<boolean> {
   if (!isRecordingId(session.recordingId) || !isUuid(session.sessionId)) return false;
   const expected = path.join(root, '.in-progress', session.sessionId);
-  return session.stagingDirectory === expected && session.audioFilePath === path.join(expected, AUDIO_FILE) && isInside(root, expected);
+  return (
+    session.stagingDirectory === expected &&
+    session.audioFilePath === path.join(expected, AUDIO_FILE) &&
+    isInside(root, expected)
+  );
 }
 
 function isRecordingId(value: string): boolean {
@@ -246,26 +279,38 @@ function isInside(root: string, candidate: string): boolean {
 }
 
 function isNotFound(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === 'ENOENT';
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'ENOENT'
+  );
 }
 
 function isAlreadyExists(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === 'EEXIST';
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'EEXIST'
+  );
 }
 
 function isFixedProvisionalWavHeader(value: Buffer): boolean {
-  return value.length === 44
-    && value.toString('ascii', 0, 4) === 'RIFF'
-    && value.readUInt32LE(4) === 36
-    && value.toString('ascii', 8, 12) === 'WAVE'
-    && value.toString('ascii', 12, 16) === 'fmt '
-    && value.readUInt32LE(16) === 16
-    && value.readUInt16LE(20) === 1
-    && value.readUInt16LE(22) === 2
-    && value.readUInt32LE(24) === 16_000
-    && value.readUInt32LE(28) === 64_000
-    && value.readUInt16LE(32) === 4
-    && value.readUInt16LE(34) === 16
-    && value.toString('ascii', 36, 40) === 'data'
-    && value.readUInt32LE(40) === 0;
+  return (
+    value.length === 44 &&
+    value.toString('ascii', 0, 4) === 'RIFF' &&
+    value.readUInt32LE(4) === 36 &&
+    value.toString('ascii', 8, 12) === 'WAVE' &&
+    value.toString('ascii', 12, 16) === 'fmt ' &&
+    value.readUInt32LE(16) === 16 &&
+    value.readUInt16LE(20) === 1 &&
+    value.readUInt16LE(22) === 2 &&
+    value.readUInt32LE(24) === 16_000 &&
+    value.readUInt32LE(28) === 64_000 &&
+    value.readUInt16LE(32) === 4 &&
+    value.readUInt16LE(34) === 16 &&
+    value.toString('ascii', 36, 40) === 'data' &&
+    value.readUInt32LE(40) === 0
+  );
 }

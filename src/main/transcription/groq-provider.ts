@@ -26,7 +26,7 @@ export class GroqTranscriptionError extends Error {
   constructor(
     readonly code: TranscriptionErrorCode,
     message: string,
-    readonly retryAfterSeconds?: number
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'GroqTranscriptionError';
@@ -71,7 +71,7 @@ export class GroqProvider {
     formData: FormData,
     apiKey: string,
     speaker: string,
-    isRetry = false
+    isRetry = false,
   ): Promise<TranscriptionSegment[]> {
     const controller = new AbortController();
     const timeoutId = this.deps.setTimeout(() => controller.abort(), TEN_MINUTES_MS);
@@ -92,17 +92,14 @@ export class GroqProvider {
       }
       throw new GroqTranscriptionError(
         'GROQ_REJECTED',
-        `Groq request failed: ${error instanceof Error ? error.message : String(error)}`
+        `Groq request failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     } finally {
       this.deps.clearTimeout(timeoutId);
     }
 
     if (response.status === 429) {
-      const retryAfterSeconds = parseRetryAfter(
-        response.headers.get('retry-after'),
-        this.deps.now
-      );
+      const retryAfterSeconds = parseRetryAfter(response.headers.get('retry-after'), this.deps.now);
       const retryAfterMs = retryAfterSeconds !== undefined ? retryAfterSeconds * 1000 : undefined;
 
       if (
@@ -118,14 +115,14 @@ export class GroqProvider {
       throw new GroqTranscriptionError(
         'GROQ_RATE_LIMITED',
         'Groq rate limit exceeded',
-        retryAfterSeconds
+        retryAfterSeconds,
       );
     }
 
     if (!response.ok) {
       throw new GroqTranscriptionError(
         'GROQ_REJECTED',
-        `Groq API returned status ${response.status}`
+        `Groq API returned status ${response.status}`,
       );
     }
 
@@ -133,10 +130,7 @@ export class GroqProvider {
     try {
       data = await response.json();
     } catch {
-      throw new GroqTranscriptionError(
-        'GROQ_REJECTED',
-        'Groq response body is not valid JSON'
-      );
+      throw new GroqTranscriptionError('GROQ_REJECTED', 'Groq response body is not valid JSON');
     }
 
     return this.normalizeSegments(data, speaker);
@@ -148,20 +142,14 @@ export class GroqProvider {
 
   private normalizeSegments(data: unknown, speaker: string): TranscriptionSegment[] {
     if (!isObject(data) || !Array.isArray(data.segments)) {
-      throw new GroqTranscriptionError(
-        'GROQ_REJECTED',
-        'Groq response is missing segments'
-      );
+      throw new GroqTranscriptionError('GROQ_REJECTED', 'Groq response is missing segments');
     }
 
     const segments: TranscriptionSegment[] = [];
 
     for (const item of data.segments) {
       if (!isObject(item)) {
-        throw new GroqTranscriptionError(
-          'GROQ_REJECTED',
-          'Groq segment is not an object'
-        );
+        throw new GroqTranscriptionError('GROQ_REJECTED', 'Groq segment is not an object');
       }
 
       if (
@@ -170,34 +158,22 @@ export class GroqProvider {
         !Number.isFinite(item.start) ||
         !Number.isFinite(item.end)
       ) {
-        throw new GroqTranscriptionError(
-          'GROQ_REJECTED',
-          'Groq segment has invalid timestamps'
-        );
+        throw new GroqTranscriptionError('GROQ_REJECTED', 'Groq segment has invalid timestamps');
       }
 
       const start = item.start;
       const end = item.end;
 
       if (start < 0 || end < 0) {
-        throw new GroqTranscriptionError(
-          'GROQ_REJECTED',
-          'Groq segment has invalid timestamps'
-        );
+        throw new GroqTranscriptionError('GROQ_REJECTED', 'Groq segment has invalid timestamps');
       }
 
       if (end < start) {
-        throw new GroqTranscriptionError(
-          'GROQ_REJECTED',
-          'Groq segment has reversed timestamps'
-        );
+        throw new GroqTranscriptionError('GROQ_REJECTED', 'Groq segment has reversed timestamps');
       }
 
       if (typeof item.text !== 'string') {
-        throw new GroqTranscriptionError(
-          'GROQ_REJECTED',
-          'Groq segment text is not a string'
-        );
+        throw new GroqTranscriptionError('GROQ_REJECTED', 'Groq segment text is not a string');
       }
 
       const text = item.text.trim();

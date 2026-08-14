@@ -15,10 +15,15 @@ if (!outputPrefix || !audioFile) {
 } else {
   console.error('fake whisper-cli: 50%');
   console.error('fake whisper-cli: 100%');
-  require('fs').writeFileSync(`${outputPrefix}.json`, JSON.stringify({
-    transcription: [{
-      offsets: { from: 0, to: 250 },
-      text: 'Deterministic local transcript.',
-    }],
-  }));
+  require('fs').writeFileSync(
+    `${outputPrefix}.json`,
+    JSON.stringify({
+      transcription: [
+        {
+          offsets: { from: 0, to: 250 },
+          text: 'Deterministic local transcript.',
+        },
+      ],
+    }),
+  );
 }

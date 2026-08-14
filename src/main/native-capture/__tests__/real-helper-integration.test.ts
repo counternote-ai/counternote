@@ -104,9 +104,7 @@ describe('real-helper integration', () => {
     it('every PCM payload is 1,280 bytes', () => {
       const pcmFrames = frames.filter((f) => f.frameType === 'pcm');
       for (const frame of pcmFrames) {
-        expect((frame.payload as Buffer).length).toBe(
-          (manifest as any).pcmBlockBytes,
-        );
+        expect((frame.payload as Buffer).length).toBe((manifest as any).pcmBlockBytes);
       }
     });
 
@@ -121,9 +119,7 @@ describe('real-helper integration', () => {
     });
 
     it('no interruption frames in dual-rate scenario', () => {
-      const interruptionFrames = frames.filter(
-        (f) => f.frameType === 'interruption',
-      );
+      const interruptionFrames = frames.filter((f) => f.frameType === 'interruption');
       expect(interruptionFrames.length).toBe(0);
     });
 
@@ -140,15 +136,11 @@ describe('real-helper integration', () => {
       };
       expect(stopped.type).toBe('stopped');
       expect(stopped.reason).toBe('stop');
-      expect(stopped.finalBlockExclusive).toBe(
-        (manifest as any).expected.totalBlocks,
-      );
+      expect(stopped.finalBlockExclusive).toBe((manifest as any).expected.totalBlocks);
       expect(stopped.pcmBlocks).toBe((manifest as any).expected.pcmBlocks);
       expect(stopped.gapBlocks).toBe((manifest as any).expected.gapBlocks);
       expect(stopped.openInterruptionIds).toEqual([]);
-      expect(stopped.finalBlockExclusive).toBe(
-        stopped.pcmBlocks + stopped.gapBlocks,
-      );
+      expect(stopped.finalBlockExclusive).toBe(stopped.pcmBlocks + stopped.gapBlocks);
     });
 
     it('protocol sequence is contiguous', () => {
@@ -187,7 +179,6 @@ describe('real-helper integration', () => {
 
     it('every paired impulse differs by at most one block', () => {
       const pcmFrames = frames.filter((f) => f.frameType === 'pcm');
-      const impulseInterval = (manifest as any).impulseIntervalBlocks;
       const amplitude = (manifest as any).impulseAmplitude;
 
       // Find all blocks with left impulse
@@ -237,8 +228,7 @@ describe('real-helper integration', () => {
     it('emits exactly one interruption open for microphone', () => {
       const openedInterruptions = frames.filter(
         (f) =>
-          f.frameType === 'interruption' &&
-          (f.payload as { phase: string }).phase === 'opened',
+          f.frameType === 'interruption' && (f.payload as { phase: string }).phase === 'opened',
       );
       expect(openedInterruptions.length).toBe(1);
       const payload = openedInterruptions[0].payload as {
@@ -252,8 +242,7 @@ describe('real-helper integration', () => {
     it('interruption closes with recovered: true', () => {
       const closedInterruptions = frames.filter(
         (f) =>
-          f.frameType === 'interruption' &&
-          (f.payload as { phase: string }).phase === 'closed',
+          f.frameType === 'interruption' && (f.payload as { phase: string }).phase === 'closed',
       );
       expect(closedInterruptions.length).toBe(1);
       const payload = closedInterruptions[0].payload as {
@@ -269,22 +258,18 @@ describe('real-helper integration', () => {
     it('interruption keeps same ID and reason through reconstruction', () => {
       const opened = frames.find(
         (f) =>
-          f.frameType === 'interruption' &&
-          (f.payload as { phase: string }).phase === 'opened',
+          f.frameType === 'interruption' && (f.payload as { phase: string }).phase === 'opened',
       )!.payload as { id: number; reason: string };
       const closed = frames.find(
         (f) =>
-          f.frameType === 'interruption' &&
-          (f.payload as { phase: string }).phase === 'closed',
+          f.frameType === 'interruption' && (f.payload as { phase: string }).phase === 'closed',
       )!.payload as { id: number; reason: string };
       expect(closed.id).toBe(opened.id);
       expect(closed.reason).toBe(opened.reason);
     });
 
     it('emits no overlapping interruption', () => {
-      const interruptionFrames = frames.filter(
-        (f) => f.frameType === 'interruption',
-      );
+      const interruptionFrames = frames.filter((f) => f.frameType === 'interruption');
       // Exactly 2: one opened, one closed
       expect(interruptionFrames.length).toBe(2);
     });

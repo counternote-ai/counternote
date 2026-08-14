@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { Transcript, TranscriptionSegment } from '../../../types/transcript';
+import { TranscriptionSegment } from '../../../types/transcript';
 import { TranscriptionProvider, TranscriptionStage } from '../../../types/transcription';
 import { TranscriptionOrchestrator, TranscriptionOrchestratorRequest } from '../orchestrator';
 import { TranscriptionError } from '../errors';
@@ -29,14 +29,16 @@ function makeTranscriptBytes(): Buffer {
   return Buffer.from('existing-transcript');
 }
 
-function makeSegment(start: number, end: number, text: string, speaker: string): TranscriptionSegment {
+function makeSegment(
+  start: number,
+  end: number,
+  text: string,
+  speaker: string,
+): TranscriptionSegment {
   return { start, end, text, speaker };
 }
 
-function createFakeFs(
-  initial: Record<string, Buffer> = {},
-  order?: string[]
-): FakeFs {
+function createFakeFs(initial: Record<string, Buffer> = {}, order?: string[]): FakeFs {
   const files = new Map<string, Buffer>(Object.entries(initial));
   const writeFile = jest.fn(async (filePath: string, data: string) => {
     order?.push('write');
@@ -117,8 +119,7 @@ function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
     });
 
   const convertToFlac =
-    overrides.convertToFlac ??
-    jest.fn(async (wavPath: string) => wavPath.replace('.wav', '.flac'));
+    overrides.convertToFlac ?? jest.fn(async (wavPath: string) => wavPath.replace('.wav', '.flac'));
 
   const getAudioDuration = overrides.getAudioDuration ?? jest.fn(async () => 120);
 
@@ -284,13 +285,13 @@ describe('TranscriptionOrchestrator', () => {
         expect.objectContaining({
           audioPath: SYSTEM_PATH.replace('.wav', '.flac'),
           speaker: 'Interviewer',
-        })
+        }),
       );
       expect(deps.groqProvider.transcribe).toHaveBeenCalledWith(
         expect.objectContaining({
           audioPath: MIC_PATH.replace('.wav', '.flac'),
           speaker: 'You',
-        })
+        }),
       );
       expect(deps.fs.rm).toHaveBeenCalledWith(SYSTEM_PATH.replace('.wav', '.flac'), {
         force: true,
@@ -311,12 +312,12 @@ describe('TranscriptionOrchestrator', () => {
       expect(deps.localProvider.transcribe).toHaveBeenCalledWith(
         expect.objectContaining({ audioPath: SYSTEM_PATH }),
         expect.any(Function),
-        expect.any(Function)
+        expect.any(Function),
       );
       expect(deps.localProvider.transcribe).toHaveBeenCalledWith(
         expect.objectContaining({ audioPath: MIC_PATH }),
         expect.any(Function),
-        expect.any(Function)
+        expect.any(Function),
       );
     });
 
@@ -326,7 +327,9 @@ describe('TranscriptionOrchestrator', () => {
         localProvider: {
           transcribe: jest.fn(async (req: { speaker: string }) => {
             order.push(req.speaker);
-            return [makeSegment(order.length, order.length + 1, `text-${req.speaker}`, req.speaker)];
+            return [
+              makeSegment(order.length, order.length + 1, `text-${req.speaker}`, req.speaker),
+            ];
           }),
         },
       });
@@ -512,7 +515,7 @@ describe('TranscriptionOrchestrator', () => {
         expect.any(String),
         expect.any(String),
         'cleanup-failed',
-        expect.any(Number)
+        expect.any(Number),
       );
     });
   });
@@ -527,7 +530,7 @@ describe('TranscriptionOrchestrator', () => {
           onProgress: () => {
             throw new Error('renderer progress listener was destroyed');
           },
-        })
+        }),
       ).resolves.toMatchObject({ id: RECORDING_ID });
 
       expect(deps.groqProvider.transcribe).toHaveBeenCalledTimes(2);
@@ -571,9 +574,7 @@ describe('TranscriptionOrchestrator', () => {
         await transcription;
       }
 
-      expect(
-        progressEvents.filter(({ stage }) => stage === 'transcribing-interviewer')
-      ).toEqual([
+      expect(progressEvents.filter(({ stage }) => stage === 'transcribing-interviewer')).toEqual([
         { recordingId: RECORDING_ID, stage: 'transcribing-interviewer' },
       ]);
     });
@@ -583,14 +584,12 @@ describe('TranscriptionOrchestrator', () => {
       const { orchestrator, request, deps } = createOrchestrator();
 
       await expect(
-        orchestrator.transcribe({ ...request, recordingId: unsafeRecordingId })
+        orchestrator.transcribe({ ...request, recordingId: unsafeRecordingId }),
       ).rejects.toMatchObject({ code: 'AUDIO_PREPARATION_FAILED' });
 
       expect(deps.recordingsLibrary.resolveRecordingAudio).not.toHaveBeenCalled();
       const logs = (deps.logger.log as jest.Mock).mock.calls;
-      expect(logs).toEqual([
-        ['invalid-recording-id', 'preparing-audio', 'failure', 0],
-      ]);
+      expect(logs).toEqual([['invalid-recording-id', 'preparing-audio', 'failure', 0]]);
       expect(JSON.stringify(logs)).not.toContain(unsafeRecordingId);
     });
 
@@ -598,17 +597,19 @@ describe('TranscriptionOrchestrator', () => {
       const { orchestrator, request, progressStages } = createOrchestrator({
         provider: 'local',
         localProvider: {
-          transcribe: jest.fn(async (
-            req: { speaker: 'Interviewer' | 'You' },
-            onProgress: (percent: number) => void,
-            onInferenceStart?: () => void
-          ) => {
-            if (req.speaker === 'Interviewer') {
-              onProgress(50);
-            }
-            onInferenceStart?.();
-            return [];
-          }),
+          transcribe: jest.fn(
+            async (
+              req: { speaker: 'Interviewer' | 'You' },
+              onProgress: (percent: number) => void,
+              onInferenceStart?: () => void,
+            ) => {
+              if (req.speaker === 'Interviewer') {
+                onProgress(50);
+              }
+              onInferenceStart?.();
+              return [];
+            },
+          ),
         },
       });
 
@@ -627,18 +628,20 @@ describe('TranscriptionOrchestrator', () => {
       const { orchestrator, request, progressStages } = createOrchestrator({
         provider: 'local',
         localProvider: {
-          transcribe: jest.fn(async (
-            req: { speaker: 'Interviewer' | 'You' },
-            onProgress: (percent: number) => void,
-            onInferenceStart?: () => void
-          ) => {
-            if (req.speaker === 'Interviewer') {
+          transcribe: jest.fn(
+            async (
+              req: { speaker: 'Interviewer' | 'You' },
+              onProgress: (percent: number) => void,
+              onInferenceStart?: () => void,
+            ) => {
+              if (req.speaker === 'Interviewer') {
+                return [];
+              }
+              onProgress(50);
+              onInferenceStart?.();
               return [];
-            }
-            onProgress(50);
-            onInferenceStart?.();
-            return [];
-          }),
+            },
+          ),
         },
       });
 
@@ -669,7 +672,7 @@ describe('TranscriptionOrchestrator', () => {
           onProgress: (progress) => {
             progressStages.push(progress.stage);
           },
-        })
+        }),
       ).rejects.toMatchObject({ code: 'LOCAL_TRANSCRIPTION_FAILED' });
 
       expect(progressStages).toEqual(['preparing-audio']);
@@ -679,14 +682,16 @@ describe('TranscriptionOrchestrator', () => {
       const { orchestrator, request } = createOrchestrator({
         provider: 'local',
         localProvider: {
-          transcribe: jest.fn(async (
-            _req: unknown,
-            _onProgress: (percent: number) => void,
-            onInferenceStart?: () => void
-          ) => {
-            onInferenceStart?.();
-            return [];
-          }),
+          transcribe: jest.fn(
+            async (
+              _req: unknown,
+              _onProgress: (percent: number) => void,
+              onInferenceStart?: () => void,
+            ) => {
+              onInferenceStart?.();
+              return [];
+            },
+          ),
         },
       });
       const progressEvents: { recordingId: string; stage: TranscriptionStage }[] = [];
@@ -731,7 +736,7 @@ describe('TranscriptionOrchestrator', () => {
         string,
         TranscriptionStage,
         string,
-        number
+        number,
       ][];
 
       for (const [recordingId, stage, category, elapsed] of logs) {

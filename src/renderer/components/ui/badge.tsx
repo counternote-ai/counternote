@@ -14,19 +14,19 @@ const badgeVariants = cva(
         pending: 'border-transparent bg-[var(--status-pending-bg)] text-[var(--status-pending)]',
         loading: 'border-border bg-card text-muted-foreground',
         destructive: 'border-transparent bg-destructive text-destructive-foreground',
-        interviewer: 'border-transparent bg-[var(--speaker-interviewer-bg)] text-[var(--speaker-interviewer)]',
+        interviewer:
+          'border-transparent bg-[var(--speaker-interviewer-bg)] text-[var(--speaker-interviewer)]',
         you: 'border-transparent bg-[var(--speaker-you-bg)] text-[var(--speaker-you)]',
       },
     },
     defaultVariants: {
       variant: 'default',
     },
-  }
+  },
 );
 
 export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof badgeVariants> {}
+  extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
 
 export function Badge({ className, variant, ...props }: BadgeProps) {
   return <div className={cn(badgeVariants({ variant, className }))} {...props} />;

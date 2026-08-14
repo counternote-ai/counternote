@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { ChevronLeft, Download, KeyRound, ShieldCheck } from 'lucide-react';
-import { type LocalModelStatus, type TranscriptionIpcResult, type TranscriptionProvider } from '../../types/transcription';
+import {
+  type LocalModelStatus,
+  type TranscriptionIpcResult,
+  type TranscriptionProvider,
+} from '../../types/transcription';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
@@ -115,7 +119,9 @@ export function Settings({
                 </div>
                 <div>
                   <h2 className="text-sm font-semibold">Transcription</h2>
-                  <p className="text-xs text-muted-foreground">Choose where recorded audio is processed.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Choose where recorded audio is processed.
+                  </p>
                 </div>
               </div>
 
@@ -123,7 +129,10 @@ export function Settings({
 
               <div className="space-y-2">
                 <Label htmlFor="transcription-provider">Provider</Label>
-                <Select value={localProvider} onValueChange={(value) => setLocalProvider(value as TranscriptionProvider)}>
+                <Select
+                  value={localProvider}
+                  onValueChange={(value) => setLocalProvider(value as TranscriptionProvider)}
+                >
                   <SelectTrigger id="transcription-provider" aria-label="Transcription provider">
                     <SelectValue />
                   </SelectTrigger>
@@ -147,7 +156,9 @@ export function Settings({
                       </Badge>
                     </div>
                     {localModelStatus.state === 'unavailable' && (
-                      <p className="mt-2 text-xs text-muted-foreground">{getUnavailableExplanation(localModelStatus)}</p>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {getUnavailableExplanation(localModelStatus)}
+                      </p>
                     )}
                   </div>
 
@@ -188,7 +199,9 @@ export function Settings({
                         <SelectValue placeholder="Select a model" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="whisper-large-v3-turbo">Whisper Large V3 Turbo</SelectItem>
+                        <SelectItem value="whisper-large-v3-turbo">
+                          Whisper Large V3 Turbo
+                        </SelectItem>
                         <SelectItem value="whisper-large-v3">Whisper Large V3</SelectItem>
                       </SelectContent>
                     </Select>
@@ -227,7 +240,9 @@ export function Settings({
       >
         Save settings
       </Button>
-      <p className="sr-only" aria-live="polite">{isSaving ? 'Saving settings' : ''}</p>
+      <p className="sr-only" aria-live="polite">
+        {isSaving ? 'Saving settings' : ''}
+      </p>
     </main>
   );
 }

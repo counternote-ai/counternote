@@ -90,7 +90,11 @@ export function RecordingRecovery({
                 )}
 
                 {confirmTrashId === item.id ? (
-                  <div className="flex items-center gap-1" role="alertdialog" aria-label="Confirm removal">
+                  <div
+                    className="flex items-center gap-1"
+                    role="alertdialog"
+                    aria-label="Confirm removal"
+                  >
                     <Button
                       variant="destructive"
                       size="sm"

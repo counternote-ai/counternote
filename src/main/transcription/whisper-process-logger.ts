@@ -30,27 +30,27 @@ export class ConsoleWhisperProcessLogger implements WhisperProcessLogger {
       case 'start':
         console.log(
           `[whisper-process] start mode=${event.mode} pid=${event.pid ?? 'unknown'} ` +
-          `channelDurationMs=${event.channelDurationMs}`
+            `channelDurationMs=${event.channelDurationMs}`,
         );
         return;
       case 'terminate':
         console.log(
-          `[whisper-process] terminate reason=${event.reason} elapsedMs=${event.elapsedMs}`
+          `[whisper-process] terminate reason=${event.reason} elapsedMs=${event.elapsedMs}`,
         );
         return;
       case 'exit':
         console.log(
           `[whisper-process] exit code=${event.code ?? 'unknown'} ` +
-          `signal=${event.signal ?? 'none'} elapsedMs=${event.elapsedMs} ` +
-          `jsonRead=${event.jsonRead}`
+            `signal=${event.signal ?? 'none'} elapsedMs=${event.elapsedMs} ` +
+            `jsonRead=${event.jsonRead}`,
         );
         return;
       case 'failure':
         console.log(
           `[whisper-process] failure code=${event.code} phase=${event.phase}` +
-          (event.diagnostic === undefined
-            ? ''
-            : ` diagnostic=${JSON.stringify(event.diagnostic)}`)
+            (event.diagnostic === undefined
+              ? ''
+              : ` diagnostic=${JSON.stringify(event.diagnostic)}`),
         );
     }
   }
@@ -99,10 +99,7 @@ export class WhisperDiagnosticBuffer {
 
     const safeLine = trimmed
       .replace(GROQ_KEY, '<redacted-key>')
-      .replace(
-        ABSOLUTE_PATH,
-        (_match: string, prefix: string) => `${prefix}<redacted-path>`
-      )
+      .replace(ABSOLUTE_PATH, (_match: string, prefix: string) => `${prefix}<redacted-path>`)
       .slice(0, MAX_LINE_CHARACTERS);
 
     this.lines.push(safeLine);

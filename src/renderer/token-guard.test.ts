@@ -54,7 +54,9 @@ describe('design token guard', () => {
         .forEach((line, index) => {
           for (const { name, pattern } of hardcodedColorPatterns) {
             if (pattern.test(line)) {
-              violations.push(`${path.relative(rendererRoot, file)}:${index + 1} ${name}: ${line.trim()}`);
+              violations.push(
+                `${path.relative(rendererRoot, file)}:${index + 1} ${name}: ${line.trim()}`,
+              );
             }
           }
         });

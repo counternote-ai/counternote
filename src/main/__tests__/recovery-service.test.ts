@@ -25,14 +25,33 @@ describe('RecoveryService', () => {
     const service = createService();
 
     await expect(service.list(SECOND_SESSION_ID)).resolves.toEqual([
-      { id: SESSION_ID, createdAt: '2026-08-12T01:02:03.004Z', bytes: expect.any(Number), state: 'recoverable' },
+      {
+        id: SESSION_ID,
+        createdAt: '2026-08-12T01:02:03.004Z',
+        bytes: expect.any(Number),
+        state: 'recoverable',
+      },
     ]);
-    await expect(fs.stat(path.join(root, '.in-progress', SECOND_SESSION_ID))).resolves.toBeDefined();
+    await expect(
+      fs.stat(path.join(root, '.in-progress', SECOND_SESSION_ID)),
+    ).resolves.toBeDefined();
 
-    await expect(service.list()).resolves.toEqual(expect.arrayContaining([
-      { id: SESSION_ID, createdAt: '2026-08-12T01:02:03.004Z', bytes: expect.any(Number), state: 'recoverable' },
-      { id: SECOND_SESSION_ID, createdAt: expect.any(String), bytes: expect.any(Number), state: 'not-recoverable' },
-    ]));
+    await expect(service.list()).resolves.toEqual(
+      expect.arrayContaining([
+        {
+          id: SESSION_ID,
+          createdAt: '2026-08-12T01:02:03.004Z',
+          bytes: expect.any(Number),
+          state: 'recoverable',
+        },
+        {
+          id: SECOND_SESSION_ID,
+          createdAt: expect.any(String),
+          bytes: expect.any(Number),
+          state: 'not-recoverable',
+        },
+      ]),
+    );
     await expect(fs.stat(path.join(root, '.recovery', SECOND_SESSION_ID))).resolves.toBeDefined();
   });
 
@@ -50,11 +69,19 @@ describe('RecoveryService', () => {
     ['empty', 44],
     ['misaligned', 45],
   ])('preserves a %s source byte-for-byte when it cannot be recovered', async (_name, size) => {
-    const directory = await writeFailed(root, '.recovery', SESSION_ID, Math.max(0, size - 44), validFailedMetadata());
+    const directory = await writeFailed(
+      root,
+      '.recovery',
+      SESSION_ID,
+      Math.max(0, size - 44),
+      validFailedMetadata(),
+    );
     await fs.writeFile(path.join(directory, 'audio.wav'), Buffer.alloc(size));
     const before = await snapshot(directory);
 
-    await expect(createService().recover(SESSION_ID)).resolves.toEqual({ outcome: 'not-recoverable' });
+    await expect(createService().recover(SESSION_ID)).resolves.toEqual({
+      outcome: 'not-recoverable',
+    });
 
     expect(await snapshot(directory)).toEqual(before);
     await expect(fs.readdir(path.join(root, '.recovery'))).resolves.toEqual([SESSION_ID]);
@@ -69,8 +96,12 @@ describe('RecoveryService', () => {
     await fs.symlink(outside, path.join(root, '.recovery', SECOND_SESSION_ID));
     const before = await snapshot(source);
 
-    await expect(createService().recover(SESSION_ID)).resolves.toEqual({ outcome: 'not-recoverable' });
-    await expect(createService().recover(SECOND_SESSION_ID)).resolves.toEqual({ outcome: 'not-found' });
+    await expect(createService().recover(SESSION_ID)).resolves.toEqual({
+      outcome: 'not-recoverable',
+    });
+    await expect(createService().recover(SECOND_SESSION_ID)).resolves.toEqual({
+      outcome: 'not-found',
+    });
 
     expect(await snapshot(source)).toEqual(before);
     await fs.rm(outside, { recursive: true, force: true });
@@ -78,7 +109,9 @@ describe('RecoveryService', () => {
 
   it('repairs aligned PCM, preserves known interruptions, and publishes only after normal WAV validation', async () => {
     const metadata = validFailedMetadata({
-      interruptions: [{ channel: 'capture', startMs: 0, endMs: 0, recovered: false, reason: 'helper-exit' }],
+      interruptions: [
+        { channel: 'capture', startMs: 0, endMs: 0, recovered: false, reason: 'helper-exit' },
+      ],
     });
     const source = await writeFailed(root, '.recovery', SESSION_ID, 1_280, metadata);
     const before = await snapshot(source);
@@ -89,22 +122,51 @@ describe('RecoveryService', () => {
     await expect(fs.stat(source)).rejects.toMatchObject({ code: 'ENOENT' });
     const [id] = (await fs.readdir(root)).filter((entry) => /^\d{4}-/.test(entry));
     const published = path.join(root, id);
-    await expect(getAudioDuration(path.join(published, 'audio.wav'))).resolves.toBeCloseTo(1_280 / 64_000, 10);
-    await expect(fs.readFile(path.join(published, 'capture.json'), 'utf8')).resolves.toContain('"persistence-error"');
-    expect(before['audio.wav']).toEqual(await fs.readFile(path.join(published, 'audio.wav')).then((audio) => Buffer.concat([before['audio.wav'].subarray(0, 44), audio.subarray(44)])));
+    await expect(getAudioDuration(path.join(published, 'audio.wav'))).resolves.toBeCloseTo(
+      1_280 / 64_000,
+      10,
+    );
+    await expect(fs.readFile(path.join(published, 'capture.json'), 'utf8')).resolves.toContain(
+      '"persistence-error"',
+    );
+    expect(before['audio.wav']).toEqual(
+      await fs
+        .readFile(path.join(published, 'audio.wav'))
+        .then((audio) => Buffer.concat([before['audio.wav'].subarray(0, 44), audio.subarray(44)])),
+    );
   });
 
   it('does not duplicate a persistence-error interruption and retains the source after post-publication cleanup failure', async () => {
     const durationMs = 20;
-    await writeFailed(root, '.recovery', SESSION_ID, 1_280, validFailedMetadata({
-      interruptions: [{ channel: 'capture', startMs: durationMs, endMs: durationMs, recovered: false, reason: 'persistence-error' }],
-    }));
-    await expect(createService({
-      removeSource: async (): Promise<void> => { throw new Error('no'); },
-    }).recover(SESSION_ID)).resolves.toEqual({ outcome: 'recovered-with-retained-source' });
+    await writeFailed(
+      root,
+      '.recovery',
+      SESSION_ID,
+      1_280,
+      validFailedMetadata({
+        interruptions: [
+          {
+            channel: 'capture',
+            startMs: durationMs,
+            endMs: durationMs,
+            recovered: false,
+            reason: 'persistence-error',
+          },
+        ],
+      }),
+    );
+    await expect(
+      createService({
+        removeSource: async (): Promise<void> => {
+          throw new Error('no');
+        },
+      }).recover(SESSION_ID),
+    ).resolves.toEqual({ outcome: 'recovered-with-retained-source' });
 
     const [id] = (await fs.readdir(root)).filter((entry) => /^\d{4}-/.test(entry));
-    const metadata = JSON.parse(await fs.readFile(path.join(root, id, 'capture.json'), 'utf8')) as { interruptions: unknown[] };
+    const metadata = JSON.parse(await fs.readFile(path.join(root, id, 'capture.json'), 'utf8')) as {
+      interruptions: unknown[];
+    };
     expect(metadata.interruptions).toHaveLength(1);
     await expect(fs.stat(path.join(root, '.recovery', SESSION_ID))).resolves.toBeDefined();
   });
@@ -113,9 +175,13 @@ describe('RecoveryService', () => {
     const source = await writeFailed(root, '.recovery', SESSION_ID, 1_280, validFailedMetadata());
     const before = await snapshot(source);
 
-    await expect(createService({
-      readAudioDuration: async (): Promise<number> => { throw new Error('invalid WAV'); },
-    }).recover(SESSION_ID)).resolves.toEqual({ outcome: 'recovery-failed' });
+    await expect(
+      createService({
+        readAudioDuration: async (): Promise<number> => {
+          throw new Error('invalid WAV');
+        },
+      }).recover(SESSION_ID),
+    ).resolves.toEqual({ outcome: 'recovery-failed' });
 
     expect(await snapshot(source)).toEqual(before);
     await expect(fs.readdir(path.join(root, '.recovery'))).resolves.toEqual([SESSION_ID]);
@@ -131,17 +197,21 @@ describe('RecoveryService', () => {
     const outsideAudio = Buffer.concat([Buffer.alloc(44), Buffer.alloc(1_280, 9)]);
     await fs.writeFile(outside, outsideAudio);
     try {
-      await expect(createService({
-        beforeCopy: async (audioPath: string): Promise<void> => {
-          await fs.rename(audioPath, backup);
-          await fs.symlink(outside, audioPath);
-        },
-      }).recover(SESSION_ID)).resolves.toEqual({ outcome: 'recovery-failed' });
+      await expect(
+        createService({
+          beforeCopy: async (audioPath: string): Promise<void> => {
+            await fs.rename(audioPath, backup);
+            await fs.symlink(outside, audioPath);
+          },
+        }).recover(SESSION_ID),
+      ).resolves.toEqual({ outcome: 'recovery-failed' });
 
       await expect(fs.readFile(backup)).resolves.toEqual(original);
       await expect(fs.readFile(outside)).resolves.toEqual(outsideAudio);
       expect((await fs.lstat(path.join(source, 'audio.wav'))).isSymbolicLink()).toBe(true);
-      await expect(fs.readdir(path.join(root, '.recovery'))).resolves.toEqual(expect.arrayContaining([SESSION_ID, '.original-audio.wav']));
+      await expect(fs.readdir(path.join(root, '.recovery'))).resolves.toEqual(
+        expect.arrayContaining([SESSION_ID, '.original-audio.wav']),
+      );
       await expect(fs.readdir(root)).resolves.not.toContain(expect.stringMatching(/^2026-/));
     } finally {
       await fs.rm(outsideDirectory, { recursive: true, force: true });
@@ -160,16 +230,20 @@ describe('RecoveryService', () => {
     await expect(fs.stat(path.join(root, '.recovery', SESSION_ID))).resolves.toBeDefined();
   });
 
-  function createService(overrides: {
-    trashItem?: (target: string) => Promise<void>;
-    removeSource?: (directory: string) => Promise<void>;
-    readAudioDuration?: (audioPath: string) => Promise<number>;
-    beforeCopy?: (audioPath: string) => Promise<void>;
-  } = {}): RecoveryService {
+  function createService(
+    overrides: {
+      trashItem?: (target: string) => Promise<void>;
+      removeSource?: (directory: string) => Promise<void>;
+      readAudioDuration?: (audioPath: string) => Promise<number>;
+      beforeCopy?: (audioPath: string) => Promise<void>;
+    } = {},
+  ): RecoveryService {
     return new RecoveryService(() => root, new RecordingMutationCoordinator(), {
       trashItem: overrides.trashItem ?? jest.fn().mockResolvedValue(undefined),
       ...(overrides.removeSource === undefined ? {} : { removeSource: overrides.removeSource }),
-      ...(overrides.readAudioDuration === undefined ? {} : { readAudioDuration: overrides.readAudioDuration }),
+      ...(overrides.readAudioDuration === undefined
+        ? {}
+        : { readAudioDuration: overrides.readAudioDuration }),
       ...(overrides.beforeCopy === undefined ? {} : { beforeCopy: overrides.beforeCopy }),
       now: () => new Date('2026-08-13T00:00:00.000Z'),
     });
@@ -185,8 +259,12 @@ async function writeFailed(
 ): Promise<string> {
   const directory = path.join(root, parent, id);
   await fs.mkdir(directory, { recursive: true });
-  await fs.writeFile(path.join(directory, 'audio.wav'), Buffer.concat([Buffer.alloc(44), Buffer.alloc(pcmBytes, 7)]));
-  if (metadata !== undefined) await fs.writeFile(path.join(directory, 'capture.json'), JSON.stringify(metadata));
+  await fs.writeFile(
+    path.join(directory, 'audio.wav'),
+    Buffer.concat([Buffer.alloc(44), Buffer.alloc(pcmBytes, 7)]),
+  );
+  if (metadata !== undefined)
+    await fs.writeFile(path.join(directory, 'capture.json'), JSON.stringify(metadata));
   return directory;
 }
 
@@ -206,7 +284,8 @@ async function snapshot(directory: string): Promise<Record<string, Buffer>> {
   const snapshot: Record<string, Buffer> = {};
   for (const entry of await fs.readdir(directory)) {
     const stat = await fs.lstat(path.join(directory, entry));
-    if (stat.isFile() || stat.isSymbolicLink()) snapshot[entry] = await fs.readFile(path.join(directory, entry));
+    if (stat.isFile() || stat.isSymbolicLink())
+      snapshot[entry] = await fs.readFile(path.join(directory, entry));
   }
   return snapshot;
 }

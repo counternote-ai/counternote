@@ -10,11 +10,9 @@ describe('packaging configuration', () => {
   it('pins a static Metal whisper.cpp build for darwin-arm64', () => {
     const buildScript = readRepoFile('scripts/build-whisper-sidecar.sh');
 
+    expect(buildScript).toContain("WHISPER_COMMIT='f049fff95a089aa9969deb009cdd4892b3e74916'");
     expect(buildScript).toContain(
-      "WHISPER_COMMIT='f049fff95a089aa9969deb009cdd4892b3e74916'"
-    );
-    expect(buildScript).toContain(
-      "WHISPER_ARCHIVE_SHA256='279af4ce60dbf397362868f3bacc75b56a4332ac2541cae155070093f6aaf0e3'"
+      "WHISPER_ARCHIVE_SHA256='279af4ce60dbf397362868f3bacc75b56a4332ac2541cae155070093f6aaf0e3'",
     );
     expect(buildScript).toContain('shasum -a 256');
     expect(buildScript).toContain('-DBUILD_SHARED_LIBS=OFF');
@@ -51,11 +49,9 @@ describe('packaging configuration', () => {
     expect(packageJson.dependencies.electron).toBeUndefined();
     expect(packageJson.devDependencies.electron).toBe('43.1.0');
     expect(packageJson.scripts.dist).toBeUndefined();
-    expect(packageJson.scripts['build:whisper']).toBe(
-      'bash scripts/build-whisper-sidecar.sh'
-    );
+    expect(packageJson.scripts['build:whisper']).toBe('bash scripts/build-whisper-sidecar.sh');
     expect(packageJson.scripts['verify:whisper']).toBe(
-      'bash scripts/verify-whisper-sidecar.sh build/whisper/darwin-arm64/whisper-cli'
+      'bash scripts/verify-whisper-sidecar.sh build/whisper/darwin-arm64/whisper-cli',
     );
     expect(packageJson.devDependencies['@electron-forge/cli']).toBeUndefined();
     expect(builderYaml).toContain('output: release');
@@ -71,15 +67,15 @@ describe('packaging configuration', () => {
     const packagedSmoke = readRepoFile('e2e/packaged-smoke.spec.ts');
 
     expect(packageJson.scripts['test:packaged']).toBe(
-      'playwright test --config playwright.packaged.config.ts'
+      'playwright test --config playwright.packaged.config.ts',
     );
 
     const checkPack = packageJson.scripts['check:pack'];
     expect(checkPack).toContain(
-      'release/mac-arm64/Interview Copilot.app/Contents/Resources/whisper/bin/whisper-cli'
+      'release/mac-arm64/Interview Copilot.app/Contents/Resources/whisper/bin/whisper-cli',
     );
     expect(checkPack.indexOf('verify-whisper-sidecar.sh')).toBeLessThan(
-      checkPack.indexOf('npm run test:packaged')
+      checkPack.indexOf('npm run test:packaged'),
     );
 
     expect(packagedSmoke).toContain('delete env.INTERVIEW_COPILOT_E2E;');
@@ -124,9 +120,10 @@ describe('packaging configuration', () => {
     expect(micMatch![1]).toContain('Interview Copilot');
     expect(micMatch![1]).not.toContain('interview-audio-capture');
 
-    const screenMatch = builderYaml.match(/NSScreenCaptureUsageDescription:\s*(.+)/);
     // screen capture line may be in extendInfo, check the full value
-    const screenLine = builderYaml.split('\n').find(l => l.includes('NSScreenCaptureUsageDescription'));
+    const screenLine = builderYaml
+      .split('\n')
+      .find((l) => l.includes('NSScreenCaptureUsageDescription'));
     if (screenLine) {
       expect(screenLine).toContain('Interview Copilot');
       expect(screenLine).not.toContain('interview-audio-capture');
@@ -146,10 +143,10 @@ describe('packaging configuration', () => {
     const packageJson = JSON.parse(readRepoFile('package.json'));
 
     expect(packageJson.scripts['build:capture']).toBe(
-      'bash scripts/build-audio-capture-sidecar.sh'
+      'bash scripts/build-audio-capture-sidecar.sh',
     );
     expect(packageJson.scripts['verify:capture']).toBe(
-      'bash scripts/verify-audio-capture-sidecar.sh build/audio-capture/darwin-arm64/interview-audio-capture'
+      'bash scripts/verify-audio-capture-sidecar.sh build/audio-capture/darwin-arm64/interview-audio-capture',
     );
   });
 
@@ -157,11 +154,9 @@ describe('packaging configuration', () => {
     const packageJson = JSON.parse(readRepoFile('package.json'));
 
     expect(packageJson.scripts['verify:capture:release']).toContain(
-      'verify-audio-capture-signing.sh'
+      'verify-audio-capture-signing.sh',
     );
-    expect(packageJson.scripts['verify:capture:release']).toContain(
-      'signed-release'
-    );
+    expect(packageJson.scripts['verify:capture:release']).toContain('signed-release');
   });
 
   it('does not hard-code identity: null in release configuration', () => {

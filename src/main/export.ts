@@ -6,11 +6,15 @@ export function exportToPlainText(transcript: Transcript): string {
   const lines: string[] = [];
 
   lines.push(transcript.title);
-  lines.push(`Duration: ${Math.floor(transcript.duration / 60)}:${(transcript.duration % 60).toString().padStart(2, '0')}`);
+  lines.push(
+    `Duration: ${Math.floor(transcript.duration / 60)}:${(transcript.duration % 60).toString().padStart(2, '0')}`,
+  );
   lines.push('');
 
   for (const segment of transcript.segments) {
-    const timestamp = `${Math.floor(segment.start / 60)}:${Math.floor(segment.start % 60).toString().padStart(2, '0')}`;
+    const timestamp = `${Math.floor(segment.start / 60)}:${Math.floor(segment.start % 60)
+      .toString()
+      .padStart(2, '0')}`;
     lines.push(`[${timestamp}] ${segment.speaker}:`);
     lines.push(segment.text);
     lines.push('');
@@ -21,10 +25,7 @@ export function exportToPlainText(transcript: Transcript): string {
 
 export function saveExport(transcript: Transcript, format: 'txt', transcriptPath: string): string {
   const content = exportToPlainText(transcript);
-  const exportPath = path.join(
-    path.dirname(transcriptPath),
-    `transcript.${format}`
-  );
+  const exportPath = path.join(path.dirname(transcriptPath), `transcript.${format}`);
   fs.writeFileSync(exportPath, content);
   return exportPath;
 }

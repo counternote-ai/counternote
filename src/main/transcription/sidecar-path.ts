@@ -17,7 +17,7 @@ export interface WhisperCliPathOptions {
 export class WhisperSidecarError extends Error {
   constructor(
     readonly code: TranscriptionErrorCode,
-    message: string
+    message: string,
   ) {
     super(message);
     this.name = 'WhisperSidecarError';
@@ -28,7 +28,7 @@ export function resolveWhisperCliPath(options: WhisperCliPathOptions): string {
   if (options.platform !== 'darwin' || options.arch !== 'arm64') {
     throw new WhisperSidecarError(
       'LOCAL_UNAVAILABLE',
-      'local transcription is only supported on macOS Apple Silicon'
+      'local transcription is only supported on macOS Apple Silicon',
     );
   }
 
@@ -38,7 +38,7 @@ export function resolveWhisperCliPath(options: WhisperCliPathOptions): string {
     if (!isExecutable(e2eCliPath)) {
       throw new WhisperSidecarError(
         'LOCAL_UNAVAILABLE',
-        'E2E whisper-cli override path is not executable'
+        'E2E whisper-cli override path is not executable',
       );
     }
     return e2eCliPath;
@@ -46,12 +46,18 @@ export function resolveWhisperCliPath(options: WhisperCliPathOptions): string {
 
   const resolved = options.isPackaged
     ? path.join(options.resourcesPath, 'whisper', 'bin', 'whisper-cli')
-    : path.join(options.projectRoot, 'build', 'whisper', `${options.platform}-${options.arch}`, 'whisper-cli');
+    : path.join(
+        options.projectRoot,
+        'build',
+        'whisper',
+        `${options.platform}-${options.arch}`,
+        'whisper-cli',
+      );
 
   if (!isExecutable(resolved)) {
     throw new WhisperSidecarError(
       'LOCAL_UNAVAILABLE',
-      'whisper-cli sidecar is missing or not executable'
+      'whisper-cli sidecar is missing or not executable',
     );
   }
 

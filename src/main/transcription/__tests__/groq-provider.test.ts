@@ -166,7 +166,7 @@ describe('GroqProvider', () => {
           () => {
             reject(new DOMException('Aborted', 'AbortError'));
           },
-          { once: true }
+          { once: true },
         );
       });
     });
@@ -209,7 +209,7 @@ describe('GroqProvider', () => {
 
   it('throws GROQ_REJECTED when a segment timestamp is not a number', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ segments: [{ start: null, end: 2, text: 'hello' }] })
+      jsonResponse({ segments: [{ start: null, end: 2, text: 'hello' }] }),
     );
 
     const provider = createProvider({ fetch: fetchMock });
@@ -220,7 +220,7 @@ describe('GroqProvider', () => {
 
   it('throws GROQ_REJECTED when a segment timestamp is not finite', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse({ segments: [{ start: NaN, end: 2, text: 'hello' }] })
+      jsonResponse({ segments: [{ start: NaN, end: 2, text: 'hello' }] }),
     );
 
     const provider = createProvider({ fetch: fetchMock });
@@ -230,9 +230,7 @@ describe('GroqProvider', () => {
   });
 
   it('throws GROQ_REJECTED when a segment has negative timestamps', async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse({ segments: [{ start: -1, end: 2, text: 'hello' }] })
-    );
+    fetchMock.mockResolvedValue(jsonResponse({ segments: [{ start: -1, end: 2, text: 'hello' }] }));
 
     const provider = createProvider({ fetch: fetchMock });
     await expect(provider.transcribe(baseRequest)).rejects.toMatchObject({
@@ -241,9 +239,7 @@ describe('GroqProvider', () => {
   });
 
   it('throws GROQ_REJECTED when end is before start', async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse({ segments: [{ start: 3, end: 2, text: 'hello' }] })
-    );
+    fetchMock.mockResolvedValue(jsonResponse({ segments: [{ start: 3, end: 2, text: 'hello' }] }));
 
     const provider = createProvider({ fetch: fetchMock });
     await expect(provider.transcribe(baseRequest)).rejects.toMatchObject({
@@ -252,9 +248,7 @@ describe('GroqProvider', () => {
   });
 
   it('throws GROQ_REJECTED when segment text is not a string', async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse({ segments: [{ start: 0, end: 2, text: 123 }] })
-    );
+    fetchMock.mockResolvedValue(jsonResponse({ segments: [{ start: 0, end: 2, text: 123 }] }));
 
     const provider = createProvider({ fetch: fetchMock });
     await expect(provider.transcribe(baseRequest)).rejects.toMatchObject({
@@ -269,7 +263,7 @@ describe('GroqProvider', () => {
           { start: 0, end: 1, text: '   ' },
           { start: 1, end: 2, text: 'hello' },
         ],
-      })
+      }),
     );
 
     const provider = createProvider({ fetch: fetchMock });
@@ -280,17 +274,17 @@ describe('GroqProvider', () => {
 
   it('throws GROQ_KEY_MISSING when apiKey is absent', async () => {
     const provider = createProvider({ fetch: fetchMock });
-    await expect(
-      provider.transcribe({ ...baseRequest, apiKey: undefined })
-    ).rejects.toMatchObject({ code: 'GROQ_KEY_MISSING' });
+    await expect(provider.transcribe({ ...baseRequest, apiKey: undefined })).rejects.toMatchObject({
+      code: 'GROQ_KEY_MISSING',
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('throws GROQ_KEY_MISSING when apiKey is empty', async () => {
     const provider = createProvider({ fetch: fetchMock });
-    await expect(
-      provider.transcribe({ ...baseRequest, apiKey: '' })
-    ).rejects.toMatchObject({ code: 'GROQ_KEY_MISSING' });
+    await expect(provider.transcribe({ ...baseRequest, apiKey: '' })).rejects.toMatchObject({
+      code: 'GROQ_KEY_MISSING',
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

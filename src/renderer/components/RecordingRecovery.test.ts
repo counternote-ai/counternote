@@ -8,7 +8,11 @@ interface MockElement {
   props: Record<string, unknown>;
 }
 
-const mockCreateElement = (type: unknown, props: Record<string, unknown> | null, ...children: unknown[]): MockElement => ({
+const mockCreateElement = (
+  type: unknown,
+  props: Record<string, unknown> | null,
+  ...children: unknown[]
+): MockElement => ({
   type,
   props: {
     ...props,
@@ -24,16 +28,19 @@ const mockIcon = (): null => null;
 jest.mock('react', () => ({
   __esModule: true,
   default: { createElement: mockCreateElement },
-  useCallback: <T,>(callback: T): T => callback,
-  useRef: <T,>(initialValue: T) => ({ current: initialValue }),
-  useState: <T,>(initialValue: T): [T, (value: T) => void] => {
+  useCallback: <T>(callback: T): T => callback,
+  useRef: <T>(initialValue: T) => ({ current: initialValue }),
+  useState: <T>(initialValue: T): [T, (value: T) => void] => {
     const index = mockStateCursor++;
     if (mockStateValues[index] === undefined) {
       mockStateValues[index] = initialValue;
     }
-    return [mockStateValues[index] as T, (value: T): void => {
-      mockStateValues[index] = value;
-    }];
+    return [
+      mockStateValues[index] as T,
+      (value: T): void => {
+        mockStateValues[index] = value;
+      },
+    ];
   },
 }));
 
@@ -44,15 +51,18 @@ jest.mock('lucide-react', () => ({
   Trash2: mockIcon,
 }));
 
-const RecordingRecovery = require('./RecordingRecovery').RecordingRecovery as typeof import('./RecordingRecovery').RecordingRecovery;
+const RecordingRecovery = require('./RecordingRecovery')
+  .RecordingRecovery as typeof import('./RecordingRecovery').RecordingRecovery;
 
-function renderComponent(props: {
-  notice?: string;
-  items?: RecoveryItemView[];
-  onRecover?: (id: string) => void;
-  onTrash?: (id: string) => void;
-  disabled?: boolean;
-} = {}): MockElement {
+function renderComponent(
+  props: {
+    notice?: string;
+    items?: RecoveryItemView[];
+    onRecover?: (id: string) => void;
+    onTrash?: (id: string) => void;
+    disabled?: boolean;
+  } = {},
+): MockElement {
   mockStateValues.splice(0);
   mockStateCursor = 0;
   return RecordingRecovery({
@@ -101,12 +111,20 @@ describe('RecordingRecovery', () => {
     it('shows trash button for each item by default', () => {
       const items: RecoveryItemView[] = [
         makeRecoverableItem({ id: 'item-1', dateLabel: 'Aug 13, 2026' }),
-        makeRecoverableItem({ id: 'item-2', dateLabel: 'Aug 14, 2026', state: 'not-recoverable', stateLabel: 'Partial audio could not be repaired' }),
+        makeRecoverableItem({
+          id: 'item-2',
+          dateLabel: 'Aug 14, 2026',
+          state: 'not-recoverable',
+          stateLabel: 'Partial audio could not be repaired',
+        }),
       ];
       const tree = renderComponent({ items });
       const trashButtons = findElements(
         tree,
-        (el) => el.type === mockButton && typeof el.props['aria-label'] === 'string' && el.props['aria-label'].startsWith('Remove recording from')
+        (el) =>
+          el.type === mockButton &&
+          typeof el.props['aria-label'] === 'string' &&
+          el.props['aria-label'].startsWith('Remove recording from'),
       );
 
       expect(trashButtons).toHaveLength(2);
@@ -120,14 +138,17 @@ describe('RecordingRecovery', () => {
       // Find the trash button and simulate click
       const trashButton = findElements(
         tree,
-        (el) => el.type === mockButton && el.props['aria-label'] === 'Remove recording from Aug 13, 2026'
+        (el) =>
+          el.type === mockButton && el.props['aria-label'] === 'Remove recording from Aug 13, 2026',
       )[0];
 
       // Simulate the onClick by calling handleTrashRequest
       // The mock onClick passes (e) => handleTrashRequest(item.id, e.currentTarget)
       // We need to simulate with a mock element that has focus()
       const mockCurrentTarget = { focus: jest.fn() };
-      (trashButton.props.onClick as (e: { currentTarget: { focus: jest.Mock } }) => void)({ currentTarget: mockCurrentTarget });
+      (trashButton.props.onClick as (e: { currentTarget: { focus: jest.Mock } }) => void)({
+        currentTarget: mockCurrentTarget,
+      });
 
       // Re-render after state change
       mockStateCursor = 0;
@@ -139,20 +160,17 @@ describe('RecordingRecovery', () => {
       }) as unknown as MockElement;
 
       // Should now show confirmation dialog
-      const confirmDialog = findElements(
-        treeAfterClick,
-        (el) => el.props.role === 'alertdialog'
-      );
+      const confirmDialog = findElements(treeAfterClick, (el) => el.props.role === 'alertdialog');
       expect(confirmDialog).toHaveLength(1);
 
       // Should show Confirm and Cancel buttons
       const confirmButton = findElements(
         treeAfterClick,
-        (el) => el.type === mockButton && el.props['aria-label'] === 'Confirm remove'
+        (el) => el.type === mockButton && el.props['aria-label'] === 'Confirm remove',
       );
       const cancelButton = findElements(
         treeAfterClick,
-        (el) => el.type === mockButton && el.props['aria-label'] === 'Cancel removal'
+        (el) => el.type === mockButton && el.props['aria-label'] === 'Cancel removal',
       );
       expect(confirmButton).toHaveLength(1);
       expect(cancelButton).toHaveLength(1);
@@ -178,7 +196,7 @@ describe('RecordingRecovery', () => {
       // Find the confirm button
       const confirmButton = findElements(
         tree,
-        (el) => el.type === mockButton && el.props['aria-label'] === 'Confirm remove'
+        (el) => el.type === mockButton && el.props['aria-label'] === 'Confirm remove',
       )[0];
 
       // Click confirm
@@ -207,7 +225,7 @@ describe('RecordingRecovery', () => {
       // Find the cancel button
       const cancelButton = findElements(
         tree,
-        (el) => el.type === mockButton && el.props['aria-label'] === 'Cancel removal'
+        (el) => el.type === mockButton && el.props['aria-label'] === 'Cancel removal',
       )[0];
 
       // The lastFocusedRef should have been set during handleTrashRequest
@@ -229,15 +247,15 @@ describe('RecordingRecovery', () => {
       }) as unknown as MockElement;
 
       // Should show trash button, not confirmation dialog
-      const confirmDialog = findElements(
-        treeAfterCancel,
-        (el) => el.props.role === 'alertdialog'
-      );
+      const confirmDialog = findElements(treeAfterCancel, (el) => el.props.role === 'alertdialog');
       expect(confirmDialog).toHaveLength(0);
 
       const trashButtons = findElements(
         treeAfterCancel,
-        (el) => el.type === mockButton && typeof el.props['aria-label'] === 'string' && el.props['aria-label'].startsWith('Remove recording from')
+        (el) =>
+          el.type === mockButton &&
+          typeof el.props['aria-label'] === 'string' &&
+          el.props['aria-label'].startsWith('Remove recording from'),
       );
       expect(trashButtons).toHaveLength(1);
     });
@@ -250,7 +268,9 @@ describe('RecordingRecovery', () => {
 
       const recoverButton = findElements(
         tree,
-        (el) => el.type === mockButton && el.props['aria-label'] === 'Recover recording from Aug 13, 2026'
+        (el) =>
+          el.type === mockButton &&
+          el.props['aria-label'] === 'Recover recording from Aug 13, 2026',
       )[0];
 
       expect(recoverButton.props.disabled).toBe(true);
@@ -262,7 +282,8 @@ describe('RecordingRecovery', () => {
 
       const trashButton = findElements(
         tree,
-        (el) => el.type === mockButton && el.props['aria-label'] === 'Remove recording from Aug 13, 2026'
+        (el) =>
+          el.type === mockButton && el.props['aria-label'] === 'Remove recording from Aug 13, 2026',
       )[0];
 
       expect(trashButton.props.disabled).toBe(true);
@@ -274,34 +295,48 @@ describe('RecordingRecovery', () => {
 
       const recoverButton = findElements(
         tree,
-        (el) => el.type === mockButton && el.props['aria-label'] === 'Recover recording from Aug 13, 2026'
+        (el) =>
+          el.type === mockButton &&
+          el.props['aria-label'] === 'Recover recording from Aug 13, 2026',
       )[0];
 
       expect(recoverButton.props.disabled).toBe(false);
     });
 
     it('does not show Recover button for not-recoverable items', () => {
-      const items = [makeRecoverableItem({ state: 'not-recoverable', stateLabel: 'Partial audio could not be repaired' })];
+      const items = [
+        makeRecoverableItem({
+          state: 'not-recoverable',
+          stateLabel: 'Partial audio could not be repaired',
+        }),
+      ];
       const tree = renderComponent({ items });
 
       const recoverButton = findElements(
         tree,
-        (el) => el.type === mockButton && typeof el.props['aria-label'] === 'string' && el.props['aria-label'].startsWith('Recover recording from')
+        (el) =>
+          el.type === mockButton &&
+          typeof el.props['aria-label'] === 'string' &&
+          el.props['aria-label'].startsWith('Recover recording from'),
       );
 
       expect(recoverButton).toHaveLength(0);
     });
 
     it('shows disabled Recovering button for items in recovering state', () => {
-      const items = [makeRecoverableItem({
-        state: 'recovering',
-        stateLabel: 'Recovering partial recording…',
-      })];
+      const items = [
+        makeRecoverableItem({
+          state: 'recovering',
+          stateLabel: 'Recovering partial recording…',
+        }),
+      ];
       const tree = renderComponent({ items });
 
       const recoveringButton = findElements(
         tree,
-        (el) => el.type === mockButton && el.props['aria-label'] === 'Recovering recording from Aug 13, 2026'
+        (el) =>
+          el.type === mockButton &&
+          el.props['aria-label'] === 'Recovering recording from Aug 13, 2026',
       )[0];
 
       expect(recoveringButton).toBeDefined();
@@ -309,15 +344,20 @@ describe('RecordingRecovery', () => {
     });
 
     it('hides trash button for items in recovering state', () => {
-      const items = [makeRecoverableItem({
-        state: 'recovering',
-        stateLabel: 'Recovering partial recording…',
-      })];
+      const items = [
+        makeRecoverableItem({
+          state: 'recovering',
+          stateLabel: 'Recovering partial recording…',
+        }),
+      ];
       const tree = renderComponent({ items });
 
       const trashButton = findElements(
         tree,
-        (el) => el.type === mockButton && typeof el.props['aria-label'] === 'string' && el.props['aria-label'].startsWith('Remove recording from')
+        (el) =>
+          el.type === mockButton &&
+          typeof el.props['aria-label'] === 'string' &&
+          el.props['aria-label'].startsWith('Remove recording from'),
       );
 
       expect(trashButton).toHaveLength(0);
@@ -332,7 +372,9 @@ describe('RecordingRecovery', () => {
 
       const recoverButton = findElements(
         tree,
-        (el) => el.type === mockButton && el.props['aria-label'] === 'Recover recording from Aug 13, 2026'
+        (el) =>
+          el.type === mockButton &&
+          el.props['aria-label'] === 'Recover recording from Aug 13, 2026',
       )[0];
 
       (recoverButton.props.onClick as () => void)();
@@ -343,7 +385,12 @@ describe('RecordingRecovery', () => {
 
     it('does not call onRecover for not-recoverable items', () => {
       const onRecover = jest.fn();
-      const items = [makeRecoverableItem({ state: 'not-recoverable', stateLabel: 'Partial audio could not be repaired' })];
+      const items = [
+        makeRecoverableItem({
+          state: 'not-recoverable',
+          stateLabel: 'Partial audio could not be repaired',
+        }),
+      ];
       renderComponent({ items, onRecover });
 
       // onRecover should not be called since there's no Recover button
@@ -360,7 +407,11 @@ describe('RecordingRecovery', () => {
     it('renders stateLabel for each item', () => {
       const items = [
         makeRecoverableItem({ id: 'a', stateLabel: 'Partial audio can be recovered' }),
-        makeRecoverableItem({ id: 'b', state: 'not-recoverable', stateLabel: 'Partial audio could not be repaired' }),
+        makeRecoverableItem({
+          id: 'b',
+          state: 'not-recoverable',
+          stateLabel: 'Partial audio could not be repaired',
+        }),
       ];
       const tree = renderComponent({ items });
 

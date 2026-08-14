@@ -9,16 +9,17 @@ export class TrayManager {
   private state: TrayState = 'idle';
   public onStop: (() => void) | null = null;
 
-  constructor(mainWindow: BrowserWindow, private readonly onQuit?: () => void) {
+  constructor(
+    mainWindow: BrowserWindow,
+    private readonly onQuit?: () => void,
+  ) {
     this.mainWindow = mainWindow;
     this.createTray();
   }
 
   private createTray(): void {
     // Create tray icon (you'll need to provide an icon file)
-    const icon = nativeImage.createFromPath(
-      path.join(__dirname, '../assets/tray-icon.png')
-    );
+    const icon = nativeImage.createFromPath(path.join(__dirname, '../assets/tray-icon.png'));
     this.tray = new Tray(icon);
     this.tray.setToolTip('Interview Copilot');
 
@@ -56,13 +57,16 @@ export class TrayManager {
       { type: 'separator' },
       { label: 'Settings', click: () => this.mainWindow?.webContents.send('open-settings') },
       { type: 'separator' },
-      { label: 'Quit', click: () => {
-        if (this.onQuit) {
-          this.onQuit();
-        } else {
-          app.quit();
-        }
-      }}
+      {
+        label: 'Quit',
+        click: () => {
+          if (this.onQuit) {
+            this.onQuit();
+          } else {
+            app.quit();
+          }
+        },
+      },
     );
 
     this.tray?.setContextMenu(Menu.buildFromTemplate(menuTemplate));

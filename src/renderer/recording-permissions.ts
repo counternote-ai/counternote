@@ -13,7 +13,7 @@ const isBlocked = (status: RecordingPermissionSnapshot['screen']): boolean =>
   status === 'denied' || status === 'restricted';
 
 export function getRecordingPermissionNotice(
-  snapshot: RecordingPermissionSnapshot
+  snapshot: RecordingPermissionSnapshot,
 ): RecordingPermissionNotice | null {
   const screenBlocked = isBlocked(snapshot.screen);
   const microphoneBlocked = isBlocked(snapshot.microphone);
@@ -42,13 +42,15 @@ export function getRecordingPermissionNotice(
   if (snapshot.screen === 'not-determined' || snapshot.microphone === 'not-determined') {
     return {
       tone: 'info',
-      message: 'Recording needs screen, system audio, and microphone access. macOS will ask when you start recording.',
+      message:
+        'Recording needs screen, system audio, and microphone access. macOS will ask when you start recording.',
     };
   }
   if (snapshot.screen === 'unknown' || snapshot.microphone === 'unknown') {
     return {
       tone: 'info',
-      message: "Interview Copilot couldn't confirm recording permissions. You can still try to start recording.",
+      message:
+        "Interview Copilot couldn't confirm recording permissions. You can still try to start recording.",
     };
   }
   return null;

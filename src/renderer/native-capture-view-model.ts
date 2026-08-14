@@ -66,10 +66,7 @@ function resolveChannelCopy(status: string): { text: string; tone: HealthTone } 
   return CHANNEL_STATUS_COPY[status] ?? { text: status, tone: 'idle' };
 }
 
-export function toChannelHealthView(
-  channel: ChannelHealth,
-  label: string,
-): ChannelHealthView {
+export function toChannelHealthView(channel: ChannelHealth, label: string): ChannelHealthView {
   const { text, tone } = resolveChannelCopy(channel.status);
   return {
     label,
@@ -99,7 +96,8 @@ export function toRecordingHealthView(snapshot: SnapshotInput): RecordingHealthV
   return {
     state: snapshot.state,
     startingMessage: snapshot.state === 'starting' ? 'Starting…' : null,
-    finishingMessage: snapshot.state === 'finishing' ? 'Finishing recording before quitting…' : null,
+    finishingMessage:
+      snapshot.state === 'finishing' ? 'Finishing recording before quitting…' : null,
     channels: [interviewer, you],
     ariaSummary: `${interviewer.ariaLabel}. ${you.ariaLabel}.`,
     canCancel: snapshot.canCancel,

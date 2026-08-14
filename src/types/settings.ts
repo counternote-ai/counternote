@@ -7,13 +7,11 @@ export interface TranscriptionSettings {
 }
 
 export type SettingsSaveIpcResult =
-  | { success: true }
-  | { success: false; code: 'SETTINGS_SAVE_FAILED' };
+  { success: true } | { success: false; code: 'SETTINGS_SAVE_FAILED' };
 
 export type SettingsLoadIpcResult =
   | { success: true; config: TranscriptionSettings }
   | { success: false; code: 'SETTINGS_LOAD_FAILED' };
 
 export type TranscriptExportIpcResult =
-  | { success: true }
-  | { success: false; code: 'TRANSCRIPT_EXPORT_FAILED' };
+  { success: true } | { success: false; code: 'TRANSCRIPT_EXPORT_FAILED' };

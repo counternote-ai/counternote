@@ -22,7 +22,7 @@ describe('WhisperDiagnosticBuffer', () => {
     const buffer = new WhisperDiagnosticBuffer();
     buffer.append(
       'whisper_print_progress_callback: progress = 5%\r' +
-      'output_json: saving output to /Users/example/private/transcript.json\n'
+        'output_json: saving output to /Users/example/private/transcript.json\n',
     );
     buffer.finish();
 
@@ -57,7 +57,7 @@ describe('ConsoleWhisperProcessLogger', () => {
       } as WhisperProcessLogEvent);
       expect(consoleLog).toHaveBeenCalledWith(
         '[whisper-process] failure code=LOCAL_TRANSCRIPTION_FAILED ' +
-        'phase=runtime diagnostic="ggml_backend: failed safely"'
+          'phase=runtime diagnostic="ggml_backend: failed safely"',
       );
     } finally {
       consoleLog.mockRestore();

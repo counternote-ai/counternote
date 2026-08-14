@@ -24,9 +24,10 @@ interface IpcMainMock {
 type IpcHandler = (event: unknown, ...args: unknown[]) => Promise<unknown>;
 
 const handlers = new Map<string, IpcHandler>(
-  (ipcMain as unknown as IpcMainMock).handle.mock.calls.map(
-    ([channel, handler]) => [channel as string, handler as IpcHandler]
-  )
+  (ipcMain as unknown as IpcMainMock).handle.mock.calls.map(([channel, handler]) => [
+    channel as string,
+    handler as IpcHandler,
+  ]),
 );
 
 function getHandler(channel: string): IpcHandler {
@@ -40,8 +41,7 @@ describe('single-instance startup', () => {
     expect(app.requestSingleInstanceLock).toHaveBeenCalled();
     expect(app.whenReady).toHaveBeenCalled();
     // requestSingleInstanceLock should be called before whenReady
-    const lockCallOrder = (app.requestSingleInstanceLock as jest.Mock).mock
-      .invocationCallOrder[0];
+    const lockCallOrder = (app.requestSingleInstanceLock as jest.Mock).mock.invocationCallOrder[0];
     const readyCallOrder = (app.whenReady as jest.Mock).mock.invocationCallOrder[0];
     expect(lockCallOrder).toBeLessThan(readyCallOrder);
   });
@@ -218,10 +218,7 @@ describe('legacy capture removal', () => {
   it('does not import the legacy wav-writer module', () => {
     // The legacy src/main/wav-writer.ts should not be imported;
     // only src/main/native-capture/wav-writer.ts is the production writer.
-    const indexSource = fs.readFileSync(
-      path.join(__dirname, '../index.ts'),
-      'utf-8',
-    );
+    const indexSource = fs.readFileSync(path.join(__dirname, '../index.ts'), 'utf-8');
     // Must not contain a bare "./wav-writer" import (the legacy path).
     // The valid import "./native-capture/wav-writer" is allowed.
     expect(indexSource).not.toMatch(/from\s+['"]\.\/wav-writer['"]/);
@@ -243,10 +240,7 @@ describe('legacy capture removal', () => {
   });
 
   it('does not expose a raw-audio preload method', () => {
-    const preloadSource = fs.readFileSync(
-      path.join(__dirname, '../preload.ts'),
-      'utf-8',
-    );
+    const preloadSource = fs.readFileSync(path.join(__dirname, '../preload.ts'), 'utf-8');
     expect(preloadSource).not.toMatch(/rawAudio|sendRawAudio|onRawAudio/);
   });
 });
@@ -267,11 +261,14 @@ describe('sensitive IPC failures', () => {
     const rawError = new Error('safeStorage failed for /private/keychain/Interview Copilot');
     (setGroqApiKey as jest.MockedFunction<typeof setGroqApiKey>).mockRejectedValueOnce(rawError);
 
-    const result = await getHandler('save-config')({}, {
-      apiKey: 'provider-secret-value',
-      model: 'whisper-large-v3-turbo',
-      transcriptionProvider: 'local',
-    });
+    const result = await getHandler('save-config')(
+      {},
+      {
+        apiKey: 'provider-secret-value',
+        model: 'whisper-large-v3-turbo',
+        transcriptionProvider: 'local',
+      },
+    );
 
     expect(result).toEqual({ success: false, code: 'SETTINGS_SAVE_FAILED' });
     expect(consoleError).toHaveBeenCalledWith('Settings config save failed.');
@@ -302,9 +299,11 @@ describe('sensitive IPC failures', () => {
   });
 
   it('derives invalid-model recovery from a fresh main-process status', async () => {
-    const getStatus = jest.spyOn(LocalModelManager.prototype, 'getStatus')
+    const getStatus = jest
+      .spyOn(LocalModelManager.prototype, 'getStatus')
       .mockResolvedValueOnce({ state: 'invalid' });
-    const ensureModel = jest.spyOn(LocalModelManager.prototype, 'ensureModel')
+    const ensureModel = jest
+      .spyOn(LocalModelManager.prototype, 'ensureModel')
       .mockResolvedValueOnce('/app-managed/models/model.bin');
 
     try {
@@ -320,9 +319,11 @@ describe('sensitive IPC failures', () => {
   });
 
   it('does not grant invalid-model recovery from renderer input', async () => {
-    const getStatus = jest.spyOn(LocalModelManager.prototype, 'getStatus')
+    const getStatus = jest
+      .spyOn(LocalModelManager.prototype, 'getStatus')
       .mockResolvedValueOnce({ state: 'not-downloaded' });
-    const ensureModel = jest.spyOn(LocalModelManager.prototype, 'ensureModel')
+    const ensureModel = jest
+      .spyOn(LocalModelManager.prototype, 'ensureModel')
       .mockResolvedValueOnce('/app-managed/models/model.bin');
 
     try {
@@ -330,7 +331,9 @@ describe('sensitive IPC failures', () => {
 
       expect(result).toEqual({ success: true });
       expect(getStatus).toHaveBeenCalledTimes(1);
-      expect(ensureModel).toHaveBeenCalledWith(expect.any(Function), { recoverInvalidModel: false });
+      expect(ensureModel).toHaveBeenCalledWith(expect.any(Function), {
+        recoverInvalidModel: false,
+      });
     } finally {
       getStatus.mockRestore();
       ensureModel.mockRestore();

@@ -8,8 +8,8 @@ export interface ModelArtifactSpec {
 export const PRODUCTION_MODEL_ARTIFACT: ModelArtifactSpec = {
   url: new URL(
     'https://huggingface.co/ggerganov/whisper.cpp/resolve/' +
-    '98aa99a0a9db05ae2342309f5096248665f7cba3/' +
-    'ggml-large-v3-turbo-q5_0.bin?download=true'
+      '98aa99a0a9db05ae2342309f5096248665f7cba3/' +
+      'ggml-large-v3-turbo-q5_0.bin?download=true',
   ),
   fileName: 'ggml-large-v3-turbo-q5_0.bin',
   byteSize: 574_041_195,

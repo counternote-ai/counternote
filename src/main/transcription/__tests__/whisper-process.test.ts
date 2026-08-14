@@ -34,7 +34,7 @@ describe('resolveWhisperCliPath', () => {
         projectRoot: '/repo',
         platform: 'darwin',
         arch: 'arm64',
-      })
+      }),
     ).toBe(expected);
   });
 
@@ -51,7 +51,7 @@ describe('resolveWhisperCliPath', () => {
         projectRoot,
         platform: 'darwin',
         arch: 'arm64',
-      })
+      }),
     ).toBe(expected);
   });
 
@@ -63,7 +63,7 @@ describe('resolveWhisperCliPath', () => {
         projectRoot: '/repo',
         platform: 'linux',
         arch: 'arm64',
-      })
+      }),
     ).toThrow(expect.objectContaining({ code: 'LOCAL_UNAVAILABLE' }));
   });
 
@@ -75,7 +75,7 @@ describe('resolveWhisperCliPath', () => {
         projectRoot: '/repo',
         platform: 'darwin',
         arch: 'x64',
-      })
+      }),
     ).toThrow(expect.objectContaining({ code: 'LOCAL_UNAVAILABLE' }));
   });
 
@@ -87,7 +87,7 @@ describe('resolveWhisperCliPath', () => {
         projectRoot: '/repo',
         platform: 'darwin',
         arch: 'arm64',
-      })
+      }),
     ).toThrow(expect.objectContaining({ code: 'LOCAL_UNAVAILABLE' }));
   });
 
@@ -104,7 +104,7 @@ describe('resolveWhisperCliPath', () => {
         projectRoot,
         platform: 'darwin',
         arch: 'arm64',
-      })
+      }),
     ).toThrow(expect.objectContaining({ code: 'LOCAL_UNAVAILABLE' }));
   });
 
@@ -123,7 +123,7 @@ describe('resolveWhisperCliPath', () => {
           INTERVIEW_COPILOT_E2E: '1',
           INTERVIEW_COPILOT_WHISPER_CLI: override,
         },
-      })
+      }),
     ).toBe(override);
   });
 
@@ -146,7 +146,7 @@ describe('resolveWhisperCliPath', () => {
           INTERVIEW_COPILOT_E2E: '1',
           INTERVIEW_COPILOT_WHISPER_CLI: override,
         },
-      })
+      }),
     ).toBe(expected);
   });
 
@@ -169,7 +169,7 @@ describe('resolveWhisperCliPath', () => {
           INTERVIEW_COPILOT_E2E: '0',
           INTERVIEW_COPILOT_WHISPER_CLI: override,
         },
-      })
+      }),
     ).toBe(expected);
   });
 });
@@ -272,7 +272,7 @@ describe('WhisperProcessRunner', () => {
         '0.60',
         '-ng',
       ],
-      expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] })
+      expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] }),
     );
   });
 
@@ -346,8 +346,8 @@ describe('WhisperProcessRunner', () => {
       'data',
       Buffer.from(
         'ggml_backend: failed to load /Users/example/private/model.bin\r' +
-        '[00:00:00.000 --> 00:00:02.000] private answer\n'
-      )
+          '[00:00:00.000 --> 00:00:02.000] private answer\n',
+      ),
     );
     nowMs = 2_000;
     fakeChild.emit('close', null, 'SIGSEGV');
@@ -355,11 +355,13 @@ describe('WhisperProcessRunner', () => {
     await expect(result).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
-    expect(logger.log).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'failure',
-      phase: 'runtime',
-      diagnostic: expect.stringContaining('<redacted-path>'),
-    }));
+    expect(logger.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'failure',
+        phase: 'runtime',
+        diagnostic: expect.stringContaining('<redacted-path>'),
+      }),
+    );
     expect(JSON.stringify(logger.log.mock.calls)).not.toContain('private answer');
     expect(JSON.stringify(logger.log.mock.calls)).not.toContain('/Users/example');
   });
@@ -372,10 +374,12 @@ describe('WhisperProcessRunner', () => {
     await expect(result).rejects.toMatchObject({
       code: 'LOCAL_TRANSCRIPTION_FAILED',
     });
-    expect(logger.log).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'failure',
-      phase: 'output-read',
-    }));
+    expect(logger.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'failure',
+        phase: 'output-read',
+      }),
+    );
   });
 
   it('sends SIGTERM after five silent minutes and SIGKILL five seconds later', async () => {

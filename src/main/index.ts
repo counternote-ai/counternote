@@ -5,7 +5,12 @@ import { WavWriter as NativeWavWriter } from './native-capture/wav-writer';
 import { TrayManager } from './tray';
 import { saveExport } from './export';
 import { loadConfig, saveConfig, getGroqApiKey, setGroqApiKey } from './config';
-import { getAudioDuration, getAudibleIntervals, splitChannels, convertToFlac } from './audio-processor';
+import {
+  getAudioDuration,
+  getAudibleIntervals,
+  splitChannels,
+  convertToFlac,
+} from './audio-processor';
 import { AppActivityCoordinator } from './activity-coordinator';
 import { hasTranscriptSegments, RecordingsLibrary } from './recordings-library';
 import {
@@ -37,7 +42,10 @@ import { resolveWhisperCliPath } from './transcription/sidecar-path';
 import { QuitCoordinator } from './quit-coordinator';
 import { RecordingMutationCoordinator } from './recording-mutation-coordinator';
 import { RecoveryService } from './recovery-service';
-import { createNativeCaptureController, type NativeCaptureController } from './native-capture/controller';
+import {
+  createNativeCaptureController,
+  type NativeCaptureController,
+} from './native-capture/controller';
 import { createNativeCaptureSession, type NativeCaptureSession } from './native-capture/session';
 import { resolveAudioCaptureHelper } from './native-capture/helper-path';
 import { CaptureStore } from './native-capture/capture-store';
@@ -56,10 +64,7 @@ let quitCoordinator: QuitCoordinator | null = null;
 
 const mutationCoordinator = new RecordingMutationCoordinator();
 const captureStore = new CaptureStore(() => loadConfig().outputDir);
-const recoveryService = new RecoveryService(
-  () => loadConfig().outputDir,
-  mutationCoordinator,
-);
+const recoveryService = new RecoveryService(() => loadConfig().outputDir, mutationCoordinator);
 
 let nativeCaptureController: NativeCaptureController | null = null;
 
@@ -82,10 +87,21 @@ function getNativeCaptureController(): NativeCaptureController {
           store: captureStore,
           mutationCoordinator,
           recordingsLibrary,
-          spawn: (command: string, args: string[], options: { stdio: ['pipe', 'pipe', 'pipe']; env: Record<string, string> }) => {
-            return spawn(command, args, options) as unknown as import('./native-capture/session').ChildProcessLike;
+          spawn: (
+            command: string,
+            args: string[],
+            options: { stdio: ['pipe', 'pipe', 'pipe']; env: Record<string, string> },
+          ) => {
+            return spawn(
+              command,
+              args,
+              options,
+            ) as unknown as import('./native-capture/session').ChildProcessLike;
           },
-          openWriter: (filePath: string) => NativeWavWriter.open(filePath) as unknown as Promise<import('./native-capture/session').WavWriterLike>,
+          openWriter: (filePath: string) =>
+            NativeWavWriter.open(filePath) as unknown as Promise<
+              import('./native-capture/session').WavWriterLike
+            >,
           now: Date.now,
           setTimeout: (cb, ms) => global.setTimeout(cb, ms),
           clearTimeout: (id) => global.clearTimeout(id as NodeJS.Timeout),
@@ -143,7 +159,9 @@ function modelArtifact(): ModelArtifactSpec {
   if (!manifestPath) return PRODUCTION_MODEL_ARTIFACT;
 
   try {
-    const artifact = parseModelArtifact(JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as unknown);
+    const artifact = parseModelArtifact(
+      JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as unknown,
+    );
     return artifact ?? PRODUCTION_MODEL_ARTIFACT;
   } catch {
     console.error('E2E model manifest could not be loaded.');
@@ -156,17 +174,17 @@ function parseModelArtifact(value: unknown): ModelArtifactSpec | null {
   const candidate = value as Record<string, unknown>;
   const keys = Object.keys(candidate);
   if (
-    keys.length !== 4
-    || !keys.every((key) => ['url', 'fileName', 'byteSize', 'sha256'].includes(key))
-    || typeof candidate.url !== 'string'
-    || typeof candidate.fileName !== 'string'
-    || candidate.fileName.length === 0
-    || path.basename(candidate.fileName) !== candidate.fileName
-    || typeof candidate.byteSize !== 'number'
-    || !Number.isSafeInteger(candidate.byteSize)
-    || candidate.byteSize <= 0
-    || typeof candidate.sha256 !== 'string'
-    || !/^[a-f0-9]{64}$/.test(candidate.sha256)
+    keys.length !== 4 ||
+    !keys.every((key) => ['url', 'fileName', 'byteSize', 'sha256'].includes(key)) ||
+    typeof candidate.url !== 'string' ||
+    typeof candidate.fileName !== 'string' ||
+    candidate.fileName.length === 0 ||
+    path.basename(candidate.fileName) !== candidate.fileName ||
+    typeof candidate.byteSize !== 'number' ||
+    !Number.isSafeInteger(candidate.byteSize) ||
+    candidate.byteSize <= 0 ||
+    typeof candidate.sha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(candidate.sha256)
   ) {
     return null;
   }
@@ -194,7 +212,7 @@ function getModelService(): LocalModelManager {
     modelService = new LocalModelManager(
       path.join(app.getPath('userData'), 'models'),
       artifact,
-      transport.download.bind(transport)
+      transport.download.bind(transport),
     );
   }
   return modelService;
@@ -214,9 +232,10 @@ function getLocalModelStatus(): Promise<LocalModelStatus> {
   } catch {
     localUnavailableStatus = {
       state: 'unavailable',
-      reason: process.platform === 'darwin' && process.arch === 'arm64'
-        ? 'sidecar-missing'
-        : 'unsupported-platform',
+      reason:
+        process.platform === 'darwin' && process.arch === 'arm64'
+          ? 'sidecar-missing'
+          : 'unsupported-platform',
     };
     return Promise.resolve(localUnavailableStatus);
   }
@@ -247,9 +266,10 @@ function getTranscriptionService(): TranscriptionOrchestrator {
   } catch {
     localUnavailableStatus = {
       state: 'unavailable',
-      reason: process.platform === 'darwin' && process.arch === 'arm64'
-        ? 'sidecar-missing'
-        : 'unsupported-platform',
+      reason:
+        process.platform === 'darwin' && process.arch === 'arm64'
+          ? 'sidecar-missing'
+          : 'unsupported-platform',
     };
     localProvider = {
       transcribe: async (): Promise<never> => {
@@ -274,13 +294,16 @@ function getTranscriptionService(): TranscriptionOrchestrator {
   return transcriptionService;
 }
 
-function transcriptionFailure(error: unknown, fallback: TranscriptionErrorCode): TranscriptionIpcResult {
-  const code = error instanceof TranscriptionError || error instanceof ModelInstallError
-    ? error.code
-    : fallback;
-  const retryAfterSeconds = error instanceof TranscriptionError
-    ? error.details.retryAfterSeconds
-    : undefined;
+function transcriptionFailure(
+  error: unknown,
+  fallback: TranscriptionErrorCode,
+): TranscriptionIpcResult {
+  const code =
+    error instanceof TranscriptionError || error instanceof ModelInstallError
+      ? error.code
+      : fallback;
+  const retryAfterSeconds =
+    error instanceof TranscriptionError ? error.details.retryAfterSeconds : undefined;
   console.error('Transcription operation failed.', { code });
   return { success: false, code, retryAfterSeconds };
 }
@@ -406,7 +429,7 @@ ipcMain.handle(
         error: err instanceof Error ? err.message : 'Unable to open System Settings',
       };
     }
-  }
+  },
 );
 
 ipcMain.handle('list-recordings', async () => {
@@ -443,7 +466,7 @@ ipcMain.handle('list-recordings', async () => {
           const hasTranscriptArtifact = fs.existsSync(transcriptPath);
 
           // Load transcript segments if available
-          let segments: any[] | undefined;
+          let segments: unknown;
           if (hasTranscriptArtifact) {
             try {
               const transcript = JSON.parse(fs.readFileSync(transcriptPath, 'utf-8'));
@@ -469,7 +492,7 @@ ipcMain.handle('list-recordings', async () => {
             captureStatus: captureRecord.captureStatus,
             interruptions: captureRecord.interruptions,
           };
-        })
+        }),
     );
 
     return { success: true, recordings: recordings.filter(Boolean) };
@@ -478,21 +501,24 @@ ipcMain.handle('list-recordings', async () => {
   }
 });
 
-ipcMain.handle('transcribe', async (event, recordingId: unknown): Promise<TranscriptionIpcResult> => {
-  if (typeof recordingId !== 'string') {
-    return { success: false, code: 'AUDIO_PREPARATION_FAILED' };
-  }
+ipcMain.handle(
+  'transcribe',
+  async (event, recordingId: unknown): Promise<TranscriptionIpcResult> => {
+    if (typeof recordingId !== 'string') {
+      return { success: false, code: 'AUDIO_PREPARATION_FAILED' };
+    }
 
-  try {
-    await getTranscriptionService().transcribe({
-      recordingId,
-      onProgress: (progress) => event.sender.send('transcription-progress', progress),
-    });
-    return { success: true };
-  } catch (error) {
-    return transcriptionFailure(error, 'AUDIO_PREPARATION_FAILED');
-  }
-});
+    try {
+      await getTranscriptionService().transcribe({
+        recordingId,
+        onProgress: (progress) => event.sender.send('transcription-progress', progress),
+      });
+      return { success: true };
+    } catch (error) {
+      return transcriptionFailure(error, 'AUDIO_PREPARATION_FAILED');
+    }
+  },
+);
 
 ipcMain.handle('get-local-model-status', (): Promise<LocalModelStatus> => getLocalModelStatus());
 
@@ -503,13 +529,18 @@ ipcMain.handle('install-local-model', async (): Promise<TranscriptionIpcResult> 
   }
 
   try {
-    await getModelService().ensureModel((percent) => {
-      mainWindow?.webContents.send('local-model-status', {
-        state: 'downloading',
-        percent,
-      } satisfies LocalModelStatus);
-    }, { recoverInvalidModel: status.state === 'invalid' });
-    mainWindow?.webContents.send('local-model-status', { state: 'ready' } satisfies LocalModelStatus);
+    await getModelService().ensureModel(
+      (percent) => {
+        mainWindow?.webContents.send('local-model-status', {
+          state: 'downloading',
+          percent,
+        } satisfies LocalModelStatus);
+      },
+      { recoverInvalidModel: status.state === 'invalid' },
+    );
+    mainWindow?.webContents.send('local-model-status', {
+      state: 'ready',
+    } satisfies LocalModelStatus);
     return { success: true };
   } catch (error) {
     const latestStatus = await getModelService().getStatus();
@@ -518,32 +549,28 @@ ipcMain.handle('install-local-model', async (): Promise<TranscriptionIpcResult> 
   }
 });
 
-ipcMain.handle('export-transcript', async (
-  _event,
-  recordingId: unknown,
-  format: unknown
-): Promise<TranscriptExportIpcResult> => {
-  if (typeof recordingId !== 'string' || format !== 'txt') {
-    console.error('Transcript export request rejected.');
-    return { success: false, code: 'TRANSCRIPT_EXPORT_FAILED' };
-  }
+ipcMain.handle(
+  'export-transcript',
+  async (_event, recordingId: unknown, format: unknown): Promise<TranscriptExportIpcResult> => {
+    if (typeof recordingId !== 'string' || format !== 'txt') {
+      console.error('Transcript export request rejected.');
+      return { success: false, code: 'TRANSCRIPT_EXPORT_FAILED' };
+    }
 
-  try {
-    const transcriptPath = recordingsLibrary.resolveRecordingTranscript(recordingId);
-    const transcript = JSON.parse(fs.readFileSync(transcriptPath, 'utf-8'));
-    saveExport(transcript, format, transcriptPath);
-    return { success: true };
-  } catch {
-    console.error('Transcript export failed.');
-    return { success: false, code: 'TRANSCRIPT_EXPORT_FAILED' };
-  }
-});
+    try {
+      const transcriptPath = recordingsLibrary.resolveRecordingTranscript(recordingId);
+      const transcript = JSON.parse(fs.readFileSync(transcriptPath, 'utf-8'));
+      saveExport(transcript, format, transcriptPath);
+      return { success: true };
+    } catch {
+      console.error('Transcript export failed.');
+      return { success: false, code: 'TRANSCRIPT_EXPORT_FAILED' };
+    }
+  },
+);
 
 // Settings IPC handlers
-ipcMain.handle('save-config', async (
-  _event,
-  config: unknown
-): Promise<SettingsSaveIpcResult> => {
+ipcMain.handle('save-config', async (_event, config: unknown): Promise<SettingsSaveIpcResult> => {
   if (!isSettingsUpdate(config)) {
     console.error('Settings config request rejected.');
     return { success: false, code: 'SETTINGS_SAVE_FAILED' };
@@ -591,11 +618,13 @@ ipcMain.handle('load-config', async (): Promise<SettingsLoadIpcResult> => {
 function isSettingsUpdate(value: unknown): value is Partial<TranscriptionSettings> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
-  return (candidate.apiKey === undefined || typeof candidate.apiKey === 'string')
-    && (candidate.model === undefined || typeof candidate.model === 'string')
-    && (candidate.transcriptionProvider === undefined
-      || candidate.transcriptionProvider === 'local'
-      || candidate.transcriptionProvider === 'groq');
+  return (
+    (candidate.apiKey === undefined || typeof candidate.apiKey === 'string') &&
+    (candidate.model === undefined || typeof candidate.model === 'string') &&
+    (candidate.transcriptionProvider === undefined ||
+      candidate.transcriptionProvider === 'local' ||
+      candidate.transcriptionProvider === 'groq')
+  );
 }
 
 app.whenReady().then(() => {

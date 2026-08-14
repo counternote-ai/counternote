@@ -5,11 +5,9 @@ import * as os from 'os';
 import * as path from 'path';
 
 test('launches a 400x600 window titled Interview Copilot and shows Local Whisper settings', async () => {
-  const testHome = fs.mkdtempSync(
-    path.join(os.tmpdir(), 'interview-copilot-packaged-e2e-')
-  );
+  const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'interview-copilot-packaged-e2e-'));
   const appPath = path.resolve(
-    'release/mac-arm64/Interview Copilot.app/Contents/MacOS/Interview Copilot'
+    'release/mac-arm64/Interview Copilot.app/Contents/MacOS/Interview Copilot',
   );
 
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: testHome };
@@ -40,21 +38,19 @@ test('launches a 400x600 window titled Interview Copilot and shows Local Whisper
     await window.getByRole('button', { name: 'Open settings' }).click();
     await expect(window.getByRole('heading', { name: 'Settings' })).toBeVisible();
 
-    await expect(
-      window.getByRole('combobox', { name: 'Transcription provider' })
-    ).toContainText('Local Whisper');
+    await expect(window.getByRole('combobox', { name: 'Transcription provider' })).toContainText(
+      'Local Whisper',
+    );
 
     await expect(window.getByText('Not downloaded', { exact: true })).toBeVisible();
 
     await expect(
-      window.getByText('Transcription runs on this Mac. Audio is not uploaded.')
+      window.getByText('Transcription runs on this Mac. Audio is not uploaded.'),
     ).toBeVisible();
 
     await expect(window.getByText('Unavailable', { exact: true })).toHaveCount(0);
     await expect(
-      window.getByText(
-        'Local Whisper is unavailable because its sidecar is not installed.'
-      )
+      window.getByText('Local Whisper is unavailable because its sidecar is not installed.'),
     ).toHaveCount(0);
   } finally {
     try {
@@ -68,7 +64,7 @@ test('launches a 400x600 window titled Interview Copilot and shows Local Whisper
 
 test('packaged audio capture helper exists, is executable, and exchanges a valid protocol frame', async () => {
   const helperPath = path.resolve(
-    'release/mac-arm64/Interview Copilot.app/Contents/Resources/audio-capture/bin/interview-audio-capture'
+    'release/mac-arm64/Interview Copilot.app/Contents/Resources/audio-capture/bin/interview-audio-capture',
   );
 
   // Assert the helper exists at the resolved packaged resource path
@@ -102,10 +98,16 @@ test('packaged audio capture helper exists, is executable, and exchanges a valid
     let received = false;
     child.stdout.on('data', (chunk: Buffer) => {
       // Check for ICAP magic bytes (protocol frame header)
-      if (!received && chunk.length >= 16 &&
-          chunk[0] === 0x49 && chunk[1] === 0x43 &&
-          chunk[2] === 0x41 && chunk[3] === 0x50 &&
-          chunk[4] === 0x01) { // version 1
+      if (
+        !received &&
+        chunk.length >= 16 &&
+        chunk[0] === 0x49 &&
+        chunk[1] === 0x43 &&
+        chunk[2] === 0x41 &&
+        chunk[3] === 0x50 &&
+        chunk[4] === 0x01
+      ) {
+        // version 1
         received = true;
         clearTimeout(timeout);
         child.kill();

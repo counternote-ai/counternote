@@ -22,7 +22,7 @@ export interface LocalWhisperProviderDependencies {
 export class LocalTranscriptionError extends Error {
   constructor(
     readonly code: TranscriptionErrorCode,
-    message: string
+    message: string,
   ) {
     super(message);
     this.name = 'LocalTranscriptionError';
@@ -35,7 +35,7 @@ export class LocalWhisperProvider {
   async transcribe(
     request: LocalChannelRequest,
     onModelProgress: (percent: number) => void,
-    onInferenceStart: () => void
+    onInferenceStart: () => void,
   ): Promise<TranscriptionSegment[]> {
     const audibleIntervals = await this.deps.getAudibleIntervals(request.audioPath);
     if (audibleIntervals.length === 0) {
@@ -61,12 +61,12 @@ export class LocalWhisperProvider {
 function normalizeTranscription(
   raw: unknown,
   speaker: string,
-  audibleIntervals: AudioInterval[]
+  audibleIntervals: AudioInterval[],
 ): TranscriptionSegment[] {
   if (!isObject(raw) || !Array.isArray(raw.transcription)) {
     throw new LocalTranscriptionError(
       'LOCAL_TRANSCRIPTION_FAILED',
-      'transcription output is malformed'
+      'transcription output is malformed',
     );
   }
 
@@ -76,7 +76,7 @@ function normalizeTranscription(
     if (!isObject(item) || !isObject(item.offsets)) {
       throw new LocalTranscriptionError(
         'LOCAL_TRANSCRIPTION_FAILED',
-        'segment offsets are malformed'
+        'segment offsets are malformed',
       );
     }
 
@@ -88,7 +88,7 @@ function normalizeTranscription(
     ) {
       throw new LocalTranscriptionError(
         'LOCAL_TRANSCRIPTION_FAILED',
-        'segment offsets are malformed'
+        'segment offsets are malformed',
       );
     }
 
@@ -101,7 +101,7 @@ function normalizeTranscription(
     if (start < 0 || end < 0) {
       throw new LocalTranscriptionError(
         'LOCAL_TRANSCRIPTION_FAILED',
-        'segment offsets are negative'
+        'segment offsets are negative',
       );
     }
 
@@ -112,14 +112,14 @@ function normalizeTranscription(
     if (start > end) {
       throw new LocalTranscriptionError(
         'LOCAL_TRANSCRIPTION_FAILED',
-        'segment offsets are reversed'
+        'segment offsets are reversed',
       );
     }
 
     if (typeof item.text !== 'string') {
       throw new LocalTranscriptionError(
         'LOCAL_TRANSCRIPTION_FAILED',
-        'segment text is not a string'
+        'segment text is not a string',
       );
     }
 
@@ -141,11 +141,13 @@ function normalizeTranscription(
 function hasEnoughAudibleAudio(
   start: number,
   end: number,
-  audibleIntervals: AudioInterval[]
+  audibleIntervals: AudioInterval[],
 ): boolean {
-  const audibleSeconds = audibleIntervals.reduce((total, interval) => (
-    total + Math.max(0, Math.min(end, interval.end) - Math.max(start, interval.start))
-  ), 0);
+  const audibleSeconds = audibleIntervals.reduce(
+    (total, interval) =>
+      total + Math.max(0, Math.min(end, interval.end) - Math.max(start, interval.start)),
+    0,
+  );
 
   return audibleSeconds / (end - start) >= MIN_AUDIBLE_COVERAGE;
 }

@@ -30,16 +30,19 @@ export class RecordingMutationCoordinator {
   public closeAndDrain(): Promise<void> {
     this.closing = true;
     if (this.drainPromise === undefined) {
-      this.drainPromise = this.owner === undefined
-        ? Promise.resolve()
-        : new Promise<void>((resolve) => {
-          this.resolveDrain = resolve;
-        });
+      this.drainPromise =
+        this.owner === undefined
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => {
+              this.resolveDrain = resolve;
+            });
     }
     return this.drainPromise;
   }
 
   public snapshot(): { owner?: RecordingMutationKind; closing: boolean } {
-    return this.owner === undefined ? { closing: this.closing } : { owner: this.owner, closing: this.closing };
+    return this.owner === undefined
+      ? { closing: this.closing }
+      : { owner: this.owner, closing: this.closing };
   }
 }

@@ -1,5 +1,5 @@
-@import "tailwindcss" source("./");
-@import "tw-animate-css";
+@import 'tailwindcss' source('./');
+@import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -75,8 +75,8 @@ body {
   overflow: hidden;
   background: var(--background);
   color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-  font-feature-settings: "kern";
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: 'kern';
   -webkit-font-smoothing: antialiased;
 }
 
@@ -106,7 +106,13 @@ select {
 }
 
 .app-scroll-shadow {
-  mask-image: linear-gradient(to bottom, transparent, black 12px, black calc(100% - 12px), transparent);
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 12px,
+    black calc(100% - 12px),
+    transparent
+  );
 }
 
 /* Radix sizes scroll content with an inline display:table wrapper, which lets

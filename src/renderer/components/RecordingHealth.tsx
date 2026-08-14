@@ -29,10 +29,7 @@ export function RecordingHealth({ view }: RecordingHealthProps) {
         {view.state === 'recording' && (
           <div className="space-y-2" role="status" aria-label={view.ariaSummary}>
             {view.channels.map((channel) => (
-              <div
-                key={channel.label}
-                className="flex items-center justify-between gap-3"
-              >
+              <div key={channel.label} className="flex items-center justify-between gap-3">
                 <span className="text-sm font-medium text-foreground">{channel.label}</span>
                 <div className="flex items-center gap-2">
                   <Badge variant={toneVariant[channel.tone]}>{channel.statusText}</Badge>
@@ -43,7 +40,9 @@ export function RecordingHealth({ view }: RecordingHealthProps) {
         )}
 
         {/* Screen-reader summary for status transitions */}
-        <span className="sr-only" aria-live="polite">{view.ariaSummary}</span>
+        <span className="sr-only" aria-live="polite">
+          {view.ariaSummary}
+        </span>
       </CardContent>
     </Card>
   );

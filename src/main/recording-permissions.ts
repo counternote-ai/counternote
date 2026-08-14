@@ -10,10 +10,7 @@ const SETTINGS_URLS: Record<RecordingPermission, string> = {
   microphone: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
 };
 
-const BLOCKING_STATUSES: ReadonlySet<RecordingPermissionStatus> = new Set([
-  'denied',
-  'restricted',
-]);
+const BLOCKING_STATUSES: ReadonlySet<RecordingPermissionStatus> = new Set(['denied', 'restricted']);
 
 function readStatus(permission: RecordingPermission): RecordingPermissionStatus {
   try {
@@ -40,13 +37,12 @@ export function getRecordingPermissionSnapshot(): RecordingPermissionSnapshot {
     screen,
     microphone,
     permissionOwnerName: app.isPackaged ? 'Interview Copilot' : 'Electron',
-    canAttemptRecording:
-      !BLOCKING_STATUSES.has(screen) && !BLOCKING_STATUSES.has(microphone),
+    canAttemptRecording: !BLOCKING_STATUSES.has(screen) && !BLOCKING_STATUSES.has(microphone),
   };
 }
 
 export async function openRecordingPermissionSettings(
-  permission: RecordingPermission
+  permission: RecordingPermission,
 ): Promise<void> {
   await shell.openExternal(SETTINGS_URLS[permission]);
 }

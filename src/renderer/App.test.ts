@@ -46,14 +46,22 @@ interface MockSettingsProps {
   apiKey: string;
   model: string;
   provider?: 'local' | 'groq';
-  onSave: (settings: { apiKey: string; model: string; transcriptionProvider?: 'local' | 'groq' }) => Promise<void>;
+  onSave: (settings: {
+    apiKey: string;
+    model: string;
+    transcriptionProvider?: 'local' | 'groq';
+  }) => Promise<void>;
 }
 
 interface MockTranscriptProps {
   onExport: () => Promise<void>;
 }
 
-const mockCreateElement = (type: unknown, props: Record<string, unknown> | null, ...children: unknown[]): MockElement => ({
+const mockCreateElement = (
+  type: unknown,
+  props: Record<string, unknown> | null,
+  ...children: unknown[]
+): MockElement => ({
   type,
   props: {
     ...props,
@@ -84,19 +92,22 @@ const mockScrollArea = (): null => null;
 jest.mock('react', () => ({
   __esModule: true,
   default: { createElement: mockCreateElement },
-  useCallback: <T,>(callback: T): T => callback,
+  useCallback: <T>(callback: T): T => callback,
   useEffect: (effect: () => void | (() => void)): void => {
     mockEffects.push(effect);
   },
-  useRef: <T,>(initialValue: T) => ({ current: initialValue }),
-  useState: <T,>(initialValue: T): [T, (value: T) => void] => {
+  useRef: <T>(initialValue: T) => ({ current: initialValue }),
+  useState: <T>(initialValue: T): [T, (value: T) => void] => {
     const index = mockStateCursor++;
     if (mockStateValues[index] === undefined) {
       mockStateValues[index] = initialValue;
     }
-    return [mockStateValues[index] as T, (value: T): void => {
-      mockStateValues[index] = value;
-    }];
+    return [
+      mockStateValues[index] as T,
+      (value: T): void => {
+        mockStateValues[index] = value;
+      },
+    ];
   },
 }));
 
@@ -129,7 +140,8 @@ jest.mock('lucide-react', () => ({
 }));
 
 const App = require('./App').default as typeof import('./App').default;
-const ActualSettings = jest.requireActual('./components/Settings').Settings as typeof import('./components/Settings').Settings;
+const ActualSettings = jest.requireActual('./components/Settings')
+  .Settings as typeof import('./components/Settings').Settings;
 
 function renderApp(): MockElement {
   mockStateCursor = 0;
@@ -403,7 +415,8 @@ describe('recording permission lifecycle', () => {
 
     expect(getControlPanelProps().permissionNotice).toEqual({
       tone: 'info',
-      message: "Interview Copilot couldn't confirm recording permissions. You can still try to start recording.",
+      message:
+        "Interview Copilot couldn't confirm recording permissions. You can still try to start recording.",
     });
     expect(getErrorMessage()).toBeNull();
   });
@@ -415,16 +428,21 @@ describe('recording permission lifecycle', () => {
     await getControlPanelProps().onStartRecording();
     renderApp();
 
-    expect(getErrorMessage()).toBe('Recording could not start. The audio helper encountered an error.');
+    expect(getErrorMessage()).toBe(
+      'Recording could not start. The audio helper encountered an error.',
+    );
     expect(getErrorMessage()).not.toContain('NotAllowedError');
     expect(mockConsoleError).not.toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ message: 'NotAllowedError' })
+      expect.objectContaining({ message: 'NotAllowedError' }),
     );
   });
 
   it('uses storage recovery copy when persistence fails', async () => {
-    mockElectronAPI.recordingStart.mockResolvedValueOnce({ ok: false, reason: 'persistence-error' });
+    mockElectronAPI.recordingStart.mockResolvedValueOnce({
+      ok: false,
+      reason: 'persistence-error',
+    });
     renderApp();
 
     await getControlPanelProps().onStartRecording();
@@ -458,19 +476,23 @@ describe('transcription IPC lifecycle', () => {
   });
 
   it('sends only the recording ID when a saved recording is transcribed', async () => {
-    mockStateValues[1] = [{
-      id: '2026-07-27T12-00-00-000Z',
-      title: 'Saved interview',
-      duration: 60,
-      transcribed: false,
-      audioPath: '/private/recordings/secret/audio.wav',
-    }];
+    mockStateValues[1] = [
+      {
+        id: '2026-07-27T12-00-00-000Z',
+        title: 'Saved interview',
+        duration: 60,
+        transcribed: false,
+        audioPath: '/private/recordings/secret/audio.wav',
+      },
+    ];
     renderApp();
 
     await getControlPanelProps().onTranscribe('2026-07-27T12-00-00-000Z');
 
     expect(mockElectronAPI.transcribe).toHaveBeenCalledWith('2026-07-27T12-00-00-000Z');
-    expect(mockElectronAPI.transcribe).not.toHaveBeenCalledWith('/private/recordings/secret/audio.wav');
+    expect(mockElectronAPI.transcribe).not.toHaveBeenCalledWith(
+      '/private/recordings/secret/audio.wav',
+    );
   });
 
   it('starts a transcription with progress scoped to the selected recording', async () => {
@@ -480,7 +502,10 @@ describe('transcription IPC lifecycle', () => {
     ];
     let resolveTranscription: (result: { success: true }) => void = () => undefined;
     mockElectronAPI.transcribe.mockImplementationOnce(
-      () => new Promise<{ success: true }>((resolve) => { resolveTranscription = resolve; })
+      () =>
+        new Promise<{ success: true }>((resolve) => {
+          resolveTranscription = resolve;
+        }),
     );
     renderApp();
 
@@ -510,7 +535,7 @@ describe('transcription IPC lifecycle', () => {
     renderApp();
 
     expect(getErrorMessage()).toBe(
-      'Local transcription stopped responding. Your recording is still saved. Try again, or select Groq in Settings.'
+      'Local transcription stopped responding. Your recording is still saved. Try again, or select Groq in Settings.',
     );
     expect(getControlPanelProps().recordings).toEqual([
       { id: 'saved-recording', title: 'Saved interview', duration: 60, transcribed: false },
@@ -539,10 +564,13 @@ describe('transcription IPC lifecycle', () => {
 
     await getTranscriptProps().onExport();
 
-    expect(mockElectronAPI.exportTranscript).toHaveBeenCalledWith('2026-07-27T12-00-00-000Z', 'txt');
+    expect(mockElectronAPI.exportTranscript).toHaveBeenCalledWith(
+      '2026-07-27T12-00-00-000Z',
+      'txt',
+    );
     expect(mockElectronAPI.exportTranscript).not.toHaveBeenCalledWith(
       '/private/recordings/secret/transcript.json',
-      'txt'
+      'txt',
     );
   });
 
@@ -577,7 +605,9 @@ describe('transcription IPC lifecycle', () => {
 });
 
 describe('transcription provider settings', () => {
-  const renderSettings = (overrides: Partial<ComponentProps<typeof ActualSettings>> = {}): MockElement => {
+  const renderSettings = (
+    overrides: Partial<ComponentProps<typeof ActualSettings>> = {},
+  ): MockElement => {
     mockStateValues.splice(0);
     mockStateCursor = 0;
     return ActualSettings({
@@ -596,7 +626,9 @@ describe('transcription provider settings', () => {
     const tree = renderSettings();
     const text = renderedText(tree).join(' ');
 
-    expect(findElements(tree, (element) => element.type === mockSelect)[0].props.value).toBe('local');
+    expect(findElements(tree, (element) => element.type === mockSelect)[0].props.value).toBe(
+      'local',
+    );
     expect(text).toContain('Large V3 Turbo · about 547 MB');
     expect(text).toContain('Not downloaded');
     expect(text).toContain('Transcription runs on this Mac. Audio is not uploaded.');
@@ -640,7 +672,9 @@ describe('transcription provider settings', () => {
       onBack: jest.fn(),
     }) as unknown as MockElement;
     const groqInput = findElements(tree, (element) => element.props.id === 'groq-api-key')[0];
-    (groqInput.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'preserved-key' } });
+    (groqInput.props.onChange as (event: { target: { value: string } }) => void)({
+      target: { value: 'preserved-key' },
+    });
     const groqProviderSelect = findElements(tree, (element) => element.type === mockSelect)[0];
     (groqProviderSelect.props.onValueChange as (value: string) => void)('local');
     mockStateCursor = 0;
@@ -656,7 +690,9 @@ describe('transcription provider settings', () => {
 
     const save = findElements(
       tree,
-      (element) => element.type === mockButton && renderedText(element.props.children).includes('Save settings')
+      (element) =>
+        element.type === mockButton &&
+        renderedText(element.props.children).includes('Save settings'),
     )[0];
     await (save.props.onClick as () => Promise<void>)();
 
@@ -673,7 +709,9 @@ describe('transcription provider settings', () => {
     });
     const text = renderedText(tree).join(' ');
 
-    expect(findElements(tree, (element) => element.type === mockSelect)[0].props.value).toBe('local');
+    expect(findElements(tree, (element) => element.type === mockSelect)[0].props.value).toBe(
+      'local',
+    );
     expect(text).toContain('Unavailable');
     expect(text).toContain('Local Whisper is unavailable because its sidecar is not installed.');
     expect(text).not.toContain('Groq API Key');
@@ -681,13 +719,18 @@ describe('transcription provider settings', () => {
 
   it('disables only Save settings while the request is pending', async () => {
     let resolveSave: (() => void) | undefined;
-    const onSave = jest.fn(() => new Promise<void>((resolve) => {
-      resolveSave = resolve;
-    }));
+    const onSave = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
     let tree = renderSettings({ onSave });
     let save = findElements(
       tree,
-      (element) => element.type === mockButton && renderedText(element.props.children).includes('Save settings')
+      (element) =>
+        element.type === mockButton &&
+        renderedText(element.props.children).includes('Save settings'),
     )[0];
 
     (save.props.onClick as () => void)();
@@ -703,7 +746,9 @@ describe('transcription provider settings', () => {
     }) as unknown as MockElement;
     save = findElements(
       tree,
-      (element) => element.type === mockButton && renderedText(element.props.children).includes('Save settings')
+      (element) =>
+        element.type === mockButton &&
+        renderedText(element.props.children).includes('Save settings'),
     )[0];
 
     expect(save.props.disabled).toBe(true);
@@ -728,7 +773,9 @@ describe('transcription provider settings', () => {
     tree = renderSettings({ onInstallLocalModel: install });
     const download = findElements(
       tree,
-      (element) => element.type === mockButton && renderedText(element.props.children).includes('Download model')
+      (element) =>
+        element.type === mockButton &&
+        renderedText(element.props.children).includes('Download model'),
     )[0];
     await (download.props.onClick as () => Promise<void>)();
     mockStateCursor = 0;
@@ -969,7 +1016,7 @@ describe('native capture lifecycle', () => {
 
     expect(getControlPanelProps().isFinishing).toBe(true);
     expect(getControlPanelProps().healthView?.finishingMessage).toBe(
-      'Finishing recording before quitting…'
+      'Finishing recording before quitting…',
     );
   });
 
@@ -1021,9 +1068,7 @@ describe('native capture lifecycle', () => {
     await getControlPanelProps().onStartRecording();
     renderApp();
 
-    expect(getErrorMessage()).toBe(
-      'Recording could not start. The audio helper did not respond.'
-    );
+    expect(getErrorMessage()).toBe('Recording could not start. The audio helper did not respond.');
   });
 
   it('shows stop feedback when recordingStop returns interrupted', async () => {
@@ -1138,7 +1183,12 @@ describe('recovery UI', () => {
 
   it('loads recovery items on mount', async () => {
     mockElectronAPI.recordingListRecovery.mockResolvedValueOnce([
-      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+      {
+        id: 'recovery-1',
+        createdAt: '2026-08-13T14:30:00.000Z',
+        bytes: 1024,
+        state: 'recoverable',
+      },
     ]);
     renderApp();
     mockEffects.forEach((effect) => effect());
@@ -1149,8 +1199,18 @@ describe('recovery UI', () => {
 
   it('passes recovery items to ControlPanel', async () => {
     const items = [
-      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' as const },
-      { id: 'recovery-2', createdAt: '2026-08-13T15:00:00.000Z', bytes: 2048, state: 'not-recoverable' as const },
+      {
+        id: 'recovery-1',
+        createdAt: '2026-08-13T14:30:00.000Z',
+        bytes: 1024,
+        state: 'recoverable' as const,
+      },
+      {
+        id: 'recovery-2',
+        createdAt: '2026-08-13T15:00:00.000Z',
+        bytes: 2048,
+        state: 'not-recoverable' as const,
+      },
     ];
     mockElectronAPI.recordingListRecovery.mockResolvedValueOnce(items);
     renderApp();
@@ -1166,7 +1226,12 @@ describe('recovery UI', () => {
   it('calls recordingRecover when recover action is triggered', async () => {
     mockElectronAPI.recordingRecover.mockResolvedValueOnce({ outcome: 'recovered' });
     mockElectronAPI.recordingListRecovery.mockResolvedValueOnce([
-      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+      {
+        id: 'recovery-1',
+        createdAt: '2026-08-13T14:30:00.000Z',
+        bytes: 1024,
+        state: 'recoverable',
+      },
     ]);
     renderApp();
     mockEffects.forEach((effect) => effect());
@@ -1179,7 +1244,12 @@ describe('recovery UI', () => {
   it('calls recordingTrashRecovery when trash action is triggered', async () => {
     mockElectronAPI.recordingTrashRecovery.mockResolvedValueOnce({ outcome: 'trashed' });
     mockElectronAPI.recordingListRecovery.mockResolvedValueOnce([
-      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+      {
+        id: 'recovery-1',
+        createdAt: '2026-08-13T14:30:00.000Z',
+        bytes: 1024,
+        state: 'recoverable',
+      },
     ]);
     renderApp();
     mockEffects.forEach((effect) => effect());
@@ -1193,7 +1263,12 @@ describe('recovery UI', () => {
     mockElectronAPI.recordingRecover.mockResolvedValueOnce({ outcome: 'recovered' });
     mockElectronAPI.recordingListRecovery
       .mockResolvedValueOnce([
-        { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+        {
+          id: 'recovery-1',
+          createdAt: '2026-08-13T14:30:00.000Z',
+          bytes: 1024,
+          state: 'recoverable',
+        },
       ])
       .mockResolvedValueOnce([]);
     renderApp();
@@ -1210,7 +1285,12 @@ describe('recovery UI', () => {
   it('shows error when recover fails without removing the item', async () => {
     mockElectronAPI.recordingRecover.mockResolvedValueOnce({ outcome: 'recovery-failed' });
     mockElectronAPI.recordingListRecovery.mockResolvedValueOnce([
-      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+      {
+        id: 'recovery-1',
+        createdAt: '2026-08-13T14:30:00.000Z',
+        bytes: 1024,
+        state: 'recoverable',
+      },
     ]);
     renderApp();
     mockEffects.forEach((effect) => effect());
@@ -1224,7 +1304,12 @@ describe('recovery UI', () => {
 
   it('disables recovery actions during active capture', async () => {
     mockElectronAPI.recordingListRecovery.mockResolvedValueOnce([
-      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+      {
+        id: 'recovery-1',
+        createdAt: '2026-08-13T14:30:00.000Z',
+        bytes: 1024,
+        state: 'recoverable',
+      },
     ]);
     mockElectronAPI.onRecordingStatus.mockImplementation((cb: (snapshot: unknown) => void) => {
       statusCallback = cb;
@@ -1253,11 +1338,19 @@ describe('recovery UI', () => {
   it('sets recoveringId during recovery and clears it after', async () => {
     let resolveRecover: (result: { outcome: string }) => void = () => undefined;
     mockElectronAPI.recordingRecover.mockImplementationOnce(
-      () => new Promise((resolve) => { resolveRecover = resolve; })
+      () =>
+        new Promise((resolve) => {
+          resolveRecover = resolve;
+        }),
     );
     mockElectronAPI.recordingListRecovery
       .mockResolvedValueOnce([
-        { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+        {
+          id: 'recovery-1',
+          createdAt: '2026-08-13T14:30:00.000Z',
+          bytes: 1024,
+          state: 'recoverable',
+        },
       ])
       .mockResolvedValueOnce([]);
     renderApp();
@@ -1281,7 +1374,12 @@ describe('recovery UI', () => {
     mockElectronAPI.recordingTrashRecovery.mockResolvedValueOnce({ outcome: 'trashed' });
     mockElectronAPI.recordingListRecovery
       .mockResolvedValueOnce([
-        { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+        {
+          id: 'recovery-1',
+          createdAt: '2026-08-13T14:30:00.000Z',
+          bytes: 1024,
+          state: 'recoverable',
+        },
       ])
       .mockResolvedValueOnce([]);
     renderApp();
@@ -1298,7 +1396,12 @@ describe('recovery UI', () => {
   it('does not refresh recovery list after failed recovery', async () => {
     mockElectronAPI.recordingRecover.mockResolvedValueOnce({ outcome: 'recovery-failed' });
     mockElectronAPI.recordingListRecovery.mockResolvedValueOnce([
-      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+      {
+        id: 'recovery-1',
+        createdAt: '2026-08-13T14:30:00.000Z',
+        bytes: 1024,
+        state: 'recoverable',
+      },
     ]);
     renderApp();
     mockEffects.forEach((effect) => effect());
@@ -1319,9 +1422,38 @@ describe('library card interrupted badge', () => {
     mockElectronAPI.listRecordings.mockResolvedValue({
       success: true,
       recordings: [
-        { id: 'complete-rec', title: 'Complete', captureStatus: 'complete', duration: 60, transcribed: false, interruptions: [] },
-        { id: 'interrupted-rec', title: 'Interrupted', captureStatus: 'interrupted', duration: 30, transcribed: false, interruptions: [{ channel: 'capture', startMs: 30000, endMs: 30000, recovered: false, reason: 'persistence-error' }] },
-        { id: 'legacy-rec', title: 'Legacy', captureStatus: 'legacy', duration: 45, transcribed: false, interruptions: [] },
+        {
+          id: 'complete-rec',
+          title: 'Complete',
+          captureStatus: 'complete',
+          duration: 60,
+          transcribed: false,
+          interruptions: [],
+        },
+        {
+          id: 'interrupted-rec',
+          title: 'Interrupted',
+          captureStatus: 'interrupted',
+          duration: 30,
+          transcribed: false,
+          interruptions: [
+            {
+              channel: 'capture',
+              startMs: 30000,
+              endMs: 30000,
+              recovered: false,
+              reason: 'persistence-error',
+            },
+          ],
+        },
+        {
+          id: 'legacy-rec',
+          title: 'Legacy',
+          captureStatus: 'legacy',
+          duration: 45,
+          transcribed: false,
+          interruptions: [],
+        },
       ],
     });
     renderApp();
@@ -1340,7 +1472,22 @@ describe('library card interrupted badge', () => {
     mockElectronAPI.listRecordings.mockResolvedValue({
       success: true,
       recordings: [
-        { id: 'interrupted-rec', title: 'Interview with gaps', captureStatus: 'interrupted', duration: 1800, transcribed: false, interruptions: [{ channel: 'capture', startMs: 900000, endMs: 900000, recovered: false, reason: 'persistence-error' }] },
+        {
+          id: 'interrupted-rec',
+          title: 'Interview with gaps',
+          captureStatus: 'interrupted',
+          duration: 1800,
+          transcribed: false,
+          interruptions: [
+            {
+              channel: 'capture',
+              startMs: 900000,
+              endMs: 900000,
+              recovered: false,
+              reason: 'persistence-error',
+            },
+          ],
+        },
       ],
     });
     renderApp();
@@ -1357,7 +1504,14 @@ describe('library card interrupted badge', () => {
     mockElectronAPI.listRecordings.mockResolvedValue({
       success: true,
       recordings: [
-        { id: 'legacy-rec', title: 'Old recording', captureStatus: 'legacy', duration: 120, transcribed: true, interruptions: [] },
+        {
+          id: 'legacy-rec',
+          title: 'Old recording',
+          captureStatus: 'legacy',
+          duration: 120,
+          transcribed: true,
+          interruptions: [],
+        },
       ],
     });
     renderApp();
@@ -1374,7 +1528,14 @@ describe('library card interrupted badge', () => {
     mockElectronAPI.listRecordings.mockResolvedValue({
       success: true,
       recordings: [
-        { id: 'complete-rec', title: 'Good recording', captureStatus: 'complete', duration: 240, transcribed: true, interruptions: [] },
+        {
+          id: 'complete-rec',
+          title: 'Good recording',
+          captureStatus: 'complete',
+          duration: 240,
+          transcribed: true,
+          interruptions: [],
+        },
       ],
     });
     renderApp();

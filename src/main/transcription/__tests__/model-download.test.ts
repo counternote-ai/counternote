@@ -12,19 +12,20 @@ describe('HttpsModelDownloadTransport', () => {
   it('aborts a fetch that never produces a response', async () => {
     jest.useFakeTimers();
     let aborted = false;
-    jest.spyOn(global, 'fetch').mockImplementation((_input, init) => (
-      new Promise<Response>((_resolve, reject) => {
-        (init?.signal as AbortSignal | null)?.addEventListener('abort', () => {
-          aborted = true;
-          reject(new Error('request aborted'));
-        });
-      })
-    ));
+    jest.spyOn(global, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          (init?.signal as AbortSignal | null)?.addEventListener('abort', () => {
+            aborted = true;
+            reject(new Error('request aborted'));
+          });
+        }),
+    );
     const transport = new HttpsModelDownloadTransport(4);
     const download = transport.download(
       new URL('https://models.example.com/model.bin'),
       '/tmp/model.bin',
-      jest.fn()
+      jest.fn(),
     );
     const expectedFailure = expect(download).rejects.toThrow('model download timed out');
 
@@ -44,20 +45,21 @@ describe('HttpsModelDownloadTransport', () => {
         streamController = controller;
       },
     });
-    jest.spyOn(global, 'fetch').mockImplementation((_input, init) => (
-      new Promise<Response>((resolve) => {
-        init?.signal?.addEventListener('abort', () => {
-          aborted = true;
-        });
-        resolveFetch = resolve;
-      })
-    ));
+    jest.spyOn(global, 'fetch').mockImplementation(
+      (_input, init) =>
+        new Promise<Response>((resolve) => {
+          init?.signal?.addEventListener('abort', () => {
+            aborted = true;
+          });
+          resolveFetch = resolve;
+        }),
+    );
     const destination = path.join(os.tmpdir(), `model-download-${process.pid}-headers.bin`);
     const transport = new HttpsModelDownloadTransport(4);
     const download = transport.download(
       new URL('https://models.example.com/model.bin'),
       destination,
-      jest.fn()
+      jest.fn(),
     );
     void download.catch(() => undefined);
 

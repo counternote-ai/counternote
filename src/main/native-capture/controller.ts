@@ -38,8 +38,7 @@ export type ControllerStopResult =
   | { readonly status: 'not-active' };
 
 export type ControllerCancelResult =
-  | { readonly status: 'complete' }
-  | { readonly status: 'not-active' };
+  { readonly status: 'complete' } | { readonly status: 'not-active' };
 
 export type StatusChangeCallback = (snapshot: ControllerSnapshot) => void;
 
@@ -73,7 +72,7 @@ function makeRecordingId(date: Date): string {
 
 /* ── Session state to controller state mapping ────────────────── */
 
-function mapSessionState(sessionState: SessionState, hasStopPromise: boolean): ControllerState {
+function mapSessionState(sessionState: SessionState, _hasStopPromise: boolean): ControllerState {
   if (sessionState === 'idle') return 'idle';
   if (sessionState === 'starting') return 'starting';
   if (sessionState === 'recording') return 'recording';
@@ -100,18 +99,12 @@ export function createNativeCaptureController(
   function notifySubscribers(): void {
     const snap = snapshot();
     for (const cb of subscribers) {
-      try { cb(snap); } catch { /* subscriber errors are non-fatal */ }
+      try {
+        cb(snap);
+      } catch {
+        /* subscriber errors are non-fatal */
+      }
     }
-  }
-
-  function mapStartResult(result: { readonly ok: true } | { readonly ok: false; readonly reason: StartFailureReason }): ControllerStartResult {
-    if (result.ok) {
-      return { ok: true, recordingId: activeRecordingId! };
-    }
-    if (result.reason === 'mutation-unavailable') {
-      return { ok: false, reason: 'busy' };
-    }
-    return { ok: false, reason: result.reason };
   }
 
   function mapStopResult(result: StopCaptureResult): ControllerStopResult {
@@ -257,7 +250,11 @@ export function createNativeCaptureController(
   function onStatusChange(callback: StatusChangeCallback): () => void {
     subscribers.add(callback);
     // Deliver current snapshot immediately
-    try { callback(snapshot()); } catch { /* non-fatal */ }
+    try {
+      callback(snapshot());
+    } catch {
+      /* non-fatal */
+    }
     return () => {
       subscribers.delete(callback);
     };

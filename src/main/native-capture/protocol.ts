@@ -97,7 +97,10 @@ export class CaptureProtocolDecoder {
       throw new CaptureProtocolError('INVALID_SCHEMA', 'Protocol chunks must be Buffers.');
     }
     if (this.retained.length + chunk.length > MAX_RETAINED_BYTES) {
-      throw new CaptureProtocolError('RETAINED_BUFFER_LIMIT', 'Protocol retained buffer exceeded 64 KiB.');
+      throw new CaptureProtocolError(
+        'RETAINED_BUFFER_LIMIT',
+        'Protocol retained buffer exceeded 64 KiB.',
+      );
     }
     this.retained = Buffer.concat([this.retained, chunk]);
 
@@ -117,29 +120,51 @@ export class CaptureProtocolDecoder {
 
   finish(): void {
     if (this.retained.length !== 0) {
-      throw new CaptureProtocolError('PARTIAL_FRAME_AT_EOF', 'Protocol stream ended with a partial frame.');
+      throw new CaptureProtocolError(
+        'PARTIAL_FRAME_AT_EOF',
+        'Protocol stream ended with a partial frame.',
+      );
     }
   }
 
-  private readHeader(buffer: Buffer): { frameType: FrameType; payloadLength: number; sequence: number } {
+  private readHeader(buffer: Buffer): {
+    frameType: FrameType;
+    payloadLength: number;
+    sequence: number;
+  } {
     if (buffer.toString('ascii', 0, 4) !== 'ICAP') {
       throw new CaptureProtocolError('INVALID_MAGIC', 'Protocol frame has invalid magic.');
     }
     if (buffer.readUInt8(4) !== CAPTURE_PROTOCOL_VERSION) {
-      throw new CaptureProtocolError('UNSUPPORTED_VERSION', 'Protocol frame has an unsupported version.');
+      throw new CaptureProtocolError(
+        'UNSUPPORTED_VERSION',
+        'Protocol frame has an unsupported version.',
+      );
     }
     if (buffer.readUInt8(6) !== 0 || buffer.readUInt8(7) !== 0) {
-      throw new CaptureProtocolError('NONZERO_RESERVED_BYTES', 'Protocol frame reserved bytes must be zero.');
+      throw new CaptureProtocolError(
+        'NONZERO_RESERVED_BYTES',
+        'Protocol frame reserved bytes must be zero.',
+      );
     }
     const frameType = this.frameTypeFor(buffer.readUInt8(5));
     const payloadLength = buffer.readUInt32LE(8);
     const sequence = buffer.readUInt32LE(12);
     const expectedLength = frameType === 'pcm' ? PCM_BLOCK_BYTES : MAX_JSON_PAYLOAD_BYTES;
-    if (payloadLength > expectedLength || (frameType === 'pcm' && payloadLength !== PCM_BLOCK_BYTES)) {
-      throw new CaptureProtocolError('INVALID_PAYLOAD_LENGTH', 'Protocol frame payload length is invalid.');
+    if (
+      payloadLength > expectedLength ||
+      (frameType === 'pcm' && payloadLength !== PCM_BLOCK_BYTES)
+    ) {
+      throw new CaptureProtocolError(
+        'INVALID_PAYLOAD_LENGTH',
+        'Protocol frame payload length is invalid.',
+      );
     }
     if (this.sequenceExhausted || sequence !== this.expectedSequence) {
-      throw new CaptureProtocolError('INVALID_SEQUENCE', 'Protocol sequence is not the exact successor.');
+      throw new CaptureProtocolError(
+        'INVALID_SEQUENCE',
+        'Protocol sequence is not the exact successor.',
+      );
     }
     return { frameType, payloadLength, sequence };
   }
@@ -155,10 +180,16 @@ export class CaptureProtocolDecoder {
 
   private decodeFrame(frameType: FrameType, sequence: number, payload: Buffer): CaptureFrame {
     if (this.errorSeen || this.stoppedSeen) {
-      throw new CaptureProtocolError('TERMINAL_FRAME', 'A semantic frame followed a terminal frame.');
+      throw new CaptureProtocolError(
+        'TERMINAL_FRAME',
+        'A semantic frame followed a terminal frame.',
+      );
     }
     if (this.unrecoveredClosePending && frameType !== 'stopped' && frameType !== 'interruption') {
-      throw new CaptureProtocolError('INVALID_INVARIANT', 'An unrecovered interruption close must end in stopped.');
+      throw new CaptureProtocolError(
+        'INVALID_INVARIANT',
+        'An unrecovered interruption close must end in stopped.',
+      );
     }
 
     const decodedPayload = frameType === 'pcm' ? payload : this.decodeJsonPayload(payload);
@@ -167,7 +198,10 @@ export class CaptureProtocolDecoder {
       frameType !== 'pcm' &&
       (frameType !== 'interruption' || !this.isInterruptionOpen(decodedPayload))
     ) {
-      throw new CaptureProtocolError('INVALID_INVARIANT', 'An interruption open must immediately precede PCM.');
+      throw new CaptureProtocolError(
+        'INVALID_INVARIANT',
+        'An interruption open must immediately precede PCM.',
+      );
     }
     const frame = this.validateFrame(frameType, sequence, decodedPayload);
     this.advanceSequence();
@@ -184,7 +218,10 @@ export class CaptureProtocolDecoder {
 
   private validateFrame(frameType: FrameType, sequence: number, payload: unknown): CaptureFrame {
     if (frameType !== 'error' && !this.readySeen && frameType !== 'ready') {
-      throw new CaptureProtocolError('INVALID_INVARIANT', 'Ready must be the first non-error frame.');
+      throw new CaptureProtocolError(
+        'INVALID_INVARIANT',
+        'Ready must be the first non-error frame.',
+      );
     }
     if (frameType === 'ready') {
       if (this.readySeen) {
@@ -231,7 +268,14 @@ export class CaptureProtocolDecoder {
   }
 
   private validateReady(value: unknown): ReadyPayload {
-    const object = this.closedObject(value, ['type', 'sampleRateHz', 'framesPerBlock', 'encoding', 'channelOrder', 'firstBlock']);
+    const object = this.closedObject(value, [
+      'type',
+      'sampleRateHz',
+      'framesPerBlock',
+      'encoding',
+      'channelOrder',
+      'firstBlock',
+    ]);
     if (
       object.type !== 'ready' ||
       object.sampleRateHz !== 16_000 ||
@@ -249,7 +293,14 @@ export class CaptureProtocolDecoder {
   }
 
   private validateGap(value: unknown): GapPayload {
-    const object = this.closedObject(value, ['type', 'channel', 'startBlock', 'endBlockExclusive', 'reason', 'recovered']);
+    const object = this.closedObject(value, [
+      'type',
+      'channel',
+      'startBlock',
+      'endBlockExclusive',
+      'reason',
+      'recovered',
+    ]);
     const startBlock = this.blockIndex(object.startBlock, 'gap.startBlock');
     const endBlockExclusive = this.blockIndex(object.endBlockExclusive, 'gap.endBlockExclusive');
     if (
@@ -272,7 +323,14 @@ export class CaptureProtocolDecoder {
       this.invalidInvariant('Only unrecovered closes may precede stopped.');
     }
     if (object.phase === 'opened') {
-      const opened = this.closedObject(object, ['type', 'phase', 'id', 'channel', 'startBlock', 'reason']);
+      const opened = this.closedObject(object, [
+        'type',
+        'phase',
+        'id',
+        'channel',
+        'startBlock',
+        'reason',
+      ]);
       const id = this.uint32(opened.id, 'interruption.id');
       const startBlock = this.blockIndex(opened.startBlock, 'interruption.startBlock');
       const channel = this.sourceChannel(opened.channel, 'interruption.channel');
@@ -292,11 +350,23 @@ export class CaptureProtocolDecoder {
       return opened as unknown as InterruptionPayload;
     }
     if (object.phase === 'closed') {
-      const closed = this.closedObject(object, ['type', 'phase', 'id', 'channel', 'startBlock', 'endBlockExclusive', 'reason', 'recovered']);
+      const closed = this.closedObject(object, [
+        'type',
+        'phase',
+        'id',
+        'channel',
+        'startBlock',
+        'endBlockExclusive',
+        'reason',
+        'recovered',
+      ]);
       const id = this.uint32(closed.id, 'interruption.id');
       const channel = this.sourceChannel(closed.channel, 'interruption.channel');
       const startBlock = this.blockIndex(closed.startBlock, 'interruption.startBlock');
-      const endBlockExclusive = this.blockIndex(closed.endBlockExclusive, 'interruption.endBlockExclusive');
+      const endBlockExclusive = this.blockIndex(
+        closed.endBlockExclusive,
+        'interruption.endBlockExclusive',
+      );
       const reason = this.sourceReason(closed.reason, 'interruption.reason');
       const open = this.openInterruptions.get(channel);
       if (
@@ -339,7 +409,11 @@ export class CaptureProtocolDecoder {
     const state = this.closedObject(object, allowed);
     const channel = this.sourceChannel(state.channel, 'state.channel');
     const effectiveBlock = this.blockIndex(state.effectiveBlock, 'state.effectiveBlock');
-    if (state.type !== 'state' || effectiveBlock > this.persistedBlocks || (this.stateSeen[channel] && effectiveBlock < this.lastStateBlock[channel])) {
+    if (
+      state.type !== 'state' ||
+      effectiveBlock > this.persistedBlocks ||
+      (this.stateSeen[channel] && effectiveBlock < this.lastStateBlock[channel])
+    ) {
       this.invalidInvariant('State effective block is invalid for the current timeline.');
     }
     if (status === 'connected-with-gap') {
@@ -361,8 +435,18 @@ export class CaptureProtocolDecoder {
   }
 
   private validateStopped(value: unknown): StoppedPayload {
-    const object = this.closedObject(value, ['type', 'reason', 'finalBlockExclusive', 'pcmBlocks', 'gapBlocks', 'openInterruptionIds']);
-    const finalBlockExclusive = this.blockIndex(object.finalBlockExclusive, 'stopped.finalBlockExclusive');
+    const object = this.closedObject(value, [
+      'type',
+      'reason',
+      'finalBlockExclusive',
+      'pcmBlocks',
+      'gapBlocks',
+      'openInterruptionIds',
+    ]);
+    const finalBlockExclusive = this.blockIndex(
+      object.finalBlockExclusive,
+      'stopped.finalBlockExclusive',
+    );
     const pcmBlocks = this.blockIndex(object.pcmBlocks, 'stopped.pcmBlocks');
     const gapBlocks = this.blockIndex(object.gapBlocks, 'stopped.gapBlocks');
     if (
@@ -387,15 +471,26 @@ export class CaptureProtocolDecoder {
     const object = this.object(value);
     const phase = object.phase;
     const code = object.code;
-    const withChannel = phase === 'initialization' && (code === 'source-start-failed' || code === 'source-timestamp-unavailable');
+    const withChannel =
+      phase === 'initialization' &&
+      (code === 'source-start-failed' || code === 'source-timestamp-unavailable');
     const withoutChannel =
       (phase === 'initialization' && (code === 'unsupported-format' || code === 'internal')) ||
       (phase === 'runtime' && (code === 'invalid-control' || code === 'internal'));
     if (!withChannel && !withoutChannel) {
       this.invalidSchema('Error phase and code are invalid.');
     }
-    const error = this.closedObject(object, withChannel ? ['type', 'phase', 'code', 'channel', 'terminal'] : ['type', 'phase', 'code', 'terminal']);
-    if (error.type !== 'error' || error.terminal !== true || (withChannel && !this.isSourceChannel(error.channel))) {
+    const error = this.closedObject(
+      object,
+      withChannel
+        ? ['type', 'phase', 'code', 'channel', 'terminal']
+        : ['type', 'phase', 'code', 'terminal'],
+    );
+    if (
+      error.type !== 'error' ||
+      error.terminal !== true ||
+      (withChannel && !this.isSourceChannel(error.channel))
+    ) {
       this.invalidSchema('Error payload is invalid.');
     }
     return error as unknown as ErrorPayload;
@@ -419,7 +514,12 @@ export class CaptureProtocolDecoder {
   }
 
   private isInterruptionOpen(value: unknown): boolean {
-    return value !== null && typeof value === 'object' && !Array.isArray(value) && (value as JsonObject).phase === 'opened';
+    return (
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      (value as JsonObject).phase === 'opened'
+    );
   }
 
   private closedObject(value: unknown, keys: readonly string[]): JsonObject {
@@ -439,7 +539,13 @@ export class CaptureProtocolDecoder {
   }
 
   private uint32(value: unknown, label: string): number {
-    if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value) || value < 0 || value > 0xffff_ffff) {
+    if (
+      typeof value !== 'number' ||
+      !Number.isFinite(value) ||
+      !Number.isInteger(value) ||
+      value < 0 ||
+      value > 0xffff_ffff
+    ) {
       this.invalidSchema(`${label} must be a UInt32.`);
     }
     return value;
@@ -483,7 +589,13 @@ export class CaptureProtocolDecoder {
   }
 
   private isRecoverableReason(value: unknown): value is RecoverableReason {
-    return value === 'stream-error' || value === 'callback-stall' || value === 'route-invalidated' || value === 'timestamp-invalid' || value === 'timestamp-discontinuity';
+    return (
+      value === 'stream-error' ||
+      value === 'callback-stall' ||
+      value === 'route-invalidated' ||
+      value === 'timestamp-invalid' ||
+      value === 'timestamp-discontinuity'
+    );
   }
 
   private invalidSchema(message: string): never {
@@ -520,7 +632,8 @@ class StrictJsonParser {
     if (token === 't') return this.literal('true', true);
     if (token === 'f') return this.literal('false', false);
     if (token === 'n') return this.literal('null', null);
-    if (token === '-' || (token !== undefined && token >= '0' && token <= '9')) return this.number();
+    if (token === '-' || (token !== undefined && token >= '0' && token <= '9'))
+      return this.number();
     this.malformed();
   }
 
@@ -535,7 +648,10 @@ class StrictJsonParser {
       if (this.input[this.position] !== '"') this.malformed();
       const key = this.string();
       if (keys.has(key)) {
-        throw new CaptureProtocolError('DUPLICATE_JSON_KEY', 'JSON payload contains a duplicate key.');
+        throw new CaptureProtocolError(
+          'DUPLICATE_JSON_KEY',
+          'JSON payload contains a duplicate key.',
+        );
       }
       keys.add(key);
       this.whitespace();
@@ -582,7 +698,9 @@ class StrictJsonParser {
   }
 
   private number(): number {
-    const match = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(this.input.slice(this.position));
+    const match = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(
+      this.input.slice(this.position),
+    );
     if (!match) this.malformed();
     this.position += match[0].length;
     const value = Number(match[0]);

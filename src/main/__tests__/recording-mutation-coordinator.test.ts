@@ -18,7 +18,9 @@ describe('RecordingMutationCoordinator', () => {
     const coordinator = new RecordingMutationCoordinator();
     const lease = coordinator.tryAcquire('recover');
     let settled = false;
-    const drained = coordinator.closeAndDrain().then(() => { settled = true; });
+    const drained = coordinator.closeAndDrain().then(() => {
+      settled = true;
+    });
 
     expect(coordinator.tryAcquire('trash')).toBeUndefined();
     await Promise.resolve();

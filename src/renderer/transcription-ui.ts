@@ -10,7 +10,9 @@ export function getTranscriptionStageLabel(progress: TranscriptionProgress): str
     case 'preparing-audio':
       return 'Preparing audio';
     case 'downloading-model':
-      return progress.percent === undefined ? 'Downloading model' : `Downloading model · ${progress.percent}%`;
+      return progress.percent === undefined
+        ? 'Downloading model'
+        : `Downloading model · ${progress.percent}%`;
     case 'transcribing-interviewer':
       return 'Transcribing interviewer';
     case 'transcribing-you':
@@ -54,7 +56,11 @@ export function getTranscriptionErrorMessage(failure: TranscriptionErrorInput): 
 }
 
 function getRetryMessage(retryAfterSeconds: number | undefined): string {
-  if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds === undefined || retryAfterSeconds <= 0) {
+  if (
+    !Number.isFinite(retryAfterSeconds) ||
+    retryAfterSeconds === undefined ||
+    retryAfterSeconds <= 0
+  ) {
     return 'Try again later.';
   }
 

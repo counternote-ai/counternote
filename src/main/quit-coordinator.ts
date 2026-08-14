@@ -1,5 +1,3 @@
-import { app } from 'electron';
-
 export interface QuitCoordinatorDependencies {
   readonly app: Pick<Electron.App, 'quit' | 'on'>;
   isIdle(): boolean;

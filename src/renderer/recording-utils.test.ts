@@ -12,10 +12,12 @@ describe('recording renderer utilities', () => {
       label: 'Ready',
       tone: 'ready',
     });
-    expect(getRecordingStatus({
-      transcribed: false,
-      transcriptionProgress: { recordingId: 'active', stage: 'preparing-audio' },
-    })).toEqual({
+    expect(
+      getRecordingStatus({
+        transcribed: false,
+        transcriptionProgress: { recordingId: 'active', stage: 'preparing-audio' },
+      }),
+    ).toEqual({
       label: 'Transcribing',
       tone: 'loading',
     });
@@ -26,10 +28,12 @@ describe('recording renderer utilities', () => {
   });
 
   it('uses a quiet badge label while progress detail stays on the transcribe action', () => {
-    expect(getRecordingStatus({
-      transcribed: false,
-      transcriptionProgress: { recordingId: 'active', stage: 'transcribing-you' },
-    })).toEqual({
+    expect(
+      getRecordingStatus({
+        transcribed: false,
+        transcriptionProgress: { recordingId: 'active', stage: 'transcribing-you' },
+      }),
+    ).toEqual({
       label: 'Transcribing',
       tone: 'loading',
     });
@@ -40,6 +44,8 @@ describe('recording renderer utilities', () => {
   });
 
   it('builds transcript metadata from duration and segment count', () => {
-    expect(getTranscriptMeta({ duration: 1850, segmentCount: 42 })).toBe('30:50 · 42 segments · transcript ready');
+    expect(getTranscriptMeta({ duration: 1850, segmentCount: 42 })).toBe(
+      '30:50 · 42 segments · transcript ready',
+    );
   });
 });

@@ -49,7 +49,7 @@ export interface TranscriptionOrchestratorDependencies {
     transcribe(
       request: LocalChannelRequest,
       onProgress: (percent: number) => void,
-      onInferenceStart: () => void
+      onInferenceStart: () => void,
     ): Promise<TranscriptionSegment[]>;
   };
   groqProvider: {
@@ -57,7 +57,7 @@ export interface TranscriptionOrchestratorDependencies {
   };
   splitChannels: (
     audioPath: string,
-    output?: { system?: string; mic?: string }
+    output?: { system?: string; mic?: string },
   ) => Promise<{ system: string; mic: string }>;
   convertToFlac: (audioPath: string) => Promise<string>;
   getAudioDuration: (audioPath: string) => Promise<number>;
@@ -77,7 +77,7 @@ class ArtifactRegistry {
 
   constructor(
     private readonly forbidden: Set<string>,
-    private readonly attemptId: string
+    private readonly attemptId: string,
   ) {}
 
   add(filePath: string): void {
@@ -93,7 +93,7 @@ class ArtifactRegistry {
 
   async cleanup(
     fs: TranscriptionOrchestratorDependencies['fs'],
-    onError: (error: unknown) => void
+    onError: (error: unknown) => void,
   ): Promise<void> {
     for (const artifact of this.artifacts) {
       try {
@@ -145,10 +145,7 @@ export class TranscriptionOrchestrator {
       const provider = request.provider ?? config.transcriptionProvider;
       activeProvider = provider;
       const finalTranscriptPath = path.join(path.dirname(audioPath), 'transcript.json');
-      const registry = new ArtifactRegistry(
-        new Set([audioPath, finalTranscriptPath]),
-        attemptId
-      );
+      const registry = new ArtifactRegistry(new Set([audioPath, finalTranscriptPath]), attemptId);
 
       this.log(safeRecordingId, currentStage, 'start', startTime, now());
 
@@ -156,14 +153,8 @@ export class TranscriptionOrchestrator {
         this.emit(safeRequest, currentStage);
         const duration = await this.deps.getAudioDuration(audioPath);
 
-        const systemPath = path.join(
-          path.dirname(audioPath),
-          `channel-system-${attemptId}.wav`
-        );
-        const micPath = path.join(
-          path.dirname(audioPath),
-          `channel-mic-${attemptId}.wav`
-        );
+        const systemPath = path.join(path.dirname(audioPath), `channel-system-${attemptId}.wav`);
+        const micPath = path.join(path.dirname(audioPath), `channel-mic-${attemptId}.wav`);
         registry.add(systemPath);
         registry.add(micPath);
 
@@ -230,12 +221,9 @@ export class TranscriptionOrchestrator {
         registry.add(tmpTranscriptPath);
 
         try {
-          await this.deps.fs.writeFile(
-            tmpTranscriptPath,
-            JSON.stringify(transcript, null, 2)
-          );
+          await this.deps.fs.writeFile(tmpTranscriptPath, JSON.stringify(transcript, null, 2));
           await this.deps.fs.rename(tmpTranscriptPath, finalTranscriptPath);
-        } catch (err) {
+        } catch {
           throw new TranscriptionError('TRANSCRIPT_WRITE_FAILED');
         }
 
@@ -245,14 +233,7 @@ export class TranscriptionOrchestrator {
         const cleanupStage = currentStage;
         this.log(safeRecordingId, cleanupStage, 'cleanup', startTime, now());
         await registry.cleanup(this.deps.fs, (err) => {
-          this.log(
-            safeRecordingId,
-            cleanupStage,
-            'cleanup-failed',
-            startTime,
-            now(),
-            err
-          );
+          this.log(safeRecordingId, cleanupStage, 'cleanup-failed', startTime, now(), err);
         });
       }
     } catch (err) {
@@ -295,7 +276,7 @@ export class TranscriptionOrchestrator {
     if (provider === 'local') {
       const outputPrefix = path.join(
         path.dirname(audioPath),
-        `whisper-${attemptId}-${speaker.toLowerCase()}`
+        `whisper-${attemptId}-${speaker.toLowerCase()}`,
       );
       registry.add(`${outputPrefix}.json`);
 
@@ -319,7 +300,7 @@ export class TranscriptionOrchestrator {
         () => {
           setCurrentStage(stage);
           this.emit(request, stage);
-        }
+        },
       );
 
       return segments;
@@ -341,7 +322,7 @@ export class TranscriptionOrchestrator {
   private emit(
     request: TranscriptionOrchestratorRequest,
     stage: TranscriptionStage,
-    percent?: number
+    percent?: number,
   ): void {
     try {
       request.onProgress?.({
@@ -360,7 +341,7 @@ export class TranscriptionOrchestrator {
     category: 'start' | 'success' | 'failure' | 'cleanup' | 'cleanup-failed',
     startTime: number,
     now: number,
-    _error?: unknown
+    _error?: unknown,
   ): void {
     this.deps.logger.log(recordingId, stage, category, now - startTime);
   }
@@ -368,7 +349,7 @@ export class TranscriptionOrchestrator {
   private normalizeError(
     err: unknown,
     stage: TranscriptionStage,
-    provider: TranscriptionProvider | undefined
+    provider: TranscriptionProvider | undefined,
   ): TranscriptionError {
     if (err instanceof TranscriptionError) {
       return err;
@@ -383,7 +364,7 @@ export class TranscriptionOrchestrator {
 
   private safeCodeForStage(
     stage: TranscriptionStage,
-    provider: TranscriptionProvider | undefined
+    provider: TranscriptionProvider | undefined,
   ): TranscriptionErrorCode {
     if (stage === 'finishing-transcript') {
       return 'TRANSCRIPT_WRITE_FAILED';
@@ -397,7 +378,7 @@ export class TranscriptionOrchestrator {
   private buildTranscript(
     recordingId: string,
     duration: number,
-    segments: TranscriptionSegment[]
+    segments: TranscriptionSegment[],
   ): Transcript {
     const dateFactory = this.deps.dateFactory ?? (() => new Date().toISOString());
     return {
@@ -411,7 +392,10 @@ export class TranscriptionOrchestrator {
     };
   }
 
-  private validateSegments(segments: TranscriptionSegment[], provider: TranscriptionProvider): void {
+  private validateSegments(
+    segments: TranscriptionSegment[],
+    provider: TranscriptionProvider,
+  ): void {
     for (const segment of segments) {
       if (
         typeof segment.start !== 'number' ||
@@ -422,7 +406,7 @@ export class TranscriptionOrchestrator {
         !Number.isFinite(segment.end)
       ) {
         throw new TranscriptionError(
-          provider === 'local' ? 'LOCAL_TRANSCRIPTION_FAILED' : 'GROQ_REJECTED'
+          provider === 'local' ? 'LOCAL_TRANSCRIPTION_FAILED' : 'GROQ_REJECTED',
         );
       }
     }
@@ -438,12 +422,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isTranscriptionErrorCode(value: unknown): value is TranscriptionErrorCode {
-  return typeof value === 'string' && TRANSCRIPTION_ERROR_CODES.has(value as TranscriptionErrorCode);
+  return (
+    typeof value === 'string' && TRANSCRIPTION_ERROR_CODES.has(value as TranscriptionErrorCode)
+  );
 }
 
-function extractSafeErrorDetails(
-  error: Record<string, unknown>
-): { retryAfterSeconds?: number; status?: number; exitCode?: number } {
+function extractSafeErrorDetails(error: Record<string, unknown>): {
+  retryAfterSeconds?: number;
+  status?: number;
+  exitCode?: number;
+} {
   const details = isRecord(error.details) ? error.details : error;
   const safeDetails: { retryAfterSeconds?: number; status?: number; exitCode?: number } = {};
 

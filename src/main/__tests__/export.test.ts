@@ -11,8 +11,18 @@ describe('Export', () => {
     transcribedAt: '2026-07-08T15:05:12Z',
     segments: [
       { start: 0.0, end: 4.2, speaker: 'Interviewer', text: 'Tell me about yourself.' },
-      { start: 4.5, end: 28.1, speaker: 'You', text: 'Sure, I\'m a software engineer with 5 years of experience.' },
-      { start: 28.3, end: 32.0, speaker: 'Interviewer', text: 'Great. What\'s your experience with React?' },
+      {
+        start: 4.5,
+        end: 28.1,
+        speaker: 'You',
+        text: "Sure, I'm a software engineer with 5 years of experience.",
+      },
+      {
+        start: 28.3,
+        end: 32.0,
+        speaker: 'Interviewer',
+        text: "Great. What's your experience with React?",
+      },
     ],
   };
 
@@ -32,8 +42,8 @@ describe('Export', () => {
 
     // Should contain segment text
     expect(result).toContain('Tell me about yourself.');
-    expect(result).toContain('Sure, I\'m a software engineer with 5 years of experience.');
-    expect(result).toContain('Great. What\'s your experience with React?');
+    expect(result).toContain("Sure, I'm a software engineer with 5 years of experience.");
+    expect(result).toContain("Great. What's your experience with React?");
   });
 
   it('should handle empty segments array', () => {

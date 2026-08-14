@@ -14,11 +14,7 @@ export interface TranscriptionProgress {
 }
 
 export type LocalModelState =
-  | 'not-downloaded'
-  | 'downloading'
-  | 'ready'
-  | 'invalid'
-  | 'unavailable';
+  'not-downloaded' | 'downloading' | 'ready' | 'invalid' | 'unavailable';
 
 export interface LocalModelStatus {
   state: LocalModelState;
@@ -50,6 +46,4 @@ export interface TranscriptionSuccess {
   success: true;
 }
 
-export type TranscriptionIpcResult =
-  | TranscriptionSuccess
-  | TranscriptionFailure;
+export type TranscriptionIpcResult = TranscriptionSuccess | TranscriptionFailure;

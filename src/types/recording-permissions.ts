@@ -1,9 +1,5 @@
 export type RecordingPermissionStatus =
-  | 'not-determined'
-  | 'granted'
-  | 'denied'
-  | 'restricted'
-  | 'unknown';
+  'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
 
 export type RecordingPermission = 'screen' | 'microphone';
 export type PermissionOwnerName = 'Electron' | 'Interview Copilot';

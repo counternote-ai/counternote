@@ -1,5 +1,4 @@
 import { PassThrough } from 'stream';
-import type { Readable } from 'stream';
 import { createStderrDrain, type StderrDiagnostic, type StderrDrainHandle } from '../stderr-drain';
 
 function createStream(): PassThrough {
@@ -89,7 +88,7 @@ describe('StderrDrain', () => {
     const chunkSize = 65_536;
     let sent = 0;
     while (sent < 100_000) {
-      const batch = line.repeat(Math.ceil((chunkSize) / line.length)).slice(0, chunkSize);
+      const batch = line.repeat(Math.ceil(chunkSize / line.length)).slice(0, chunkSize);
       stream.write(batch);
       sent += chunkSize;
     }

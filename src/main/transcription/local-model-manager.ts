@@ -13,7 +13,7 @@ import { ModelDownloadTransport } from './model-download';
 export class ModelInstallError extends Error {
   constructor(
     readonly code: TranscriptionErrorCode,
-    message: string
+    message: string,
   ) {
     super(message);
     this.name = 'ModelInstallError';
@@ -36,12 +36,12 @@ export class LocalModelManager {
   constructor(
     private readonly modelRoot: string,
     private readonly artifact: ModelArtifactSpec,
-    readonly download: ModelDownloadTransport['download']
+    readonly download: ModelDownloadTransport['download'],
   ) {}
 
   async ensureModel(
     onProgress: (percent: number) => void,
-    options: EnsureModelOptions = {}
+    options: EnsureModelOptions = {},
   ): Promise<string> {
     const key = Symbol();
     this.progressListeners.set(key, onProgress);
@@ -85,7 +85,7 @@ export class LocalModelManager {
         } catch {
           throw new ModelInstallError(
             'MODEL_DOWNLOAD_FAILED',
-            'could not remove invalid cached model for recovery'
+            'could not remove invalid cached model for recovery',
           );
         }
       } else {
@@ -93,7 +93,7 @@ export class LocalModelManager {
         // silently redownload during the same attempt.
         throw new ModelInstallError(
           'MODEL_CHECKSUM_FAILED',
-          `cached model ${this.artifact.fileName} failed integrity verification`
+          `cached model ${this.artifact.fileName} failed integrity verification`,
         );
       }
     }
@@ -101,10 +101,7 @@ export class LocalModelManager {
     try {
       await fs.promises.mkdir(this.modelRoot, { recursive: true });
     } catch {
-      throw new ModelInstallError(
-        'MODEL_DOWNLOAD_FAILED',
-        'could not prepare local model storage'
-      );
+      throw new ModelInstallError('MODEL_DOWNLOAD_FAILED', 'could not prepare local model storage');
     }
 
     const partPath = `${finalPath}.part`;
@@ -113,7 +110,7 @@ export class LocalModelManager {
     } catch {
       throw new ModelInstallError(
         'MODEL_DOWNLOAD_FAILED',
-        'could not clear incomplete model download'
+        'could not clear incomplete model download',
       );
     }
 
@@ -126,7 +123,7 @@ export class LocalModelManager {
       await this.removePartFile(partPath);
       throw new ModelInstallError(
         'MODEL_DOWNLOAD_FAILED',
-        `model download failed: ${error instanceof Error ? error.message : String(error)}`
+        `model download failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
@@ -134,7 +131,7 @@ export class LocalModelManager {
       await this.removePartFile(partPath);
       throw new ModelInstallError(
         'MODEL_CHECKSUM_FAILED',
-        `downloaded model ${this.artifact.fileName} failed integrity verification`
+        `downloaded model ${this.artifact.fileName} failed integrity verification`,
       );
     }
 
@@ -148,7 +145,7 @@ export class LocalModelManager {
       }
       throw new ModelInstallError(
         'MODEL_DOWNLOAD_FAILED',
-        'model installation failed after download'
+        'model installation failed after download',
       );
     }
     return finalPath;

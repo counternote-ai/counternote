@@ -51,7 +51,9 @@ export async function getGroqApiKey(): Promise<string | null> {
       return result;
     }
   } catch {
-    console.warn('Stored Groq API key could not be decrypted. Re-enter it in Settings to replace the old key.');
+    console.warn(
+      'Stored Groq API key could not be decrypted. Re-enter it in Settings to replace the old key.',
+    );
   }
   return null;
 }

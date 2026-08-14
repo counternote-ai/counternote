@@ -1,10 +1,7 @@
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import {
-  CaptureStore,
-  type CaptureMetadata,
-} from '../capture-store';
+import { CaptureStore, type CaptureMetadata } from '../capture-store';
 import {
   blockIndexToMilliseconds,
   MAX_CAPTURE_DURATION_MS,
@@ -16,7 +13,9 @@ import { RecordingsLibrary } from '../../recordings-library';
 const recordingId = '2026-08-12T01-02-03-004Z';
 
 function terminalMetadata(
-  overrides: Partial<Extract<CaptureMetadata, { status: 'complete' | 'interrupted' | 'failed' }>> = {},
+  overrides: Partial<
+    Extract<CaptureMetadata, { status: 'complete' | 'interrupted' | 'failed' }>
+  > = {},
 ): Extract<CaptureMetadata, { status: 'complete' | 'interrupted' | 'failed' }> {
   return {
     version: 1,
@@ -53,25 +52,57 @@ function provisionalWavHeader(): Buffer {
 
 describe('capture metadata', () => {
   it('accepts only the closed persisted schema', () => {
-    expect(parseCaptureMetadata({
-      version: 1,
-      status: 'provisional',
-      startedAt: '2026-08-12T01:02:03.004Z',
-      channels: { interviewer: { started: true }, you: { started: false } },
-      interruptions: [],
-    })).not.toBeNull();
+    expect(
+      parseCaptureMetadata({
+        version: 1,
+        status: 'provisional',
+        startedAt: '2026-08-12T01:02:03.004Z',
+        channels: { interviewer: { started: true }, you: { started: false } },
+        interruptions: [],
+      }),
+    ).not.toBeNull();
 
     expect(parseCaptureMetadata({ ...terminalMetadata(), endedAt: undefined })).toBeNull();
-    expect(parseCaptureMetadata({ ...terminalMetadata(), startedAt: 'not-an-iso-time' })).toBeNull();
-    expect(parseCaptureMetadata({ ...terminalMetadata(), endedAt: '2026-08-12T01:02:03.003Z' })).toBeNull();
-    expect(parseCaptureMetadata({ ...terminalMetadata(), channels: { interviewer: { started: true } } })).toBeNull();
-    expect(parseCaptureMetadata({ ...terminalMetadata(), interruptions: [{
-      channel: 'interviewer', startMs: 0, endMs: 20, recovered: true, reason: 'buffer-overflow',
-    }] })).toBeNull();
-    expect(parseCaptureMetadata({ ...terminalMetadata(), interruptions: [{
-      channel: 'interviewer', startMs: 0, endMs: 20, recovered: true, reason: 'source-gap',
-    }] })).toBeNull();
-    expect(parseCaptureMetadata({ ...terminalMetadata(), status: 'interrupted', interruptions: [] })).toBeNull();
+    expect(
+      parseCaptureMetadata({ ...terminalMetadata(), startedAt: 'not-an-iso-time' }),
+    ).toBeNull();
+    expect(
+      parseCaptureMetadata({ ...terminalMetadata(), endedAt: '2026-08-12T01:02:03.003Z' }),
+    ).toBeNull();
+    expect(
+      parseCaptureMetadata({ ...terminalMetadata(), channels: { interviewer: { started: true } } }),
+    ).toBeNull();
+    expect(
+      parseCaptureMetadata({
+        ...terminalMetadata(),
+        interruptions: [
+          {
+            channel: 'interviewer',
+            startMs: 0,
+            endMs: 20,
+            recovered: true,
+            reason: 'buffer-overflow',
+          },
+        ],
+      }),
+    ).toBeNull();
+    expect(
+      parseCaptureMetadata({
+        ...terminalMetadata(),
+        interruptions: [
+          {
+            channel: 'interviewer',
+            startMs: 0,
+            endMs: 20,
+            recovered: true,
+            reason: 'source-gap',
+          },
+        ],
+      }),
+    ).toBeNull();
+    expect(
+      parseCaptureMetadata({ ...terminalMetadata(), status: 'interrupted', interruptions: [] }),
+    ).toBeNull();
     expect(parseCaptureMetadata({ ...terminalMetadata(), sessionId: 'private' })).toBeNull();
 
     const serialized = JSON.stringify(terminalMetadata());
@@ -84,22 +115,40 @@ describe('capture metadata', () => {
   it('allows fractional interruption timing only through recovery validation at the WAV extent', () => {
     const recovered = terminalMetadata({
       status: 'interrupted',
-      interruptions: [{
-        channel: 'capture', startMs: 20.0625, endMs: 20.0625, recovered: false, reason: 'persistence-error',
-      }],
+      interruptions: [
+        {
+          channel: 'capture',
+          startMs: 20.0625,
+          endMs: 20.0625,
+          recovered: false,
+          reason: 'persistence-error',
+        },
+      ],
     });
     const ordinary = terminalMetadata({
       status: 'interrupted',
-      interruptions: [{
-        channel: 'capture', startMs: 0.5, endMs: 0.5, recovered: false, reason: 'helper-exit',
-      }],
+      interruptions: [
+        {
+          channel: 'capture',
+          startMs: 0.5,
+          endMs: 0.5,
+          recovered: false,
+          reason: 'helper-exit',
+        },
+      ],
     });
 
     expect(parseCaptureMetadata(recovered)).toBeNull();
     expect(parseCaptureMetadata(ordinary)).toBeNull();
-    expect(validateRecoveredCaptureMetadata(recovered, 20.0625)).toMatchObject({ status: 'interrupted' });
-    expect(() => validateRecoveredCaptureMetadata(recovered, 20)).toThrow('INVALID_RECOVERY_METADATA');
-    expect(() => validateRecoveredCaptureMetadata(recovered, 20.1)).toThrow('INVALID_RECOVERY_WAV_EXTENT');
+    expect(validateRecoveredCaptureMetadata(recovered, 20.0625)).toMatchObject({
+      status: 'interrupted',
+    });
+    expect(() => validateRecoveredCaptureMetadata(recovered, 20)).toThrow(
+      'INVALID_RECOVERY_METADATA',
+    );
+    expect(() => validateRecoveredCaptureMetadata(recovered, 20.1)).toThrow(
+      'INVALID_RECOVERY_WAV_EXTENT',
+    );
   });
 });
 
@@ -115,7 +164,9 @@ describe('CaptureStore', () => {
     const session = await store.begin(recordingId);
     expect(session.stagingDirectory).toMatch(/\/\.in-progress\//);
     expect(session.audioFilePath).toBe(path.join(session.stagingDirectory, 'audio.wav'));
-    const metadata = JSON.parse(await fs.readFile(path.join(session.stagingDirectory, 'capture.json'), 'utf8')) as Record<string, unknown>;
+    const metadata = JSON.parse(
+      await fs.readFile(path.join(session.stagingDirectory, 'capture.json'), 'utf8'),
+    ) as Record<string, unknown>;
     expect(metadata.status).toBe('provisional');
     expect(metadata).not.toHaveProperty('sessionId');
     expect(metadata).not.toHaveProperty('recordingId');
@@ -132,7 +183,9 @@ describe('CaptureStore', () => {
 
     const published = path.join(root, recordingId);
     expect(await fs.stat(published)).toMatchObject({ isDirectory: expect.any(Function) });
-    expect(JSON.parse(await fs.readFile(path.join(published, 'capture.json'), 'utf8'))).toMatchObject({ status: 'complete' });
+    expect(
+      JSON.parse(await fs.readFile(path.join(published, 'capture.json'), 'utf8')),
+    ).toMatchObject({ status: 'complete' });
     expect((await fs.readdir(published)).some((entry) => entry.includes('.tmp-'))).toBe(false);
     await fs.rm(root, { recursive: true });
   });
@@ -146,11 +199,17 @@ describe('CaptureStore', () => {
 
     const second = await store.begin('2026-08-12T01-02-03-005Z');
     const failingStore = new CaptureStore(() => root, {
-      reserveDirectory: async () => { throw new Error('reservation failed'); },
+      reserveDirectory: async () => {
+        throw new Error('reservation failed');
+      },
       linkAudio: fs.link,
     });
-    await expect(failingStore.retainFailed(second, terminalMetadata({ status: 'failed' }))).rejects.toThrow('reservation failed');
-    expect(await fs.stat(second.stagingDirectory)).toMatchObject({ isDirectory: expect.any(Function) });
+    await expect(
+      failingStore.retainFailed(second, terminalMetadata({ status: 'failed' })),
+    ).rejects.toThrow('reservation failed');
+    expect(await fs.stat(second.stagingDirectory)).toMatchObject({
+      isDirectory: expect.any(Function),
+    });
     await fs.rm(root, { recursive: true });
   });
 
@@ -167,13 +226,19 @@ describe('CaptureStore', () => {
     const store = new CaptureStore(() => root, racingOperations);
     const published = await store.begin(recordingId);
     await fs.writeFile(published.audioFilePath, provisionalWavHeader());
-    await expect(store.publish(published, terminalMetadata(), 0)).rejects.toThrow('RECORDING_ID_COLLISION');
+    await expect(store.publish(published, terminalMetadata(), 0)).rejects.toThrow(
+      'RECORDING_ID_COLLISION',
+    );
     expect(await fs.readFile(path.join(root, recordingId, 'sentinel'), 'utf8')).toBe('preserve me');
     await expect(fs.stat(published.stagingDirectory)).resolves.toBeDefined();
 
     const recovered = await store.begin('2026-08-12T01-02-03-005Z');
-    await expect(store.retainFailed(recovered, terminalMetadata({ status: 'failed' }))).rejects.toThrow('RECOVERY_ID_COLLISION');
-    expect(await fs.readFile(path.join(root, '.recovery', recovered.sessionId, 'sentinel'), 'utf8')).toBe('preserve me');
+    await expect(
+      store.retainFailed(recovered, terminalMetadata({ status: 'failed' })),
+    ).rejects.toThrow('RECOVERY_ID_COLLISION');
+    expect(
+      await fs.readFile(path.join(root, '.recovery', recovered.sessionId, 'sentinel'), 'utf8'),
+    ).toBe('preserve me');
     await expect(fs.stat(recovered.stagingDirectory)).resolves.toBeDefined();
     await fs.rm(root, { recursive: true });
   });
@@ -182,17 +247,23 @@ describe('CaptureStore', () => {
     const root = await temporaryRoot();
     const store = new CaptureStore(() => root, {
       reserveDirectory: fs.mkdir,
-      linkAudio: async () => { throw new Error('audio link failed'); },
+      linkAudio: async () => {
+        throw new Error('audio link failed');
+      },
     });
     const session = await store.begin(recordingId);
     await fs.writeFile(session.audioFilePath, provisionalWavHeader());
 
-    await expect(store.publish(session, terminalMetadata(), 0)).rejects.toThrow('audio link failed');
+    await expect(store.publish(session, terminalMetadata(), 0)).rejects.toThrow(
+      'audio link failed',
+    );
 
     expect(await new RecordingsLibrary(() => root).list()).toEqual([]);
     await expect(fs.stat(session.stagingDirectory)).resolves.toBeDefined();
     await expect(fs.stat(path.join(root, recordingId, 'capture.json'))).resolves.toBeDefined();
-    await expect(fs.stat(path.join(root, recordingId, 'audio.wav'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(fs.stat(path.join(root, recordingId, 'audio.wav'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
     await fs.rm(root, { recursive: true });
   });
 
@@ -201,7 +272,13 @@ describe('CaptureStore', () => {
     const store = new CaptureStore(() => root);
     const missingId = '00000000-0000-4000-8000-000000000000';
     const realRoot = await fs.realpath(root);
-    const missing = { sessionId: missingId, recordingId, stagingDirectory: path.join(realRoot, '.in-progress', missingId), audioFilePath: path.join(realRoot, '.in-progress', missingId, 'audio.wav'), startedAt: '' };
+    const missing = {
+      sessionId: missingId,
+      recordingId,
+      stagingDirectory: path.join(realRoot, '.in-progress', missingId),
+      audioFilePath: path.join(realRoot, '.in-progress', missingId, 'audio.wav'),
+      startedAt: '',
+    };
     await expect(store.discardEmpty(missing, 0)).resolves.toBe('discarded');
 
     const empty = await store.begin(recordingId);

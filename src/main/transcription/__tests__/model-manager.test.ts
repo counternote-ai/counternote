@@ -35,8 +35,7 @@ describe('LocalModelManager', () => {
   const createManager = (options: {
     artifact: ModelArtifactSpec;
     download: ModelDownloadTransport['download'];
-  }): LocalModelManager =>
-    new LocalModelManager(modelRoot, options.artifact, options.download);
+  }): LocalModelManager => new LocalModelManager(modelRoot, options.artifact, options.download);
 
   it('returns a verified cached model without downloading', async () => {
     const bytes = Buffer.from('verified-model');
@@ -69,7 +68,8 @@ describe('LocalModelManager', () => {
   });
 
   it('returns a typed error without filesystem details when model-root creation fails', async () => {
-    const mkdir = jest.spyOn(fs.promises, 'mkdir')
+    const mkdir = jest
+      .spyOn(fs.promises, 'mkdir')
       .mockRejectedValueOnce(new Error(`EACCES: ${modelRoot}`));
     const download = jest.fn();
     const manager = createManager({
@@ -90,7 +90,8 @@ describe('LocalModelManager', () => {
   });
 
   it('returns a typed error and does not download when stale-part cleanup fails', async () => {
-    const rm = jest.spyOn(fs.promises, 'rm')
+    const rm = jest
+      .spyOn(fs.promises, 'rm')
       .mockRejectedValueOnce(new Error(`EACCES: ${finalPath}.part`));
     const download = jest.fn();
     const manager = createManager({
@@ -167,7 +168,8 @@ describe('LocalModelManager', () => {
   });
 
   it('preserves the typed transport failure when part cleanup fails', async () => {
-    const rm = jest.spyOn(fs.promises, 'rm')
+    const rm = jest
+      .spyOn(fs.promises, 'rm')
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error(`EACCES: ${finalPath}.part`));
     const manager = createManager({
@@ -190,7 +192,8 @@ describe('LocalModelManager', () => {
   });
 
   it('preserves the typed checksum failure when part cleanup fails', async () => {
-    const rm = jest.spyOn(fs.promises, 'rm')
+    const rm = jest
+      .spyOn(fs.promises, 'rm')
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error(`EACCES: ${finalPath}.part`));
     const manager = createManager({
@@ -244,7 +247,7 @@ describe('LocalModelManager', () => {
 
     const retryResult = await manager.ensureModel(jest.fn(), { recoverInvalidModel: true }).then(
       (modelPath) => ({ modelPath }),
-      (error: unknown) => ({ error })
+      (error: unknown) => ({ error }),
     );
 
     expect(download).toHaveBeenCalledTimes(1);
@@ -271,7 +274,9 @@ describe('LocalModelManager', () => {
     });
 
     try {
-      await expect(manager.ensureModel(jest.fn(), { recoverInvalidModel: true })).resolves.toBe(finalPath);
+      await expect(manager.ensureModel(jest.fn(), { recoverInvalidModel: true })).resolves.toBe(
+        finalPath,
+      );
       expect(download).toHaveBeenCalledTimes(1);
       expect(fs.readFileSync(finalPath)).toEqual(expectedBytes);
     } finally {
@@ -284,25 +289,26 @@ describe('LocalModelManager', () => {
     writeModel(Buffer.from('tampered-model'));
     const normalProgress: number[] = [];
     const recoveryProgress: number[] = [];
-    const download = jest.fn(async (
-      _url: URL,
-      destination: string,
-      onProgress: (receivedBytes: number, totalBytes: number) => void
-    ) => {
-      fs.writeFileSync(destination, expectedBytes);
-      onProgress(expectedBytes.length / 2, expectedBytes.length);
-      onProgress(expectedBytes.length, expectedBytes.length);
-    });
+    const download = jest.fn(
+      async (
+        _url: URL,
+        destination: string,
+        onProgress: (receivedBytes: number, totalBytes: number) => void,
+      ) => {
+        fs.writeFileSync(destination, expectedBytes);
+        onProgress(expectedBytes.length / 2, expectedBytes.length);
+        onProgress(expectedBytes.length, expectedBytes.length);
+      },
+    );
     const manager = createManager({
       artifact: artifactFor(expectedBytes),
       download,
     });
 
     const normal = manager.ensureModel((percent) => normalProgress.push(percent));
-    const recovery = manager.ensureModel(
-      (percent) => recoveryProgress.push(percent),
-      { recoverInvalidModel: true }
-    );
+    const recovery = manager.ensureModel((percent) => recoveryProgress.push(percent), {
+      recoverInvalidModel: true,
+    });
 
     await expect(normal).rejects.toMatchObject({ code: 'MODEL_CHECKSUM_FAILED' });
     await expect(recovery).resolves.toBe(finalPath);
@@ -325,26 +331,27 @@ describe('LocalModelManager', () => {
     const downloadGate = new Promise<void>((resolve) => {
       allowDownloadToFinish = resolve;
     });
-    const download = jest.fn(async (
-      _url: URL,
-      destination: string,
-      onProgress: (receivedBytes: number, totalBytes: number) => void
-    ) => {
-      fs.writeFileSync(destination, expectedBytes);
-      releaseDownload?.();
-      await downloadGate;
-      onProgress(expectedBytes.length / 2, expectedBytes.length);
-      onProgress(expectedBytes.length, expectedBytes.length);
-    });
+    const download = jest.fn(
+      async (
+        _url: URL,
+        destination: string,
+        onProgress: (receivedBytes: number, totalBytes: number) => void,
+      ) => {
+        fs.writeFileSync(destination, expectedBytes);
+        releaseDownload?.();
+        await downloadGate;
+        onProgress(expectedBytes.length / 2, expectedBytes.length);
+        onProgress(expectedBytes.length, expectedBytes.length);
+      },
+    );
     const manager = createManager({
       artifact: artifactFor(expectedBytes),
       download,
     });
 
-    const recovery = manager.ensureModel(
-      (percent) => recoveryProgress.push(percent),
-      { recoverInvalidModel: true }
-    );
+    const recovery = manager.ensureModel((percent) => recoveryProgress.push(percent), {
+      recoverInvalidModel: true,
+    });
     await downloadStarted;
     const normal = manager.ensureModel((percent) => normalProgress.push(percent));
     allowDownloadToFinish?.();
@@ -370,7 +377,9 @@ describe('LocalModelManager', () => {
     });
 
     try {
-      await expect(manager.ensureModel(jest.fn(), { recoverInvalidModel: true })).rejects.toMatchObject({
+      await expect(
+        manager.ensureModel(jest.fn(), { recoverInvalidModel: true }),
+      ).rejects.toMatchObject({
         code: 'MODEL_DOWNLOAD_FAILED',
         message: 'could not remove invalid cached model for recovery',
       });
@@ -387,11 +396,11 @@ describe('LocalModelManager', () => {
       async (
         _url: URL,
         destination: string,
-        onProgress: (receivedBytes: number, totalBytes: number) => void
+        onProgress: (receivedBytes: number, totalBytes: number) => void,
       ) => {
         fs.writeFileSync(destination, bytes);
         onProgress(bytes.length, bytes.length);
-      }
+      },
     );
     const manager = createManager({
       artifact: artifactFor(bytes),

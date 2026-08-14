@@ -104,9 +104,12 @@ export class WavWriter {
     this.finalizationStarted = true;
     this.abortRequested = true;
     const closeStream = this.closeStreamBestEffort();
-    this.abortPromise = this.finalizationPromise === null
-      ? closeStream
-      : Promise.all([closeStream, this.finalizationPromise.catch(() => undefined)]).then(() => undefined);
+    this.abortPromise =
+      this.finalizationPromise === null
+        ? closeStream
+        : Promise.all([closeStream, this.finalizationPromise.catch(() => undefined)]).then(
+            () => undefined,
+          );
     return this.abortPromise;
   }
 

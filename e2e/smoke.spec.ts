@@ -1,4 +1,10 @@
-import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import {
+  test,
+  expect,
+  _electron as electron,
+  type ElectronApplication,
+  type Page,
+} from '@playwright/test';
 import { source as axeSource } from 'axe-core';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
@@ -26,7 +32,10 @@ let sharedModelSha256: string;
 
 const testHomes: string[] = [];
 
-function writeStereoWav(filePath: string, { extraPcmFrames = 0 }: { extraPcmFrames?: number } = {}): number {
+function writeStereoWav(
+  filePath: string,
+  { extraPcmFrames = 0 }: { extraPcmFrames?: number } = {},
+): number {
   const sampleRate = 16_000;
   const frameCount = 8_000 + extraPcmFrames;
   const channels = 2;
@@ -87,7 +96,12 @@ function writeMinimalWav(filePath: string, pcmFrames: number): number {
   return dataSize;
 }
 
-function createRecoveryFixture(recordingsRoot: string, uuid: string, pcmFrames: number, startedAtIso: string): void {
+function createRecoveryFixture(
+  recordingsRoot: string,
+  uuid: string,
+  pcmFrames: number,
+  startedAtIso: string,
+): void {
   const dir = path.join(recordingsRoot, '.recovery', uuid);
   fs.mkdirSync(dir, { recursive: true });
   writeMinimalWav(path.join(dir, 'audio.wav'), pcmFrames);
@@ -95,14 +109,17 @@ function createRecoveryFixture(recordingsRoot: string, uuid: string, pcmFrames: 
   // visual baselines; distinct values per fixture keep list order stable.
   const startedAt = new Date(startedAtIso);
   const durationMs = (pcmFrames * 2 * 2) / 64; // pcmBytes / byteRate * 1000
-  fs.writeFileSync(path.join(dir, 'capture.json'), JSON.stringify({
-    version: 1,
-    status: 'failed',
-    startedAt: startedAt.toISOString(),
-    endedAt: new Date(startedAt.getTime() + durationMs).toISOString(),
-    channels: { interviewer: { started: true }, you: { started: true } },
-    interruptions: [],
-  }));
+  fs.writeFileSync(
+    path.join(dir, 'capture.json'),
+    JSON.stringify({
+      version: 1,
+      status: 'failed',
+      startedAt: startedAt.toISOString(),
+      endedAt: new Date(startedAt.getTime() + durationMs).toISOString(),
+      channels: { interviewer: { started: true }, you: { started: true } },
+      interruptions: [],
+    }),
+  );
 }
 
 async function startModelServer(): Promise<void> {
@@ -142,7 +159,7 @@ async function startModelServer(): Promise<void> {
 
 async function stopModelServer(): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    modelServer.close((error) => error ? reject(error) : resolve());
+    modelServer.close((error) => (error ? reject(error) : resolve()));
   });
 }
 
@@ -156,26 +173,25 @@ async function launchTestApp(
 
   const modelManifestPath = path.join(testHome, 'model-manifest.json');
   const recordingsDir = path.join(testHome, 'InterviewCopilot', 'recordings');
-  const fakeCaptureHelperPath = path.join(
-    testHome,
-    `fake-audio-capture-helper__${scenario}.js`,
-  );
+  const fakeCaptureHelperPath = path.join(testHome, `fake-audio-capture-helper__${scenario}.js`);
 
   const recordingId = '2026-07-27T00-00-00-000Z';
   const recordingDir = path.join(recordingsDir, recordingId);
   fs.mkdirSync(recordingDir, { recursive: true });
   writeStereoWav(path.join(recordingDir, 'audio.wav'));
 
-  fs.writeFileSync(modelManifestPath, JSON.stringify({
-    url: modelServerUrl,
-    fileName: 'model.bin',
-    byteSize: sharedModel.length,
-    sha256: sharedModelSha256,
-  }));
-  const fakeCaptureHelper = fs.readFileSync(
-    path.resolve('e2e/fixtures/fake-audio-capture-helper.js'),
-    'utf8',
-  ).replace(/^#!\/usr\/bin\/env node/, `#!${process.execPath}`);
+  fs.writeFileSync(
+    modelManifestPath,
+    JSON.stringify({
+      url: modelServerUrl,
+      fileName: 'model.bin',
+      byteSize: sharedModel.length,
+      sha256: sharedModelSha256,
+    }),
+  );
+  const fakeCaptureHelper = fs
+    .readFileSync(path.resolve('e2e/fixtures/fake-audio-capture-helper.js'), 'utf8')
+    .replace(/^#!\/usr\/bin\/env node/, `#!${process.execPath}`);
   fs.writeFileSync(fakeCaptureHelperPath, fakeCaptureHelper);
   fs.chmodSync(fakeCaptureHelperPath, 0o755);
 
@@ -323,12 +339,14 @@ test('navigates to settings and back', async () => {
     await window.getByRole('button', { name: 'Open settings' }).click();
     await expect(window.getByRole('heading', { name: 'Settings' })).toBeVisible();
     await expect(window.getByRole('button', { name: 'Save settings' })).toBeVisible();
-    await expect(window.getByRole('combobox', { name: 'Transcription provider' })).toContainText('Local Whisper');
-    await expect(window.getByText('Transcription runs on this Mac. Audio is not uploaded.')).toBeVisible();
-    await expect(window.getByLabel('Groq API Key')).toHaveCount(0);
+    await expect(window.getByRole('combobox', { name: 'Transcription provider' })).toContainText(
+      'Local Whisper',
+    );
     await expect(
-      window.getByText('Auto-transcribe after recording')
-    ).toHaveCount(0);
+      window.getByText('Transcription runs on this Mac. Audio is not uploaded.'),
+    ).toBeVisible();
+    await expect(window.getByLabel('Groq API Key')).toHaveCount(0);
+    await expect(window.getByText('Auto-transcribe after recording')).toHaveCount(0);
     await expectNoHorizontalOverflow(window);
     await expectAccessible(window);
     await expect(window).toHaveScreenshot('settings-local.png');
@@ -337,13 +355,17 @@ test('navigates to settings and back', async () => {
     await window.getByRole('option', { name: 'Groq' }).click();
     await expect(window.getByLabel('Groq API Key')).toBeVisible();
     await expect(window.getByLabel('Model')).toBeVisible();
-    await expect(window.getByText('Transcription sends prepared audio to Groq for processing.')).toBeVisible();
+    await expect(
+      window.getByText('Transcription sends prepared audio to Groq for processing.'),
+    ).toBeVisible();
     await window.getByLabel('Groq API Key').fill('provider-secret-value');
 
     await window.getByRole('combobox', { name: 'Transcription provider' }).click();
     await window.getByRole('option', { name: 'Local Whisper' }).click();
     await expect(window.getByLabel('Groq API Key')).toHaveCount(0);
-    await expect(window.getByText('Transcription runs on this Mac. Audio is not uploaded.')).toBeVisible();
+    await expect(
+      window.getByText('Transcription runs on this Mac. Audio is not uploaded.'),
+    ).toBeVisible();
 
     await window.getByRole('combobox', { name: 'Transcription provider' }).click();
     await window.getByRole('option', { name: 'Groq' }).click();
@@ -362,19 +384,62 @@ test('navigates to settings and back', async () => {
 
 test('opens a ready transcript in the reading view', async () => {
   const seededSegments = [
-    { start: 0, end: 9, speaker: 'Interviewer', text: 'Thanks for making time today. To start, could you walk me through your background and what you have been working on recently?' },
-    { start: 9, end: 31, speaker: 'You', text: 'Of course. I have spent the last six years building backend systems, and for the past two I led the redesign of our billing platform. We moved from a nightly batch job to event-driven invoicing, which cut revenue recognition delays from a day to about a minute.' },
-    { start: 31, end: 38, speaker: 'Interviewer', text: 'That is a solid result. What was the hardest technical trade-off in that migration?' },
-    { start: 38, end: 65, speaker: 'You', text: 'Honestly, consistency. The old system could tolerate duplicates because the batch job deduplicated at the end, but the event-driven path had to be idempotent end to end. We introduced exactly-once semantics at the consumer level, added a reconciliation job that compared ledger entries against source events every hour, and staged the cutover behind a feature flag so we could replay traffic against both pipelines before trusting the new one.' },
-    { start: 65, end: 72, speaker: 'Interviewer', text: 'How did you validate correctness during the cutover?' },
-    { start: 72, end: 86, speaker: 'You', text: 'We ran shadow traffic for three weeks and diffed the outputs. Any mismatch paged the team, and we did not move a customer cohort until it produced two clean weeks.' },
-    { start: 86, end: 92, speaker: 'Interviewer', text: 'Makes sense. Last one: what would you do differently if you started over?' },
-    { start: 92, end: 105, speaker: 'You', text: 'I would invest in the reconciliation tooling earlier. We built it as a safety net, but it ended up being the thing that gave everyone confidence to ship.' },
+    {
+      start: 0,
+      end: 9,
+      speaker: 'Interviewer',
+      text: 'Thanks for making time today. To start, could you walk me through your background and what you have been working on recently?',
+    },
+    {
+      start: 9,
+      end: 31,
+      speaker: 'You',
+      text: 'Of course. I have spent the last six years building backend systems, and for the past two I led the redesign of our billing platform. We moved from a nightly batch job to event-driven invoicing, which cut revenue recognition delays from a day to about a minute.',
+    },
+    {
+      start: 31,
+      end: 38,
+      speaker: 'Interviewer',
+      text: 'That is a solid result. What was the hardest technical trade-off in that migration?',
+    },
+    {
+      start: 38,
+      end: 65,
+      speaker: 'You',
+      text: 'Honestly, consistency. The old system could tolerate duplicates because the batch job deduplicated at the end, but the event-driven path had to be idempotent end to end. We introduced exactly-once semantics at the consumer level, added a reconciliation job that compared ledger entries against source events every hour, and staged the cutover behind a feature flag so we could replay traffic against both pipelines before trusting the new one.',
+    },
+    {
+      start: 65,
+      end: 72,
+      speaker: 'Interviewer',
+      text: 'How did you validate correctness during the cutover?',
+    },
+    {
+      start: 72,
+      end: 86,
+      speaker: 'You',
+      text: 'We ran shadow traffic for three weeks and diffed the outputs. Any mismatch paged the team, and we did not move a customer cohort until it produced two clean weeks.',
+    },
+    {
+      start: 86,
+      end: 92,
+      speaker: 'Interviewer',
+      text: 'Makes sense. Last one: what would you do differently if you started over?',
+    },
+    {
+      start: 92,
+      end: 105,
+      speaker: 'You',
+      text: 'I would invest in the reconciliation tooling earlier. We built it as a safety net, but it ended up being the thing that gave everyone confidence to ship.',
+    },
   ];
 
   const { electronApp, window } = await launchTestApp('default', (testHome) => {
     const recordingDir = path.join(
-      testHome, 'InterviewCopilot', 'recordings', '2026-07-27T00-00-00-000Z',
+      testHome,
+      'InterviewCopilot',
+      'recordings',
+      '2026-07-27T00-00-00-000Z',
     );
     fs.writeFileSync(
       path.join(recordingDir, 'transcript.json'),
@@ -398,10 +463,10 @@ test('opens a ready transcript in the reading view', async () => {
 
 test('renders the empty library state', async () => {
   const { electronApp, window } = await launchTestApp('default', (testHome) => {
-    fs.rmSync(
-      path.join(testHome, 'InterviewCopilot', 'recordings', '2026-07-27T00-00-00-000Z'),
-      { recursive: true, force: true },
-    );
+    fs.rmSync(path.join(testHome, 'InterviewCopilot', 'recordings', '2026-07-27T00-00-00-000Z'), {
+      recursive: true,
+      force: true,
+    });
   });
 
   try {
@@ -418,17 +483,22 @@ test('renders the empty library state', async () => {
 test('shows a recoverable error when local transcription fails', async () => {
   const { electronApp, window } = await launchTestApp('default', (testHome) => {
     // Point the model download at an unreachable URL so transcription fails.
-    fs.writeFileSync(path.join(testHome, 'model-manifest.json'), JSON.stringify({
-      url: 'http://127.0.0.1:1/model.bin',
-      fileName: 'model.bin',
-      byteSize: 128,
-      sha256: '0'.repeat(64),
-    }));
+    fs.writeFileSync(
+      path.join(testHome, 'model-manifest.json'),
+      JSON.stringify({
+        url: 'http://127.0.0.1:1/model.bin',
+        fileName: 'model.bin',
+        byteSize: 128,
+        sha256: '0'.repeat(64),
+      }),
+    );
   });
 
   try {
     await window.getByRole('button', { name: 'Transcribe audio' }).click();
-    await expect(window.getByText(/Your recording is still saved/)).toBeVisible({ timeout: 10_000 });
+    await expect(window.getByText(/Your recording is still saved/)).toBeVisible({
+      timeout: 10_000,
+    });
     await expectNoHorizontalOverflow(window);
     await expectAccessible(window);
     await expect(window).toHaveScreenshot('transcription-error.png');
@@ -477,7 +547,9 @@ test('Cancel during Starting', async () => {
     await cancel.click();
 
     // The app should return to idle: Record button reappears, no new recording added
-    await expect(window.getByRole('button', { name: 'Record', exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(window.getByRole('button', { name: 'Record', exact: true })).toBeVisible({
+      timeout: 5_000,
+    });
 
     const afterCount = await window.locator('main button[type="button"]').count();
     expect(afterCount).toBe(beforeCount);
@@ -517,7 +589,11 @@ test('Quit during recording waits for final publication', async () => {
     const publishedDirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith('.'));
     expect(publishedDirs.length).toBeGreaterThanOrEqual(2); // fixture + new recording
   } catch (error) {
-    try { await electronApp.close(); } catch { /* best effort */ }
+    try {
+      await electronApp.close();
+    } catch {
+      /* best effort */
+    }
     throw error;
   }
 });
@@ -531,17 +607,19 @@ test('One-channel interruption remaining visible after save', async () => {
     await window.getByRole('button', { name: 'Record', exact: true }).click();
 
     // Wait for the recording to finish
-    await expect(window.getByRole('button', { name: 'Record', exact: true })).toBeVisible({ timeout: 10_000 });
+    await expect(window.getByRole('button', { name: 'Record', exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
 
     // The published recording should have an "Interrupted" badge
     await expect(window.getByText('Interrupted')).toBeVisible({ timeout: 5_000 });
 
     // Layout invariant: no badge may overflow the 400px window.
-    const overflowingBadges = await window.evaluate(() =>
-      [...document.querySelectorAll('main div')]
-        .filter((el) => el.className.includes('rounded-full'))
-        .filter((el) => el.getBoundingClientRect().right > window.innerWidth)
-        .length
+    const overflowingBadges = await window.evaluate(
+      () =>
+        [...document.querySelectorAll('main div')]
+          .filter((el) => el.className.includes('rounded-full'))
+          .filter((el) => el.getBoundingClientRect().right > window.innerWidth).length,
     );
     expect(overflowingBadges).toBe(0);
     await expectNoHorizontalOverflow(window);
@@ -577,7 +655,11 @@ test('Output overflow leaving both rows Connected -- audio gap detected', async 
     // Live recording timer: manual screenshot only.
     await window.screenshot({ path: 'test-results/native-capture-overflow.png' });
   } finally {
-    try { await electronApp.close(); } catch { /* best effort */ }
+    try {
+      await electronApp.close();
+    } catch {
+      /* best effort */
+    }
   }
 });
 
@@ -648,7 +730,9 @@ test('Recovery/Trash confirmation', async () => {
 
     // Re-open and confirm
     await trashButton.click();
-    await expect(window.getByRole('button', { name: 'Confirm remove' })).toBeVisible({ timeout: 3_000 });
+    await expect(window.getByRole('button', { name: 'Confirm remove' })).toBeVisible({
+      timeout: 3_000,
+    });
     await window.getByRole('button', { name: 'Confirm remove' }).click();
 
     // The recovery item should be removed

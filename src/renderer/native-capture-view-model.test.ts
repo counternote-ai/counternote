@@ -7,9 +7,6 @@ import {
   toRecoveryListView,
   formatBytes,
   formatDate,
-  type ChannelHealthView,
-  type RecordingHealthView,
-  type RecoveryItemView,
 } from './native-capture-view-model';
 
 /* ── Channel health mapping ──────────────────────────────────── */
@@ -181,7 +178,7 @@ describe('toStartErrorMessage', () => {
 
   it('returns busy message for busy reason', () => {
     expect(toStartErrorMessage({ ok: false, reason: 'busy' })).toBe(
-      'A recording is already in progress.'
+      'A recording is already in progress.',
     );
   });
 
@@ -199,13 +196,13 @@ describe('toStartErrorMessage', () => {
 
   it('returns helper-error message', () => {
     expect(toStartErrorMessage({ ok: false, reason: 'helper-error' })).toBe(
-      'Recording could not start. The audio helper encountered an error.'
+      'Recording could not start. The audio helper encountered an error.',
     );
   });
 
   it('returns protocol-violation message', () => {
     expect(toStartErrorMessage({ ok: false, reason: 'protocol-violation' })).toBe(
-      'Recording could not start. The audio helper sent unexpected data.'
+      'Recording could not start. The audio helper sent unexpected data.',
     );
   });
 
@@ -217,7 +214,7 @@ describe('toStartErrorMessage', () => {
 
   it('returns mutation-unavailable message same as busy', () => {
     expect(toStartErrorMessage({ ok: false, reason: 'mutation-unavailable' })).toBe(
-      'A recording is already in progress.'
+      'A recording is already in progress.',
     );
   });
 });
@@ -231,7 +228,7 @@ describe('toStopFeedback', () => {
 
   it('returns interrupted message', () => {
     expect(toStopFeedback({ status: 'interrupted' })).toBe(
-      'Recording was interrupted. Partial audio was saved.'
+      'Recording was interrupted. Partial audio was saved.',
     );
   });
 
@@ -244,9 +241,7 @@ describe('toStopFeedback', () => {
   it('returns access failure without disk space claim', () => {
     const feedback = toStopFeedback({ status: 'failed', category: 'access' });
 
-    expect(feedback).toBe(
-      'Recording stopped unexpectedly. The audio file could not be saved.'
-    );
+    expect(feedback).toBe('Recording stopped unexpectedly. The audio file could not be saved.');
     expect(feedback).not.toContain('disk');
     expect(feedback).not.toContain('space');
   });
@@ -254,9 +249,7 @@ describe('toStopFeedback', () => {
   it('returns io-finalization failure without disk space claim', () => {
     const feedback = toStopFeedback({ status: 'failed', category: 'io-finalization' });
 
-    expect(feedback).toBe(
-      'Recording stopped unexpectedly. The audio file could not be finalized.'
-    );
+    expect(feedback).toBe('Recording stopped unexpectedly. The audio file could not be finalized.');
     expect(feedback).not.toContain('disk');
     expect(feedback).not.toContain('space');
   });
@@ -304,7 +297,6 @@ describe('toRecoveryItemView', () => {
     });
 
     // The date should be formatted from the ISO string
-    const expected = new Date('2026-08-13T14:30:00.000Z');
     expect(view.dateLabel).toBeDefined();
     expect(typeof view.dateLabel).toBe('string');
     expect(view.dateLabel.length).toBeGreaterThan(0);
@@ -351,8 +343,18 @@ describe('toRecoveryListView', () => {
 
   it('uses safe integer addition for bytes total', () => {
     const view = toRecoveryListView([
-      { id: 'a', createdAt: '2026-08-13T00:00:00.000Z', bytes: Number.MAX_SAFE_INTEGER, state: 'recoverable' },
-      { id: 'b', createdAt: '2026-08-13T01:00:00.000Z', bytes: Number.MAX_SAFE_INTEGER, state: 'recoverable' },
+      {
+        id: 'a',
+        createdAt: '2026-08-13T00:00:00.000Z',
+        bytes: Number.MAX_SAFE_INTEGER,
+        state: 'recoverable',
+      },
+      {
+        id: 'b',
+        createdAt: '2026-08-13T01:00:00.000Z',
+        bytes: Number.MAX_SAFE_INTEGER,
+        state: 'recoverable',
+      },
     ]);
 
     // Should not overflow; should cap at MAX_SAFE_INTEGER

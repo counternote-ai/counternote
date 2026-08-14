@@ -24,7 +24,7 @@ describe('AudioProcessor', () => {
 
   const createMockExecFile = (
     stderr = '',
-    stdout = ''
+    stdout = '',
   ): jest.MockedFunction<AudioProcessorDependencies['execFile']> =>
     jest.fn().mockResolvedValue({ stdout, stderr });
 
@@ -33,7 +33,7 @@ describe('AudioProcessor', () => {
     durationSeconds: number,
     sampleRate = 16000,
     channels = 2,
-    bitsPerSample = 16
+    bitsPerSample = 16,
   ): void => {
     const byteRate = sampleRate * channels * (bitsPerSample / 8);
     const dataSize = Math.floor(durationSeconds * byteRate);
@@ -63,18 +63,8 @@ describe('AudioProcessor', () => {
       await splitChannels(audioPath, { execFile });
 
       expect(execFile).toHaveBeenCalledTimes(2);
-      expect(execFile.mock.calls[0][1].slice(0, 4)).toEqual([
-        '-nostdin',
-        '-y',
-        '-i',
-        audioPath,
-      ]);
-      expect(execFile.mock.calls[1][1].slice(0, 4)).toEqual([
-        '-nostdin',
-        '-y',
-        '-i',
-        audioPath,
-      ]);
+      expect(execFile.mock.calls[0][1].slice(0, 4)).toEqual(['-nostdin', '-y', '-i', audioPath]);
+      expect(execFile.mock.calls[1][1].slice(0, 4)).toEqual(['-nostdin', '-y', '-i', audioPath]);
     });
   });
 
@@ -87,12 +77,7 @@ describe('AudioProcessor', () => {
       await convertToFlac(wavPath, { execFile });
 
       expect(execFile).toHaveBeenCalledTimes(1);
-      expect(execFile.mock.calls[0][1].slice(0, 4)).toEqual([
-        '-nostdin',
-        '-y',
-        '-i',
-        wavPath,
-      ]);
+      expect(execFile.mock.calls[0][1].slice(0, 4)).toEqual(['-nostdin', '-y', '-i', wavPath]);
     });
   });
 
@@ -153,12 +138,11 @@ describe('AudioProcessor', () => {
 
   describe('getAudibleIntervals', () => {
     it('returns only the audio ranges between detected silence', async () => {
-      const execFile = createMockExecFile([
-        'silence_start: 0',
-        'silence_end: 5.0',
-        'silence_start: 9.0',
-        'silence_end: 20.0',
-      ].join('\n'));
+      const execFile = createMockExecFile(
+        ['silence_start: 0', 'silence_end: 5.0', 'silence_start: 9.0', 'silence_end: 20.0'].join(
+          '\n',
+        ),
+      );
       const audioPath = path.join(testDir, 'partly-silent.wav');
       writeWavHeader(audioPath, 20, 16000, 1);
 

@@ -21,7 +21,13 @@ interface TranscriptViewProps {
   onExport: () => void;
 }
 
-export function TranscriptView({ title, duration = 0, segments, onBack, onExport }: TranscriptViewProps) {
+export function TranscriptView({
+  title,
+  duration = 0,
+  segments,
+  onBack,
+  onExport,
+}: TranscriptViewProps) {
   const meta = getTranscriptMeta({ duration, segmentCount: segments.length });
 
   return (
@@ -76,7 +82,9 @@ export function TranscriptView({ title, duration = 0, segments, onBack, onExport
                   >
                     <div className="flex items-center justify-between gap-3">
                       <Badge variant={isInterviewer ? 'interviewer' : 'you'}>{seg.speaker}</Badge>
-                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatDuration(seg.start)}</span>
+                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                        {formatDuration(seg.start)}
+                      </span>
                     </div>
                     <p className="mt-2 text-sm leading-relaxed text-foreground">{seg.text}</p>
                   </div>

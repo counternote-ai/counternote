@@ -71,7 +71,8 @@ export class RecoveryService {
     this.dependencies = {
       trashItem: (target: string): Promise<void> => shell.trashItem(target),
       readAudioDuration: getAudioDuration,
-      removeSource: (directory: string): Promise<void> => fs.rm(directory, { recursive: true, force: false }),
+      removeSource: (directory: string): Promise<void> =>
+        fs.rm(directory, { recursive: true, force: false }),
       beforeCopy: (): Promise<void> => Promise.resolve(),
       now: (): Date => new Date(),
       ...dependencies,
@@ -83,7 +84,8 @@ export class RecoveryService {
     const recoveryIds = await this.readSessionIds(root, '.recovery');
     const inProgressIds = await this.readSessionIds(root, '.in-progress');
     const items = new Map<string, RecordingRecoveryItem>();
-    const normalizationLease = inProgressIds.length === 0 ? undefined : this.mutations.tryAcquire('recover');
+    const normalizationLease =
+      inProgressIds.length === 0 ? undefined : this.mutations.tryAcquire('recover');
     try {
       for (const id of recoveryIds) {
         if (id === activeSessionId) continue;
@@ -92,11 +94,15 @@ export class RecoveryService {
       }
       for (const id of inProgressIds) {
         if (id === activeSessionId || items.has(id)) continue;
-        const normalized = normalizationLease === undefined ? false : await this.normalizeInProgress(root, id);
+        const normalized =
+          normalizationLease === undefined ? false : await this.normalizeInProgress(root, id);
         const item = await this.toRecoveryItem(root, normalized ? '.recovery' : '.in-progress', id);
         if (item !== undefined) items.set(id, item);
       }
-      return [...items.values()].sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id));
+      return [...items.values()].sort(
+        (left, right) =>
+          left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+      );
     } finally {
       normalizationLease?.release();
     }
@@ -115,7 +121,8 @@ export class RecoveryService {
       const inspected = await this.inspectSource(source);
       const audioStat = inspected.audioStat;
       const pcmBytes = audioStat === undefined ? -1 : audioStat.size - HEADER_BYTES;
-      if (audioStat === undefined || !isRecoverablePcm(pcmBytes)) return { outcome: 'not-recoverable' };
+      if (audioStat === undefined || !isRecoverablePcm(pcmBytes))
+        return { outcome: 'not-recoverable' };
 
       repairDirectory = await this.createRepairDirectory(root);
       const repairAudio = path.join(repairDirectory, AUDIO_FILE);
@@ -123,7 +130,10 @@ export class RecoveryService {
       await copyStableRegularFile(inspected.audioPath, audioStat, repairAudio);
       await this.repairFixedHeader(repairAudio, pcmBytes);
       const durationSeconds = await this.dependencies.readAudioDuration(repairAudio);
-      if (!Number.isFinite(durationSeconds) || Math.abs(durationSeconds - pcmBytes / BYTE_RATE) > Number.EPSILON) {
+      if (
+        !Number.isFinite(durationSeconds) ||
+        Math.abs(durationSeconds - pcmBytes / BYTE_RATE) > Number.EPSILON
+      ) {
         throw new Error('INVALID_REPAIRED_DURATION');
       }
 
@@ -171,11 +181,19 @@ export class RecoveryService {
     return fs.realpath(configured);
   }
 
-  private async readSessionIds(root: string, parent: '.recovery' | '.in-progress'): Promise<string[]> {
+  private async readSessionIds(
+    root: string,
+    parent: '.recovery' | '.in-progress',
+  ): Promise<string[]> {
     const directory = path.join(root, parent);
     try {
       const stat = await fs.lstat(directory);
-      if (!stat.isDirectory() || stat.isSymbolicLink() || await fs.realpath(directory) !== directory) return [];
+      if (
+        !stat.isDirectory() ||
+        stat.isSymbolicLink() ||
+        (await fs.realpath(directory)) !== directory
+      )
+        return [];
       return (await fs.readdir(directory)).filter(isUuid).sort();
     } catch {
       return [];
@@ -210,17 +228,24 @@ export class RecoveryService {
     const source = await this.sourceAt(root, parent, id);
     if (source === undefined) return undefined;
     const inspected = await this.inspectSource(source);
-    const pcmBytes = inspected.audioStat === undefined ? -1 : inspected.audioStat.size - HEADER_BYTES;
+    const pcmBytes =
+      inspected.audioStat === undefined ? -1 : inspected.audioStat.size - HEADER_BYTES;
     return {
       id,
-      createdAt: inspected.metadata?.status === 'failed' ? inspected.metadata.startedAt : source.stat.birthtime.toISOString(),
+      createdAt:
+        inspected.metadata?.status === 'failed'
+          ? inspected.metadata.startedAt
+          : source.stat.birthtime.toISOString(),
       bytes: await sumRegularFileBytes(source.directory),
       state: isRecoverablePcm(pcmBytes) ? 'recoverable' : 'not-recoverable',
     };
   }
 
   private async findSource(root: string, id: string): Promise<RecoverySource | undefined> {
-    return await this.sourceAt(root, '.recovery', id) ?? await this.sourceAt(root, '.in-progress', id);
+    return (
+      (await this.sourceAt(root, '.recovery', id)) ??
+      (await this.sourceAt(root, '.in-progress', id))
+    );
   }
 
   private async sourceAt(
@@ -232,7 +257,12 @@ export class RecoveryService {
     if (!isContained(root, directory) || !isUuid(id)) return undefined;
     try {
       const stat = await fs.lstat(directory);
-      if (!stat.isDirectory() || stat.isSymbolicLink() || await fs.realpath(directory) !== directory) return undefined;
+      if (
+        !stat.isDirectory() ||
+        stat.isSymbolicLink() ||
+        (await fs.realpath(directory)) !== directory
+      )
+        return undefined;
       return { directory, stat };
     } catch {
       return undefined;
@@ -244,11 +274,17 @@ export class RecoveryService {
     let audioStat: Stats | undefined;
     try {
       const stat = await fs.lstat(audioPath);
-      if (stat.isFile() && !stat.isSymbolicLink() && await fs.realpath(audioPath) === audioPath) audioStat = stat;
+      if (stat.isFile() && !stat.isSymbolicLink() && (await fs.realpath(audioPath)) === audioPath)
+        audioStat = stat;
     } catch {
       // A damaged source stays visible as not-recoverable.
     }
-    return { ...source, audioPath, audioStat, metadata: await readFailedMetadata(source.directory) };
+    return {
+      ...source,
+      audioPath,
+      audioStat,
+      metadata: await readFailedMetadata(source.directory),
+    };
   }
 
   private async createRepairDirectory(root: string): Promise<string> {
@@ -298,20 +334,32 @@ export class RecoveryService {
   }
 }
 
-function recoveredMetadata(metadata: CaptureMetadata | undefined, stat: Stats, durationMs: number): Record<string, unknown> {
-  const startedAt = metadata?.status === 'failed' ? metadata.startedAt : stat.birthtime.toISOString();
+function recoveredMetadata(
+  metadata: CaptureMetadata | undefined,
+  stat: Stats,
+  durationMs: number,
+): Record<string, unknown> {
+  const startedAt =
+    metadata?.status === 'failed' ? metadata.startedAt : stat.birthtime.toISOString();
   const interruptions = metadata?.status === 'failed' ? [...metadata.interruptions] : [];
   if (!interruptions.some((interruption) => interruption.reason === 'persistence-error')) {
-    interruptions.push({ channel: 'capture', startMs: durationMs, endMs: durationMs, recovered: false, reason: 'persistence-error' });
+    interruptions.push({
+      channel: 'capture',
+      startMs: durationMs,
+      endMs: durationMs,
+      recovered: false,
+      reason: 'persistence-error',
+    });
   }
   return {
     version: 1,
     status: 'interrupted',
     startedAt,
     endedAt: new Date(Date.parse(startedAt) + durationMs).toISOString(),
-    channels: metadata?.status === 'failed'
-      ? metadata.channels
-      : { interviewer: { started: false }, you: { started: false } },
+    channels:
+      metadata?.status === 'failed'
+        ? metadata.channels
+        : { interviewer: { started: false }, you: { started: false } },
     interruptions,
   };
 }
@@ -320,8 +368,15 @@ async function readFailedMetadata(directory: string): Promise<CaptureMetadata | 
   const metadataPath = path.join(directory, METADATA_FILE);
   try {
     const stat = await fs.lstat(metadataPath);
-    if (!stat.isFile() || stat.isSymbolicLink() || await fs.realpath(metadataPath) !== metadataPath) return undefined;
-    const metadata = parseCaptureMetadata(JSON.parse(await fs.readFile(metadataPath, 'utf8')) as unknown);
+    if (
+      !stat.isFile() ||
+      stat.isSymbolicLink() ||
+      (await fs.realpath(metadataPath)) !== metadataPath
+    )
+      return undefined;
+    const metadata = parseCaptureMetadata(
+      JSON.parse(await fs.readFile(metadataPath, 'utf8')) as unknown,
+    );
     return metadata?.status === 'failed' ? metadata : undefined;
   } catch {
     return undefined;
@@ -342,7 +397,12 @@ async function sumRegularFileBytes(directory: string): Promise<number> {
       try {
         const stat = await fs.lstat(candidate);
         if (stat.isFile() && !stat.isSymbolicLink()) {
-          if (Number.isSafeInteger(stat.size) && stat.size >= 0 && total <= Number.MAX_SAFE_INTEGER - stat.size) total += stat.size;
+          if (
+            Number.isSafeInteger(stat.size) &&
+            stat.size >= 0 &&
+            total <= Number.MAX_SAFE_INTEGER - stat.size
+          )
+            total += stat.size;
         } else if (stat.isDirectory() && !stat.isSymbolicLink()) {
           await visit(candidate);
         }
@@ -359,14 +419,22 @@ async function ensureContainedDirectory(root: string, directory: string): Promis
   if (!isContained(root, directory)) throw new Error('UNSAFE_RECOVERY_DIRECTORY');
   try {
     const stat = await fs.lstat(directory);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || await fs.realpath(directory) !== directory) throw new Error('UNSAFE_RECOVERY_DIRECTORY');
+    if (
+      !stat.isDirectory() ||
+      stat.isSymbolicLink() ||
+      (await fs.realpath(directory)) !== directory
+    )
+      throw new Error('UNSAFE_RECOVERY_DIRECTORY');
   } catch (error) {
     if (!isNotFound(error)) throw error;
     await fs.mkdir(directory, { mode: 0o700 });
   }
 }
 
-async function writeMetadataAtomically(directory: string, metadata: Record<string, unknown>): Promise<void> {
+async function writeMetadataAtomically(
+  directory: string,
+  metadata: Record<string, unknown>,
+): Promise<void> {
   const temporary = path.join(directory, `.${METADATA_FILE}.tmp-${randomUUID()}`);
   const handle = await fs.open(temporary, 'wx', 0o600);
   try {
@@ -383,7 +451,11 @@ async function writeMetadataAtomically(directory: string, metadata: Record<strin
 }
 
 /** Copies from the already-open source descriptor so later pathname swaps cannot escape recovery. */
-async function copyStableRegularFile(sourcePath: string, expected: Stats, destinationPath: string): Promise<void> {
+async function copyStableRegularFile(
+  sourcePath: string,
+  expected: Stats,
+  destinationPath: string,
+): Promise<void> {
   const source = await fs.open(sourcePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
   try {
     const actual = await source.stat();
@@ -431,15 +503,22 @@ function createFixedWavHeader(dataBytes: number): Buffer {
 }
 
 function isRecoverablePcm(pcmBytes: number): boolean {
-  return Number.isSafeInteger(pcmBytes) && pcmBytes > 0 && pcmBytes % FRAME_BYTES === 0 && pcmBytes <= MAX_WAV_DATA_BYTES;
+  return (
+    Number.isSafeInteger(pcmBytes) &&
+    pcmBytes > 0 &&
+    pcmBytes % FRAME_BYTES === 0 &&
+    pcmBytes <= MAX_WAV_DATA_BYTES
+  );
 }
 
 function sameRegularFile(actual: Stats, expected: Stats): boolean {
-  return actual.isFile()
-    && !actual.isSymbolicLink()
-    && actual.dev === expected.dev
-    && actual.ino === expected.ino
-    && actual.size === expected.size;
+  return (
+    actual.isFile() &&
+    !actual.isSymbolicLink() &&
+    actual.dev === expected.dev &&
+    actual.ino === expected.ino &&
+    actual.size === expected.size
+  );
 }
 
 function isUuid(value: string): boolean {
@@ -468,5 +547,10 @@ function isNotEmpty(error: unknown): boolean {
 }
 
 function codeIs(error: unknown, code: string): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: unknown }).code === code;
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === code
+  );
 }

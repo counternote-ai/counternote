@@ -15,7 +15,7 @@ jest.mock('os', () => {
   };
 });
 
-import { loadConfig, saveConfig, getGroqApiKey } from '../config';
+import { loadConfig, getGroqApiKey } from '../config';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -46,7 +46,10 @@ describe('Config', () => {
   afterEach(() => {
     jest.restoreAllMocks();
     safeStorageMock.decryptStringAsync.mockReset();
-    safeStorageMock.decryptStringAsync.mockResolvedValue({ result: 'decrypted', shouldReEncrypt: false });
+    safeStorageMock.decryptStringAsync.mockResolvedValue({
+      result: 'decrypted',
+      shouldReEncrypt: false,
+    });
     safeStorageMock.encryptStringAsync.mockReset();
     safeStorageMock.encryptStringAsync.mockResolvedValue(Buffer.from('encrypted'));
     fsMock.existsSync.mockImplementation(jest.requireActual('fs').existsSync);
@@ -137,7 +140,7 @@ describe('Config', () => {
 
     expect(errorSpy).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
-      'Stored Groq API key could not be decrypted. Re-enter it in Settings to replace the old key.'
+      'Stored Groq API key could not be decrypted. Re-enter it in Settings to replace the old key.',
     );
   });
 });

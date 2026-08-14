@@ -30,7 +30,13 @@ interface AppRecording {
   transcribed: boolean;
   segments?: Array<{ start: number; end: number; text: string; speaker: string }>;
   captureStatus?: 'legacy' | 'complete' | 'interrupted';
-  interruptions?: Array<{ channel: string; startMs: number; endMs: number; recovered: boolean; reason: string }>;
+  interruptions?: Array<{
+    channel: string;
+    startMs: number;
+    endMs: number;
+    recovered: boolean;
+    reason: string;
+  }>;
 }
 
 function getErrorMessage(fallback: string): string {
@@ -48,8 +54,12 @@ export default function App() {
     transcriptionProvider: TranscriptionProvider;
   }>({ apiKey: '', model: 'whisper-large-v3-turbo', transcriptionProvider: 'local' });
   const [error, setError] = useState<string | null>(null);
-  const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress | null>(null);
-  const [localModelStatus, setLocalModelStatus] = useState<LocalModelStatus>({ state: 'not-downloaded' });
+  const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress | null>(
+    null,
+  );
+  const [localModelStatus, setLocalModelStatus] = useState<LocalModelStatus>({
+    state: 'not-downloaded',
+  });
   const [permissions, setPermissions] = useState<RecordingPermissionSnapshot | null>(null);
   const [permissionNoticeDismissed, setPermissionNoticeDismissed] = useState(false);
   const [permissionEscalated, setPermissionEscalated] = useState(false);
@@ -62,29 +72,30 @@ export default function App() {
   const activeTranscriptionIdRef = useRef<string | null>(null);
   const recordingWasActiveRef = useRef(false);
 
-  const refreshRecordingPermissions = useCallback(async (): Promise<RecordingPermissionSnapshot> => {
-    try {
-      const result = await window.electronAPI.getRecordingPermissions();
-      if (!result.success || !result.permissions) {
-        throw new Error(result.error || 'Unable to check recording permissions');
+  const refreshRecordingPermissions =
+    useCallback(async (): Promise<RecordingPermissionSnapshot> => {
+      try {
+        const result = await window.electronAPI.getRecordingPermissions();
+        if (!result.success || !result.permissions) {
+          throw new Error(result.error || 'Unable to check recording permissions');
+        }
+        setPermissions(result.permissions);
+        if (result.permissions.canAttemptRecording) {
+          setPermissionEscalated(false);
+        }
+        return result.permissions;
+      } catch {
+        console.error('Renderer permission refresh failed.');
+        const unknownPermissions: RecordingPermissionSnapshot = {
+          screen: 'unknown',
+          microphone: 'unknown',
+          permissionOwnerName: 'Electron',
+          canAttemptRecording: true,
+        };
+        setPermissions(unknownPermissions);
+        return unknownPermissions;
       }
-      setPermissions(result.permissions);
-      if (result.permissions.canAttemptRecording) {
-        setPermissionEscalated(false);
-      }
-      return result.permissions;
-    } catch {
-      console.error('Renderer permission refresh failed.');
-      const unknownPermissions: RecordingPermissionSnapshot = {
-        screen: 'unknown',
-        microphone: 'unknown',
-        permissionOwnerName: 'Electron',
-        canAttemptRecording: true,
-      };
-      setPermissions(unknownPermissions);
-      return unknownPermissions;
-    }
-  }, []);
+    }, []);
 
   // Load settings from main process on mount
   useEffect(() => {
@@ -155,7 +166,10 @@ export default function App() {
       setStatusSnapshot(snapshot);
       if (finishedRecording) {
         void loadRecordings();
-        void window.electronAPI.recordingListRecovery().then(setRecoveryItems).catch(() => undefined);
+        void window.electronAPI
+          .recordingListRecovery()
+          .then(setRecoveryItems)
+          .catch(() => undefined);
       }
     });
     return unsubscribe;
@@ -280,22 +294,24 @@ export default function App() {
     }
   };
 
-  const permissionNotice = permissions
-    ? getRecordingPermissionNotice(permissions)
-    : null;
+  const permissionNotice = permissions ? getRecordingPermissionNotice(permissions) : null;
 
   const handleOpenPermissionSettings = async () => {
     if (!permissionNotice?.settingsPermission) return;
 
     try {
       const result = await window.electronAPI.openRecordingPermissionSettings(
-        permissionNotice.settingsPermission
+        permissionNotice.settingsPermission,
       );
       if (!result.success) {
-        setError('Unable to open System Settings. Open System Settings → Privacy & Security manually.');
+        setError(
+          'Unable to open System Settings. Open System Settings → Privacy & Security manually.',
+        );
       }
     } catch {
-      setError('Unable to open System Settings. Open System Settings → Privacy & Security manually.');
+      setError(
+        'Unable to open System Settings. Open System Settings → Privacy & Security manually.',
+      );
     }
   };
 

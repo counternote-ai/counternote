@@ -58,7 +58,10 @@ class ControllableWritable extends EventEmitter {
 interface HeaderHandle {
   dataSize: number;
   writeResults: number[];
-  write: jest.Mock<Promise<{ bytesWritten: number; buffer: Buffer }>, [Buffer, number, number, number]>;
+  write: jest.Mock<
+    Promise<{ bytesWritten: number; buffer: Buffer }>,
+    [Buffer, number, number, number]
+  >;
   close: jest.Mock<Promise<void>, []>;
 }
 
@@ -124,7 +127,9 @@ describe('native-capture WavWriter', () => {
     writer.writeBlock(Buffer.alloc(PCM_BLOCK_BYTES));
 
     let settled = false;
-    const waiting = writer.waitForDrain().then(() => { settled = true; });
+    const waiting = writer.waitForDrain().then(() => {
+      settled = true;
+    });
     await Promise.resolve();
     expect(settled).toBe(false);
 
@@ -211,15 +216,21 @@ describe('native-capture WavWriter', () => {
   it('rolls back a header write when abort arrives during asynchronous header update', async () => {
     let releaseHeaderWrite: (() => void) | undefined;
     let markHeaderWriteStarted: (() => void) | undefined;
-    const headerWriteStarted = new Promise<void>((resolve) => { markHeaderWriteStarted = resolve; });
-    const headerWriteReleased = new Promise<void>((resolve) => { releaseHeaderWrite = resolve; });
-    header.write.mockImplementationOnce(async (buffer: Buffer, _offset: number, length: number, _position: number) => {
-      markHeaderWriteStarted?.();
-      await headerWriteReleased;
-      header.dataSize = buffer.readUInt32LE(40);
-      stream.events.push('header-updated');
-      return { bytesWritten: length, buffer };
+    const headerWriteStarted = new Promise<void>((resolve) => {
+      markHeaderWriteStarted = resolve;
     });
+    const headerWriteReleased = new Promise<void>((resolve) => {
+      releaseHeaderWrite = resolve;
+    });
+    header.write.mockImplementationOnce(
+      async (buffer: Buffer, _offset: number, length: number, _position: number) => {
+        markHeaderWriteStarted?.();
+        await headerWriteReleased;
+        header.dataSize = buffer.readUInt32LE(40);
+        stream.events.push('header-updated');
+        return { bytesWritten: length, buffer };
+      },
+    );
     const writer = await WavWriter.open('/recordings/audio.wav');
     writer.writeBlock(Buffer.alloc(PCM_BLOCK_BYTES));
 
@@ -237,8 +248,12 @@ describe('native-capture WavWriter', () => {
   it('rolls back the finalized header when abort arrives during header close', async () => {
     let releaseClose: (() => void) | undefined;
     let markCloseStarted: (() => void) | undefined;
-    const closeStarted = new Promise<void>((resolve) => { markCloseStarted = resolve; });
-    const closeReleased = new Promise<void>((resolve) => { releaseClose = resolve; });
+    const closeStarted = new Promise<void>((resolve) => {
+      markCloseStarted = resolve;
+    });
+    const closeReleased = new Promise<void>((resolve) => {
+      releaseClose = resolve;
+    });
     header.close.mockImplementationOnce(async () => {
       markCloseStarted?.();
       await closeReleased;
@@ -298,9 +313,21 @@ describe('native-capture WavWriter', () => {
   });
 
   it.each([
-    ['reopen', () => open.mockRejectedValueOnce(Object.assign(new Error('denied'), { code: 'EACCES' })), 'access'],
-    ['header update', () => header.write.mockRejectedValueOnce(new Error('write failed')), 'io-finalization'],
-    ['close', () => header.close.mockRejectedValueOnce(new Error('close failed')), 'io-finalization'],
+    [
+      'reopen',
+      () => open.mockRejectedValueOnce(Object.assign(new Error('denied'), { code: 'EACCES' })),
+      'access',
+    ],
+    [
+      'header update',
+      () => header.write.mockRejectedValueOnce(new Error('write failed')),
+      'io-finalization',
+    ],
+    [
+      'close',
+      () => header.close.mockRejectedValueOnce(new Error('close failed')),
+      'io-finalization',
+    ],
   ] as const)('rejects %s failures with the safe category', async (_stage, prepare, category) => {
     const writer = await WavWriter.open('/recordings/audio.wav');
     prepare();

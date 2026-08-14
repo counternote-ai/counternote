@@ -33,7 +33,7 @@ export interface WhisperProcessDependencies {
 export class WhisperProcessError extends Error {
   constructor(
     readonly code: TranscriptionErrorCode,
-    message: string
+    message: string,
   ) {
     super(message);
     this.name = 'WhisperProcessError';
@@ -88,10 +88,7 @@ export class WhisperProcessRunner {
         phase: 'spawn',
         ...(diagnostics.summary() ? { diagnostic: diagnostics.summary() } : {}),
       });
-      throw new WhisperProcessError(
-        'LOCAL_TRANSCRIPTION_FAILED',
-        'whisper-cli failed to start'
-      );
+      throw new WhisperProcessError('LOCAL_TRANSCRIPTION_FAILED', 'whisper-cli failed to start');
     }
 
     this.deps.logger.log({
@@ -111,7 +108,7 @@ export class WhisperProcessRunner {
       });
       throw new WhisperProcessError(
         'LOCAL_TRANSCRIPTION_FAILED',
-        'whisper-cli was spawned without stdout or stderr'
+        'whisper-cli was spawned without stdout or stderr',
       );
     }
     const stdout = child.stdout;
@@ -148,10 +145,7 @@ export class WhisperProcessRunner {
         child.removeAllListeners('error');
       };
 
-      const failOnce = (
-        code: TranscriptionErrorCode,
-        message: string
-      ): void => {
+      const failOnce = (code: TranscriptionErrorCode, message: string): void => {
         if (settled) {
           return;
         }
@@ -200,7 +194,7 @@ export class WhisperProcessRunner {
 
       const logFailure = (
         code: TranscriptionErrorCode,
-        phase: WhisperProcessFailurePhase
+        phase: WhisperProcessFailurePhase,
       ): void => {
         diagnostics.finish();
         if (childExited) {
@@ -220,10 +214,7 @@ export class WhisperProcessRunner {
         });
       };
 
-      const onClose = async (
-        code: number | null,
-        signal: NodeJS.Signals | null
-      ): Promise<void> => {
+      const onClose = async (code: number | null, signal: NodeJS.Signals | null): Promise<void> => {
         if (settled) {
           return;
         }
@@ -236,14 +227,12 @@ export class WhisperProcessRunner {
           return;
         }
         if (code !== 0) {
-          const exitReason = signal === null || signal === undefined
-            ? `code ${code ?? 'unknown'}`
-            : `signal ${signal}`;
+          const exitReason =
+            signal === null || signal === undefined
+              ? `code ${code ?? 'unknown'}`
+              : `signal ${signal}`;
           logFailure('LOCAL_TRANSCRIPTION_FAILED', 'runtime');
-          failOnce(
-            'LOCAL_TRANSCRIPTION_FAILED',
-            `whisper-cli exited with ${exitReason}`
-          );
+          failOnce('LOCAL_TRANSCRIPTION_FAILED', `whisper-cli exited with ${exitReason}`);
           return;
         }
         // The child is gone; clear timers and listeners now so a slow readFile
