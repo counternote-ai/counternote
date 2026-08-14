@@ -1,0 +1,22 @@
+{
+  "name": "dual-rate-60m",
+  "description": "3600s dual-rate capture simulation: 48kHz system + 44.1kHz microphone resampled to 16kHz output",
+  "virtualDurationSeconds": 3600,
+  "systemInputRate": 48000,
+  "microphoneInputRate": 44100,
+  "outputSampleRate": 16000,
+  "framesPerBlock": 320,
+  "pcmBlockBytes": 1280,
+  "blockDurationMs": 20,
+  "impulseIntervalBlocks": 500,
+  "impulseAmplitude": 1000,
+  "expected": {
+    "totalBlocks": 180000,
+    "pcmBlocks": 180000,
+    "gapBlocks": 0,
+    "interruptionOpens": 0,
+    "interruptionCloses": 0,
+    "readyFirst": true,
+    "maxImpulseSkewBlocks": 1
+  }
+}

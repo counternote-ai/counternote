@@ -1,5 +1,4 @@
 import { type RecordingPermissionSnapshot } from '../types/recording-permissions';
-import { AudioCapture } from './audio-capture';
 import { getRecordingPermissionNotice } from './recording-permissions';
 
 const grantedSnapshot: RecordingPermissionSnapshot = {
@@ -70,72 +69,5 @@ describe('getRecordingPermissionNotice', () => {
       tone: 'info',
       message: "Interview Copilot couldn't confirm recording permissions. You can still try to start recording.",
     });
-  });
-});
-
-describe('AudioCapture', () => {
-  const displayAudioStop = jest.fn();
-  const displayVideoStop = jest.fn();
-  const microphoneStop = jest.fn();
-  const close = jest.fn().mockResolvedValue(undefined);
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-
-    const displayStream = {
-      getVideoTracks: jest.fn(() => [{ stop: displayVideoStop }]),
-      getTracks: jest.fn(() => [
-        { stop: displayAudioStop },
-        { stop: displayVideoStop },
-      ]),
-    } as unknown as MediaStream;
-    const microphoneStream = {
-      getTracks: jest.fn(() => [{ stop: microphoneStop }]),
-    } as unknown as MediaStream;
-
-    Object.defineProperty(globalThis, 'navigator', {
-      configurable: true,
-      value: {
-        mediaDevices: {
-          getDisplayMedia: jest.fn().mockResolvedValue(displayStream),
-          getUserMedia: jest.fn().mockResolvedValue(microphoneStream),
-        },
-      },
-    });
-    Object.defineProperty(globalThis, 'window', {
-      configurable: true,
-      value: { location: { href: 'file:///app/index.html' } },
-    });
-    Object.defineProperty(globalThis, 'AudioContext', {
-      configurable: true,
-      value: jest.fn().mockImplementation(() => ({
-        audioWorklet: {
-          addModule: jest.fn().mockRejectedValue(new Error('worklet failed')),
-        },
-        close,
-      })),
-    });
-  });
-
-  afterEach(() => {
-    Reflect.deleteProperty(globalThis, 'navigator');
-    Reflect.deleteProperty(globalThis, 'window');
-    Reflect.deleteProperty(globalThis, 'AudioContext');
-  });
-
-  it('cleans up streams and the audio context when setup fails partway through', async () => {
-    const capture = new AudioCapture();
-
-    await expect(capture.start()).rejects.toThrow('worklet failed');
-
-    expect(displayAudioStop).toHaveBeenCalledTimes(1);
-    expect(microphoneStop).toHaveBeenCalledTimes(1);
-    expect(close).toHaveBeenCalledTimes(1);
-
-    capture.stop();
-
-    expect(displayAudioStop).toHaveBeenCalledTimes(1);
-    expect(microphoneStop).toHaveBeenCalledTimes(1);
-    expect(close).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,0 +1,31 @@
+{
+  "name": "timestamp-discontinuity",
+  "description": "3600s dual-rate capture with a 220ms microphone timestamp discontinuity at block 90000",
+  "virtualDurationSeconds": 3600,
+  "systemInputRate": 48000,
+  "microphoneInputRate": 44100,
+  "outputSampleRate": 16000,
+  "framesPerBlock": 320,
+  "pcmBlockBytes": 1280,
+  "blockDurationMs": 20,
+  "impulseIntervalBlocks": 500,
+  "impulseAmplitude": 1000,
+  "discontinuity": {
+    "channel": "you",
+    "atBlock": 90000,
+    "gapBlocks": 11,
+    "reason": "timestamp-discontinuity"
+  },
+  "expected": {
+    "totalBlocks": 180000,
+    "pcmBlocks": 180000,
+    "gapBlocks": 0,
+    "interruptionOpens": 1,
+    "interruptionCloses": 1,
+    "interruptionChannel": "you",
+    "interruptionReason": "timestamp-discontinuity",
+    "interruptionRecovered": true,
+    "readyFirst": true,
+    "maxImpulseSkewBlocks": 1
+  }
+}

@@ -86,4 +86,98 @@ describe('packaging configuration', () => {
     expect(packagedSmoke).toContain('delete env.INTERVIEW_COPILOT_WHISPER_CLI;');
     expect(packagedSmoke).toContain('delete env.INTERVIEW_COPILOT_MODEL_MANIFEST;');
   });
+
+  it('configures hardened runtime and entitlements for audio capture helper', () => {
+    const builderYaml = readRepoFile('electron-builder.yml');
+    const entitlementsMac = readRepoFile('build/entitlements.mac.plist');
+    const entitlementsInherit = readRepoFile('build/entitlements.inherit.plist');
+
+    expect(builderYaml).toContain('hardenedRuntime: true');
+    expect(builderYaml).toContain('entitlements: build/entitlements.mac.plist');
+    expect(builderYaml).toContain('entitlementsInherit: build/entitlements.inherit.plist');
+
+    expect(entitlementsMac).toContain('com.apple.security.cs.allow-jit');
+    expect(entitlementsMac).toContain('com.apple.security.device.audio-input');
+    expect(entitlementsMac).toContain('com.apple.security.device.screen-capture');
+
+    expect(entitlementsInherit).toContain('com.apple.security.cs.allow-jit');
+    expect(entitlementsInherit).toContain('com.apple.security.cs.allow-unsigned-executable-memory');
+    expect(entitlementsInherit).toContain('com.apple.security.device.audio-input');
+  });
+
+  it('configures nested helper signing under mac.binaries', () => {
+    const builderYaml = readRepoFile('electron-builder.yml');
+
+    expect(builderYaml).toContain('binaries:');
+    expect(builderYaml).toContain('audio-capture/bin/interview-audio-capture');
+  });
+
+  it('includes both usage descriptions naming Interview Copilot', () => {
+    const builderYaml = readRepoFile('electron-builder.yml');
+
+    expect(builderYaml).toContain('NSMicrophoneUsageDescription:');
+    expect(builderYaml).toContain('NSScreenCaptureUsageDescription:');
+
+    // Usage description values should name the app, not the helper executable
+    const micMatch = builderYaml.match(/NSMicrophoneUsageDescription:\s*(.+)/);
+    expect(micMatch).not.toBeNull();
+    expect(micMatch![1]).toContain('Interview Copilot');
+    expect(micMatch![1]).not.toContain('interview-audio-capture');
+
+    const screenMatch = builderYaml.match(/NSScreenCaptureUsageDescription:\s*(.+)/);
+    // screen capture line may be in extendInfo, check the full value
+    const screenLine = builderYaml.split('\n').find(l => l.includes('NSScreenCaptureUsageDescription'));
+    if (screenLine) {
+      expect(screenLine).toContain('Interview Copilot');
+      expect(screenLine).not.toContain('interview-audio-capture');
+    }
+  });
+
+  it('configures both sidecars as extraResources', () => {
+    const builderYaml = readRepoFile('electron-builder.yml');
+
+    expect(builderYaml).toContain('from: build/whisper/darwin-arm64/whisper-cli');
+    expect(builderYaml).toContain('to: whisper/bin/whisper-cli');
+    expect(builderYaml).toContain('from: build/audio-capture/darwin-arm64/interview-audio-capture');
+    expect(builderYaml).toContain('to: audio-capture/bin/interview-audio-capture');
+  });
+
+  it('adds build:capture and verify:capture scripts', () => {
+    const packageJson = JSON.parse(readRepoFile('package.json'));
+
+    expect(packageJson.scripts['build:capture']).toBe(
+      'bash scripts/build-audio-capture-sidecar.sh'
+    );
+    expect(packageJson.scripts['verify:capture']).toBe(
+      'bash scripts/verify-audio-capture-sidecar.sh build/audio-capture/darwin-arm64/interview-audio-capture'
+    );
+  });
+
+  it('adds verify:capture:release script that invokes signing verifier', () => {
+    const packageJson = JSON.parse(readRepoFile('package.json'));
+
+    expect(packageJson.scripts['verify:capture:release']).toContain(
+      'verify-audio-capture-signing.sh'
+    );
+    expect(packageJson.scripts['verify:capture:release']).toContain(
+      'signed-release'
+    );
+  });
+
+  it('does not hard-code identity: null in release configuration', () => {
+    const builderYaml = readRepoFile('electron-builder.yml');
+
+    // identity: null means unsigned; release should not have this
+    expect(builderYaml).not.toMatch(/identity:\s*null/);
+  });
+
+  it('sets CSC_IDENTITY_AUTO_DISCOVERY=false only in the local pack script', () => {
+    const packageJson = JSON.parse(readRepoFile('package.json'));
+
+    const packScript = packageJson.scripts['pack'];
+    expect(packScript).toContain('CSC_IDENTITY_AUTO_DISCOVERY=false');
+
+    const packReleaseScript = packageJson.scripts['pack:release'];
+    expect(packReleaseScript).not.toContain('CSC_IDENTITY_AUTO_DISCOVERY=false');
+  });
 });

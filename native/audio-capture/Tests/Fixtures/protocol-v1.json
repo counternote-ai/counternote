@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "cases": [
+    { "name": "valid-ready", "frames": ["SUNBUAEBAACBAAAAAAAAAHsidHlwZSI6InJlYWR5Iiwic2FtcGxlUmF0ZUh6IjoxNjAwMCwiZnJhbWVzUGVyQmxvY2siOjMyMCwiZW5jb2RpbmciOiJzMTZsZSIsImNoYW5uZWxPcmRlciI6WyJpbnRlcnZpZXdlciIsInlvdSJdLCJmaXJzdEJsb2NrIjowfQ=="], "outcome": "ok" },
+    { "name": "valid-init-error", "frames": ["SUNBUAEHAABVAAAAAAAAAHsidHlwZSI6ImVycm9yIiwicGhhc2UiOiJpbml0aWFsaXphdGlvbiIsImNvZGUiOiJ1bnN1cHBvcnRlZC1mb3JtYXQiLCJ0ZXJtaW5hbCI6dHJ1ZX0="], "outcome": "ok" },
+    { "name": "wrong-magic", "frames": ["AAAAAAEBAACBAAAAAAAAAHsidHlwZSI6InJlYWR5Iiwic2FtcGxlUmF0ZUh6IjoxNjAwMCwiZnJhbWVzUGVyQmxvY2siOjMyMCwiZW5jb2RpbmciOiJzMTZsZSIsImNoYW5uZWxPcmRlciI6WyJpbnRlcnZpZXdlciIsInlvdSJdLCJmaXJzdEJsb2NrIjowfQ=="], "outcome": "INVALID_MAGIC" },
+    { "name": "wrong-version", "frames": ["SUNBUAIBAACBAAAAAAAAAHsidHlwZSI6InJlYWR5Iiwic2FtcGxlUmF0ZUh6IjoxNjAwMCwiZnJhbWVzUGVyQmxvY2siOjMyMCwiZW5jb2RpbmciOiJzMTZsZSIsImNoYW5uZWxPcmRlciI6WyJpbnRlcnZpZXdlciIsInlvdSJdLCJmaXJzdEJsb2NrIjowfQ=="], "outcome": "UNSUPPORTED_VERSION" },
+    { "name": "nonzero-reserved", "frames": ["SUNBUAEBAQCBAAAAAAAAAHsidHlwZSI6InJlYWR5Iiwic2FtcGxlUmF0ZUh6IjoxNjAwMCwiZnJhbWVzUGVyQmxvY2siOjMyMCwiZW5jb2RpbmciOiJzMTZsZSIsImNoYW5uZWxPcmRlciI6WyJpbnRlcnZpZXdlciIsInlvdSJdLCJmaXJzdEJsb2NrIjowfQ=="], "outcome": "NONZERO_RESERVED_BYTES" },
+    { "name": "oversized-json-length", "frames": ["SUNBUAEBAAABEAAAAAAAAA=="], "outcome": "INVALID_PAYLOAD_LENGTH" },
+    { "name": "malformed-json", "frames": ["SUNBUAEBAAABAAAAAAAAAHs="], "outcome": "MALFORMED_JSON" },
+    { "name": "duplicate-key", "frames": ["SUNBUAEBAACPAAAAAAAAAHsidHlwZSI6InJlYWR5IiwidHlwZSI6InJlYWR5Iiwic2FtcGxlUmF0ZUh6IjoxNjAwMCwiZnJhbWVzUGVyQmxvY2siOjMyMCwiZW5jb2RpbmciOiJzMTZsZSIsImNoYW5uZWxPcmRlciI6WyJpbnRlcnZpZXdlciIsInlvdSJdLCJmaXJzdEJsb2NrIjow"], "outcome": "DUPLICATE_JSON_KEY" },
+    { "name": "unknown-key", "frames": ["SUNBUAEBAACOAAAAAAAAAHsidHlwZSI6InJlYWR5Iiwic2FtcGxlUmF0ZUh6IjoxNjAwMCwiZnJhbWVzUGVyQmxvY2siOjMyMCwiZW5jb2RpbmciOiJzMTZsZSIsImNoYW5uZWxPcmRlciI6WyJpbnRlcnZpZXdlciIsInlvdSJdLCJmaXJzdEJsb2NrIjowLCJleHRyYSI6dHJ1ZX0="], "outcome": "INVALID_SCHEMA" },
+    { "name": "explicit-null", "frames": ["SUNBUAEBAACEAAAAAAAAAHsidHlwZSI6InJlYWR5Iiwic2FtcGxlUmF0ZUh6IjoxNjAwMCwiZnJhbWVzUGVyQmxvY2siOjMyMCwiZW5jb2RpbmciOiJzMTZsZSIsImNoYW5uZWxPcmRlciI6WyJpbnRlcnZpZXdlciIsInlvdSJdLCJmaXJzdEJsb2NrIjpudWxsfQ=="], "outcome": "INVALID_SCHEMA" },
+    { "name": "noninteger", "frames": ["SUNBUAEBAACDAAAAAAAAAHsidHlwZSI6InJlYWR5Iiwic2FtcGxlUmF0ZUh6IjoxNjAwMC41LCJmcmFtZXNQZXJCbG9jayI6MzIwLCJlbmNvZGluZyI6InMxNmxlIiwiY2hhbm5lbE9yZGVyIjpbImludGVydmlld2VyIiwieW91Il0sImZpcnN0QmxvY2siOjB9"], "outcome": "INVALID_SCHEMA" }
+  ]
+}

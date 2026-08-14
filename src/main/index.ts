@@ -1,7 +1,7 @@
-import { app, BrowserWindow, ipcMain, session, desktopCapturer } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { WavWriter } from './wav-writer';
+import { WavWriter as NativeWavWriter } from './native-capture/wav-writer';
 import { TrayManager } from './tray';
 import { saveExport } from './export';
 import { loadConfig, saveConfig, getGroqApiKey, setGroqApiKey } from './config';
@@ -34,18 +34,105 @@ import { LocalWhisperProvider } from './transcription/local-whisper-provider';
 import { GroqProvider } from './transcription/groq-provider';
 import { WhisperProcessRunner } from './transcription/whisper-process';
 import { resolveWhisperCliPath } from './transcription/sidecar-path';
+import { QuitCoordinator } from './quit-coordinator';
+import { RecordingMutationCoordinator } from './recording-mutation-coordinator';
+import { RecoveryService } from './recovery-service';
+import { createNativeCaptureController, type NativeCaptureController } from './native-capture/controller';
+import { createNativeCaptureSession, type NativeCaptureSession } from './native-capture/session';
+import { resolveAudioCaptureHelper } from './native-capture/helper-path';
+import { CaptureStore } from './native-capture/capture-store';
+import { spawn } from 'child_process';
 
 let mainWindow: BrowserWindow | null = null;
-let wavWriter: WavWriter | null = null;
 let trayManager: TrayManager | null = null;
 const activity = new AppActivityCoordinator();
 const recordingsLibrary = new RecordingsLibrary(() => loadConfig().outputDir);
 let modelService: LocalModelManager | null = null;
 let transcriptionService: TranscriptionOrchestrator | null = null;
 let localUnavailableStatus: LocalModelStatus | null = null;
+let quitCoordinator: QuitCoordinator | null = null;
+
+/* ── Native capture controller ──────────────────────────────── */
+
+const mutationCoordinator = new RecordingMutationCoordinator();
+const captureStore = new CaptureStore(() => loadConfig().outputDir);
+const recoveryService = new RecoveryService(
+  () => loadConfig().outputDir,
+  mutationCoordinator,
+);
+
+let nativeCaptureController: NativeCaptureController | null = null;
+
+function getNativeCaptureController(): NativeCaptureController {
+  if (nativeCaptureController === null) {
+    nativeCaptureController = createNativeCaptureController({
+      mutationCoordinator,
+      recoveryService,
+      now: () => new Date(),
+      createSession: (recordingId: string): NativeCaptureSession => {
+        const helperPath = resolveAudioCaptureHelper({
+          isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath ?? '',
+          projectRoot: __dirname,
+          platform: process.platform,
+          arch: process.arch,
+        });
+        return createNativeCaptureSession(recordingId, {
+          helperPath,
+          store: captureStore,
+          mutationCoordinator,
+          recordingsLibrary,
+          spawn: (command: string, args: string[], options: { stdio: ['pipe', 'pipe', 'pipe']; env: Record<string, string> }) => {
+            return spawn(command, args, options) as unknown as import('./native-capture/session').ChildProcessLike;
+          },
+          openWriter: (filePath: string) => NativeWavWriter.open(filePath) as unknown as Promise<import('./native-capture/session').WavWriterLike>,
+          now: Date.now,
+          setTimeout: (cb, ms) => global.setTimeout(cb, ms),
+          clearTimeout: (id) => global.clearTimeout(id as NodeJS.Timeout),
+        });
+      },
+    });
+  }
+  return nativeCaptureController;
+}
 
 // Set app name for macOS menu bar and Activity Monitor
 app.name = 'Interview Copilot';
+
+// Single-instance lock: must be acquired before whenReady
+const singleInstanceLock = app.requestSingleInstanceLock();
+if (!singleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
+  // Initialize quit coordinator before any window or tray can request exit
+  quitCoordinator = new QuitCoordinator({
+    app,
+    isIdle: () => {
+      const controller = getNativeCaptureController();
+      const snap = controller.snapshot();
+      return snap.state === 'idle' && !activity.isTranscribing();
+    },
+    closeAndDrain: async () => {
+      await mutationCoordinator.closeAndDrain();
+    },
+    stopCaptureIfActive: async () => {
+      const controller = getNativeCaptureController();
+      await controller.stopRecording();
+    },
+  });
+
+  app.on('before-quit', (event) => {
+    quitCoordinator!.handleBeforeQuit(event);
+  });
+}
 
 function e2eEnabled(): boolean {
   return !app.isPackaged && process.env.INTERVIEW_COPILOT_E2E === '1';
@@ -213,51 +300,94 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   // Create tray
-  trayManager = new TrayManager(mainWindow);
+  trayManager = new TrayManager(mainWindow, () => app.quit());
 
-  // Update tray when recording state changes
-  ipcMain.on('recording-state-changed', (event, isRecording: boolean) => {
-    trayManager?.setRecording(isRecording);
+  // Wire tray to controller state and broadcast status to renderer
+  const controller = getNativeCaptureController();
+  controller.onStatusChange((snapshot) => {
+    // Update tray
+    if (snapshot.state === 'recording' || snapshot.state === 'starting') {
+      trayManager?.setState('recording');
+    } else if (snapshot.state === 'finishing') {
+      trayManager?.setState('finishing');
+    } else {
+      trayManager?.setState('idle');
+    }
+    // Broadcast to renderer
+    mainWindow?.webContents.send('recording:status', snapshot);
   });
+
+  // Tray stop action delegates to controller
+  trayManager.onStop = () => {
+    void controller.stopRecording();
+  };
 }
 
-// IPC handlers for recording
-ipcMain.handle('start-recording', async () => {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const recordingsDir = path.join(recordingsLibrary.getRoot(), timestamp);
+/* ── Native capture IPC handlers ────────────────────────────── */
 
-  // Create directory
-  fs.mkdirSync(recordingsDir, { recursive: true });
-
-  const audioPath = path.join(recordingsDir, 'audio.wav');
-  wavWriter = new WavWriter(audioPath, 16000, 2);
-
-  activity.startRecording();
-
-  // Update tray to show recording state
-  trayManager?.setRecording(true);
-
-  console.log('Recording started.');
-  return { success: true };
-});
-
-ipcMain.handle('stop-recording', async () => {
-  if (wavWriter) {
-    await wavWriter.close();
-    wavWriter = null;
-    console.log('Recording stopped');
-  }
-  activity.finishRecording();
-  // Update tray to hide recording state
-  trayManager?.setRecording(false);
-  return { success: true };
-});
-
-ipcMain.on('audio-data', (event, data: ArrayBuffer) => {
-  if (wavWriter) {
-    wavWriter.write(Buffer.from(data));
+ipcMain.handle('recording:start', async () => {
+  try {
+    return await getNativeCaptureController().startRecording();
+  } catch {
+    return { ok: false as const, reason: 'persistence-error' as const };
   }
 });
+
+ipcMain.handle('recording:cancel', async () => {
+  try {
+    return await getNativeCaptureController().cancelRecording();
+  } catch {
+    return { status: 'not-active' as const };
+  }
+});
+
+ipcMain.handle('recording:stop', async () => {
+  try {
+    return await getNativeCaptureController().stopRecording();
+  } catch {
+    return { status: 'not-active' as const };
+  }
+});
+
+ipcMain.handle('recording:get-status', () => {
+  return getNativeCaptureController().snapshot();
+});
+
+ipcMain.handle('recording:list-recovery', async () => {
+  try {
+    return await getNativeCaptureController().listRecovery();
+  } catch {
+    return [];
+  }
+});
+
+ipcMain.handle('recording:recover', async (_event, args: unknown) => {
+  if (!isRecoveryIdArgs(args)) {
+    return { outcome: 'not-found' as const };
+  }
+  try {
+    return await getNativeCaptureController().recoverRecording(args.id);
+  } catch {
+    return { outcome: 'recovery-failed' as const };
+  }
+});
+
+ipcMain.handle('recording:trash-recovery', async (_event, args: unknown) => {
+  if (!isRecoveryIdArgs(args)) {
+    return { outcome: 'not-found' as const };
+  }
+  try {
+    return await getNativeCaptureController().trashRecovery(args.id);
+  } catch {
+    return { outcome: 'trash-failed' as const };
+  }
+});
+
+function isRecoveryIdArgs(value: unknown): value is { id: string } {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.id === 'string' && candidate.id.length > 0;
+}
 
 ipcMain.handle('get-recording-permissions', () => ({
   success: true,
@@ -281,6 +411,9 @@ ipcMain.handle(
 
 ipcMain.handle('list-recordings', async () => {
   try {
+    const captureRecords = new Map(
+      (await recordingsLibrary.list()).map((recording) => [recording.id, recording]),
+    );
     const recordingsDir = recordingsLibrary.getRoot();
     if (!fs.existsSync(recordingsDir)) {
       return { success: true, recordings: [] };
@@ -289,8 +422,9 @@ ipcMain.handle('list-recordings', async () => {
     const entries = fs.readdirSync(recordingsDir, { withFileTypes: true });
     const recordings = await Promise.all(
       entries
-        .filter((entry) => entry.isDirectory())
+        .filter((entry) => entry.isDirectory() && captureRecords.has(entry.name))
         .map(async (entry) => {
+          const captureRecord = captureRecords.get(entry.name)!;
           const dirPath = path.join(recordingsDir, entry.name);
           const audioPath = path.join(dirPath, 'audio.wav');
           const transcriptPath = path.join(dirPath, 'transcript.json');
@@ -332,6 +466,8 @@ ipcMain.handle('list-recordings', async () => {
             duration,
             transcribed: hasTranscriptSegments(segments),
             segments,
+            captureStatus: captureRecord.captureStatus,
+            interruptions: captureRecord.interruptions,
           };
         })
     );
@@ -463,27 +599,6 @@ function isSettingsUpdate(value: unknown): value is Partial<TranscriptionSetting
 }
 
 app.whenReady().then(() => {
-  // Configure loopback audio capture
-  session.defaultSession.setDisplayMediaRequestHandler(
-    (request, callback) => {
-      // Provide the first screen source with loopback audio
-      desktopCapturer.getSources({ types: ['screen'] })
-        .then((sources) => {
-          const source = sources[0];
-          if (!source) {
-            console.error('No screen sources are available for display media capture.');
-            callback({});
-            return;
-          }
-          callback({ video: source, audio: 'loopback' });
-        })
-        .catch((err: unknown) => {
-          console.error('Failed to get screen sources:', err);
-          callback({});
-        });
-    }
-  );
-
   createWindow();
 });
 

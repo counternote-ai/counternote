@@ -38,6 +38,20 @@ describe('recording permissions', () => {
     expect(getRecordingPermissionSnapshot().permissionOwnerName).toBe('Interview Copilot');
   });
 
+  it('grants recording permissions only for the development E2E harness', () => {
+    process.env.INTERVIEW_COPILOT_E2E = '1';
+    systemPreferencesMock.getMediaAccessStatus.mockReturnValue('denied');
+
+    expect(getRecordingPermissionSnapshot()).toEqual({
+      screen: 'granted',
+      microphone: 'granted',
+      permissionOwnerName: 'Electron',
+      canAttemptRecording: true,
+    });
+
+    delete process.env.INTERVIEW_COPILOT_E2E;
+  });
+
   it.each(['not-determined', 'unknown'] as const)(
     'allows an attempt when screen access is %s',
     (status) => {

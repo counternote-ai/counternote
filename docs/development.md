@@ -2,8 +2,9 @@
 
 ## Requirements
 
-- macOS 13 or newer
+- macOS 13 or newer (Apple Silicon recommended)
 - Node.js 22.12 or newer
+- Xcode 15 or newer (for Swift audio capture helper)
 - npm
 - Git
 
@@ -39,18 +40,33 @@ Webpack watch rebuilds `dist` but does not automatically restart Electron. Use
 `Cmd+R` for renderer-only changes; stop and restart `npm start` after changing
 main-process or preload code.
 
+## Audio capture helper
+
+Build and verify the Swift audio capture helper:
+
+```bash
+npm run build:capture
+npm run verify:capture
+```
+
+The helper is a standalone macOS binary that captures system audio and microphone
+using CoreAudio. It requires Screen Recording and Microphone permissions.
+
 ## Local Whisper sidecar
 
 Prepare the macOS Apple Silicon sidecar before running local transcription:
 
 ```bash
 npm run build:whisper
+npm run verify:whisper
 ```
 
 Normal TypeScript watch does not rebuild whisper.cpp. Run the sidecar preparation
 command again after changing its build inputs.
 
 ## Verification
+
+Run the focused tests while developing, then the full suite before committing:
 
 ```bash
 npm test
@@ -66,14 +82,42 @@ npm run test:e2e
 
 It launches an isolated 400 × 600 app window and stores ignored screenshots under `test-results/`.
 
-## Packaging
+## Full verification sequence
 
-Build and verify the macOS Apple Silicon sidecar, then create and check an unsigned local package:
+Run the complete verification sequence before requesting review:
 
 ```bash
+swift test --package-path native/audio-capture
+npx jest src/main/native-capture/__tests__/real-helper-integration.test.ts --runInBand
+npm test
+npx tsc --noEmit
+npm run build
+npm run build:capture
+npm run verify:capture
+npm run build:whisper
+npm run verify:whisper
+npm run test:e2e
+npm run check:pack
+```
+
+## Packaging
+
+Build and verify both sidecars, then create and check an unsigned local package:
+
+```bash
+npm run build:capture
+npm run verify:capture
 npm run build:whisper
 npm run verify:whisper
 npm run check:pack
 ```
 
-`check:pack` downloads/builds the whisper.cpp source, creates an unsigned local arm64 app, verifies the nested `whisper-cli` sidecar, and runs the packaged smoke test. It is not a signed or notarized release package.
+`check:pack` creates an unsigned local arm64 app, verifies the nested sidecars,
+and runs the packaged smoke test. It is not a signed or notarized release package.
+
+## Permissions
+
+The audio capture helper requires macOS Screen Recording access for system audio
+and Microphone access for the user's microphone. These permissions are attributed
+to the helper binary, not the Electron app. Permission recovery is available from
+the recordings screen when macOS reports a blocked permission.

@@ -9,8 +9,15 @@ files:
 extraResources:
   - from: build/whisper/darwin-arm64/whisper-cli
     to: whisper/bin/whisper-cli
+  - from: build/audio-capture/darwin-arm64/interview-audio-capture
+    to: audio-capture/bin/interview-audio-capture
 mac:
   category: public.app-category.productivity
-  identity: null
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.inherit.plist
   extendInfo:
     NSMicrophoneUsageDescription: Interview Copilot needs microphone access to record your side of an interview.
+    NSScreenCaptureUsageDescription: Interview Copilot needs screen capture access to record system audio from interviews.
+  binaries:
+    - audio-capture/bin/interview-audio-capture

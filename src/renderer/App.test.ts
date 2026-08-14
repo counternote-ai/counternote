@@ -13,14 +13,32 @@ interface MockElement {
 }
 
 interface MockControlPanelProps {
-  recordings: Array<{ id: string; title: string }>;
+  recordings: Array<{ id: string; title: string; duration?: number; captureStatus?: string }>;
   permissionNotice: { tone: string; message: string; settingsPermission?: string } | null;
   localTranscriptionUnavailable?: boolean;
   transcriptionProgress?: { recordingId: string; stage: string } | null;
+  isRecording?: boolean;
+  isStarting?: boolean;
+  isFinishing?: boolean;
+  healthView?: {
+    state: string;
+    startingMessage: string | null;
+    finishingMessage: string | null;
+    channels: Array<{ label: string; statusText: string; tone: string }>;
+    ariaSummary: string;
+    canCancel: boolean;
+    canStop: boolean;
+  } | null;
+  recoveryItems?: Array<{ id: string; createdAt: string; bytes: number; state: string }>;
+  recoveringId?: string | null;
   onStartRecording: () => Promise<void>;
+  onCancelRecording?: () => Promise<void>;
+  onStopRecording?: () => Promise<void>;
   onTranscribe: (recordingId: string) => Promise<void>;
   onOpenPermissionSettings: () => Promise<void>;
   onDismissPermissionNotice: () => void;
+  onRecover?: (id: string) => Promise<void>;
+  onTrashRecovery?: (id: string) => Promise<void>;
 }
 
 interface MockSettingsProps {
@@ -105,15 +123,6 @@ jest.mock('lucide-react', () => ({
   Download: mockIcon,
   KeyRound: mockIcon,
   ShieldCheck: mockIcon,
-}));
-
-const mockCaptureStart = jest.fn<Promise<void>, []>();
-const mockCaptureStop = jest.fn<void, []>();
-jest.mock('./audio-capture', () => ({
-  AudioCapture: jest.fn().mockImplementation(() => ({
-    start: mockCaptureStart,
-    stop: mockCaptureStop,
-  })),
 }));
 
 const App = require('./App').default as typeof import('./App').default;
@@ -206,8 +215,6 @@ const mockElectronAPI = {
   openRecordingPermissionSettings: jest.fn(),
   loadConfig: jest.fn(),
   listRecordings: jest.fn(),
-  startRecording: jest.fn(),
-  onStopRecording: jest.fn(),
   onOpenSettings: jest.fn(),
   onTranscriptionProgress: jest.fn(),
   onLocalModelStatus: jest.fn(),
@@ -216,6 +223,14 @@ const mockElectronAPI = {
   transcribe: jest.fn(),
   exportTranscript: jest.fn(),
   saveConfig: jest.fn(),
+  recordingStart: jest.fn(),
+  recordingStop: jest.fn(),
+  recordingCancel: jest.fn(),
+  recordingGetStatus: jest.fn(),
+  recordingListRecovery: jest.fn(),
+  recordingRecover: jest.fn(),
+  recordingTrashRecovery: jest.fn(),
+  onRecordingStatus: jest.fn(),
 };
 
 beforeEach(() => {
@@ -241,13 +256,28 @@ beforeEach(() => {
     },
   });
   mockElectronAPI.listRecordings.mockResolvedValue({ success: true, recordings: [] });
-  mockElectronAPI.startRecording.mockResolvedValue({ success: true });
   mockElectronAPI.getLocalModelStatus.mockResolvedValue({ state: 'not-downloaded' });
   mockElectronAPI.installLocalModel.mockResolvedValue({ success: true });
   mockElectronAPI.transcribe.mockResolvedValue({ success: true });
   mockElectronAPI.exportTranscript.mockResolvedValue({ success: true });
   mockElectronAPI.saveConfig.mockResolvedValue({ success: true });
-  mockCaptureStart.mockResolvedValue(undefined);
+  mockElectronAPI.recordingStart.mockResolvedValue({ ok: true, recordingId: 'test-recording-id' });
+  mockElectronAPI.recordingStop.mockResolvedValue({ status: 'complete' });
+  mockElectronAPI.recordingCancel.mockResolvedValue({ status: 'complete' });
+  mockElectronAPI.recordingGetStatus.mockResolvedValue({
+    state: 'idle',
+    recordingId: undefined,
+    canCancel: false,
+    canStop: false,
+    channels: {
+      interviewer: { status: 'idle', started: false },
+      you: { status: 'idle', started: false },
+    },
+  });
+  mockElectronAPI.recordingListRecovery.mockResolvedValue([]);
+  mockElectronAPI.recordingRecover.mockResolvedValue({ outcome: 'recovered' });
+  mockElectronAPI.recordingTrashRecovery.mockResolvedValue({ outcome: 'trashed' });
+  mockElectronAPI.onRecordingStatus.mockReturnValue(jest.fn());
 
   Object.defineProperty(global, 'window', {
     configurable: true,
@@ -299,7 +329,7 @@ describe('recording permission lifecycle', () => {
     renderApp();
 
     expect(mockElectronAPI.getRecordingPermissions).toHaveBeenCalledTimes(1);
-    expect(mockCaptureStart).not.toHaveBeenCalled();
+    expect(mockElectronAPI.recordingStart).not.toHaveBeenCalled();
     expect(getControlPanelProps().permissionNotice?.tone).toBe('error');
     expect(getControlPanelProps().recordings).toEqual([
       { id: 'saved-recording', title: 'Saved interview' },
@@ -349,39 +379,29 @@ describe('recording permission lifecycle', () => {
   });
 
   it('never exposes a raw display-capture failure as rendered error copy', async () => {
-    const rawCaptureError = 'NotAllowedError: Chromium display capture failure 42';
-    mockCaptureStart.mockRejectedValueOnce(new Error(rawCaptureError));
+    mockElectronAPI.recordingStart.mockResolvedValueOnce({ ok: false, reason: 'helper-error' });
     renderApp();
 
     await getControlPanelProps().onStartRecording();
     renderApp();
 
-    expect(getErrorMessage()).toBe('Unable to start recording. Check your recording permissions and try again.');
-    expect(getErrorMessage()).not.toContain(rawCaptureError);
-    expect(mockConsoleError).toHaveBeenCalledWith('Renderer recording start failed.');
+    expect(getErrorMessage()).toBe('Recording could not start. The audio helper encountered an error.');
+    expect(getErrorMessage()).not.toContain('NotAllowedError');
     expect(mockConsoleError).not.toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ message: rawCaptureError })
+      expect.objectContaining({ message: 'NotAllowedError' })
     );
   });
 
-  it('uses storage recovery copy when recording-file creation fails', async () => {
-    const rawFileError = 'ENOSPC: no space left on device';
-    mockElectronAPI.startRecording.mockRejectedValueOnce(new Error(rawFileError));
+  it('uses storage recovery copy when persistence fails', async () => {
+    mockElectronAPI.recordingStart.mockResolvedValueOnce({ ok: false, reason: 'persistence-error' });
     renderApp();
 
     await getControlPanelProps().onStartRecording();
     renderApp();
 
-    expect(getErrorMessage()).toBe('Unable to create the recording file. Check available disk space and try again.');
+    expect(getErrorMessage()).toBe('Recording could not start. Check available disk space.');
     expect(getErrorMessage()).not.toContain('permissions');
-    expect(getErrorMessage()).not.toContain(rawFileError);
-    expect(mockCaptureStop).toHaveBeenCalledTimes(1);
-    expect(mockConsoleError).toHaveBeenCalledWith('Renderer recording file creation failed.');
-    expect(mockConsoleError).not.toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ message: rawFileError })
-    );
   });
 });
 
@@ -408,7 +428,7 @@ describe('transcription IPC lifecycle', () => {
   });
 
   it('sends only the recording ID when a saved recording is transcribed', async () => {
-    mockStateValues[2] = [{
+    mockStateValues[1] = [{
       id: '2026-07-27T12-00-00-000Z',
       title: 'Saved interview',
       duration: 60,
@@ -424,7 +444,7 @@ describe('transcription IPC lifecycle', () => {
   });
 
   it('starts a transcription with progress scoped to the selected recording', async () => {
-    mockStateValues[2] = [
+    mockStateValues[1] = [
       { id: 'active-recording', title: 'Active interview', duration: 60, transcribed: false },
       { id: 'other-recording', title: 'Other interview', duration: 60, transcribed: false },
     ];
@@ -447,7 +467,7 @@ describe('transcription IPC lifecycle', () => {
   });
 
   it('keeps the recording after a transcription failure and lets the candidate dismiss its recovery alert', async () => {
-    mockStateValues[2] = [
+    mockStateValues[1] = [
       { id: 'saved-recording', title: 'Saved interview', duration: 60, transcribed: false },
     ];
     mockElectronAPI.transcribe.mockResolvedValueOnce({
@@ -478,7 +498,7 @@ describe('transcription IPC lifecycle', () => {
 
   it('sends only the recording ID when exporting a transcript', async () => {
     mockStateValues[0] = 'transcript';
-    mockStateValues[3] = {
+    mockStateValues[2] = {
       id: '2026-07-27T12-00-00-000Z',
       title: 'Saved interview',
       duration: 60,
@@ -519,7 +539,7 @@ describe('transcription IPC lifecycle', () => {
   });
 
   it('keeps Local selected when its sidecar is unavailable instead of falling back to Groq', () => {
-    mockStateValues[7] = { state: 'unavailable', reason: 'sidecar-missing' };
+    mockStateValues[6] = { state: 'unavailable', reason: 'sidecar-missing' };
     renderApp();
 
     expect(getControlPanelProps().localTranscriptionUnavailable).toBe(true);
@@ -694,5 +714,646 @@ describe('transcription provider settings', () => {
 
     expect(install).toHaveBeenCalledTimes(1);
     expect(renderedText(tree).join(' ')).toContain('Retry download');
+  });
+});
+
+/* ── Native capture lifecycle ────────────────────────────────── */
+
+describe('native capture lifecycle', () => {
+  let statusCallback: ((snapshot: unknown) => void) | undefined;
+
+  function simulateStatus(snapshot: {
+    state: string;
+    recordingId?: string;
+    canCancel?: boolean;
+    canStop?: boolean;
+    channels?: {
+      interviewer: { status: string; started: boolean };
+      you: { status: string; started: boolean };
+    };
+  }): void {
+    if (!statusCallback) throw new Error('onRecordingStatus not subscribed');
+    statusCallback({
+      recordingId: undefined,
+      canCancel: false,
+      canStop: false,
+      channels: {
+        interviewer: { status: 'idle', started: false },
+        you: { status: 'idle', started: false },
+      },
+      ...snapshot,
+    });
+  }
+
+  beforeEach(() => {
+    statusCallback = undefined;
+    mockElectronAPI.onRecordingStatus.mockImplementation((cb: (snapshot: unknown) => void) => {
+      statusCallback = cb;
+      return jest.fn();
+    });
+  });
+
+  it('shows Starting… with Cancel when recording starts', async () => {
+    mockElectronAPI.recordingStart.mockResolvedValueOnce({ ok: true, recordingId: 'new-id' });
+    renderApp();
+    // Run all effects to register subscriptions
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    await getControlPanelProps().onStartRecording();
+    renderApp();
+
+    expect(mockElectronAPI.recordingStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('transitions to Recording only after the status becomes recording', async () => {
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    // Simulate starting state
+    simulateStatus({
+      state: 'starting',
+      recordingId: 'test-id',
+      canCancel: true,
+      canStop: false,
+    });
+    renderApp();
+
+    expect(getControlPanelProps().isStarting).toBe(true);
+
+    // Simulate transition to recording
+    simulateStatus({
+      state: 'recording',
+      recordingId: 'test-id',
+      canCancel: false,
+      canStop: true,
+      channels: {
+        interviewer: { status: 'connected', started: true },
+        you: { status: 'connected', started: true },
+      },
+    });
+    renderApp();
+
+    expect(getControlPanelProps().isRecording).toBe(true);
+    expect(getControlPanelProps().isStarting).toBeFalsy();
+  });
+
+  it('refreshes the library when a helper finishes recording without a Stop click', async () => {
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+    mockElectronAPI.listRecordings.mockClear();
+
+    simulateStatus({
+      state: 'recording',
+      recordingId: 'test-id',
+      canStop: true,
+    });
+    simulateStatus({ state: 'idle' });
+    await Promise.resolve();
+
+    expect(mockElectronAPI.listRecordings).toHaveBeenCalledTimes(1);
+  });
+
+  it('provides independent Interviewer and You channel rows', async () => {
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    simulateStatus({
+      state: 'recording',
+      recordingId: 'test-id',
+      canStop: true,
+      channels: {
+        interviewer: { status: 'connected', started: true },
+        you: { status: 'reconnecting', started: true },
+      },
+    });
+    renderApp();
+
+    const healthView = getControlPanelProps().healthView;
+    expect(healthView).toBeDefined();
+    expect(healthView!.channels[0].label).toBe('Interviewer');
+    expect(healthView!.channels[0].statusText).toBe('Connected');
+    expect(healthView!.channels[1].label).toBe('You');
+    expect(healthView!.channels[1].statusText).toBe('Reconnecting…');
+  });
+
+  it('shows connected-with-gap status on both channels', async () => {
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    simulateStatus({
+      state: 'recording',
+      recordingId: 'test-id',
+      canStop: true,
+      channels: {
+        interviewer: { status: 'connected-with-gap', started: true },
+        you: { status: 'connected-with-gap', started: true },
+      },
+    });
+    renderApp();
+
+    const healthView = getControlPanelProps().healthView;
+    expect(healthView!.channels[0].statusText).toBe('Connected (gap detected)');
+    expect(healthView!.channels[1].statusText).toBe('Connected (gap detected)');
+  });
+
+  it('shows disconnected status with error tone', async () => {
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    simulateStatus({
+      state: 'recording',
+      recordingId: 'test-id',
+      canStop: true,
+      channels: {
+        interviewer: { status: 'disconnected', started: false },
+        you: { status: 'connected', started: true },
+      },
+    });
+    renderApp();
+
+    const healthView = getControlPanelProps().healthView;
+    expect(healthView!.channels[0].statusText).toBe('Disconnected');
+    expect(healthView!.channels[0].tone).toBe('error');
+  });
+
+  it('shows no-audio-detected status', async () => {
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    simulateStatus({
+      state: 'recording',
+      recordingId: 'test-id',
+      canStop: true,
+      channels: {
+        interviewer: { status: 'no-audio-detected', started: true },
+        you: { status: 'connected', started: true },
+      },
+    });
+    renderApp();
+
+    const healthView = getControlPanelProps().healthView;
+    expect(healthView!.channels[0].statusText).toBe('No audio detected');
+    expect(healthView!.channels[0].tone).toBe('warning');
+  });
+
+  it('shows format-limit status', async () => {
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    simulateStatus({
+      state: 'recording',
+      recordingId: 'test-id',
+      canStop: true,
+      channels: {
+        interviewer: { status: 'format-limit', started: true },
+        you: { status: 'format-limit', started: true },
+      },
+    });
+    renderApp();
+
+    const healthView = getControlPanelProps().healthView;
+    expect(healthView!.channels[0].statusText).toBe('Format limit reached');
+    expect(healthView!.channels[0].tone).toBe('error');
+  });
+
+  it('shows Finishing recording before quitting… during finishing state', async () => {
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    simulateStatus({
+      state: 'finishing',
+      recordingId: 'test-id',
+      canCancel: false,
+      canStop: false,
+    });
+    renderApp();
+
+    expect(getControlPanelProps().isFinishing).toBe(true);
+    expect(getControlPanelProps().healthView?.finishingMessage).toBe(
+      'Finishing recording before quitting…'
+    );
+  });
+
+  it('uses recordingStop for the Stop action', async () => {
+    mockElectronAPI.recordingStop.mockResolvedValueOnce({ status: 'complete' });
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    simulateStatus({
+      state: 'recording',
+      recordingId: 'test-id',
+      canStop: true,
+      channels: {
+        interviewer: { status: 'connected', started: true },
+        you: { status: 'connected', started: true },
+      },
+    });
+    renderApp();
+
+    await getControlPanelProps().onStopRecording?.();
+    expect(mockElectronAPI.recordingStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses recordingCancel for the Cancel action during starting', async () => {
+    mockElectronAPI.recordingCancel.mockResolvedValueOnce({ status: 'complete' });
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    simulateStatus({
+      state: 'starting',
+      recordingId: 'test-id',
+      canCancel: true,
+      canStop: false,
+    });
+    renderApp();
+
+    await getControlPanelProps().onCancelRecording?.();
+    expect(mockElectronAPI.recordingCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows start error when recordingStart fails', async () => {
+    mockElectronAPI.recordingStart.mockResolvedValueOnce({ ok: false, reason: 'timeout' });
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    await getControlPanelProps().onStartRecording();
+    renderApp();
+
+    expect(getErrorMessage()).toBe(
+      'Recording could not start. The audio helper did not respond.'
+    );
+  });
+
+  it('shows stop feedback when recordingStop returns interrupted', async () => {
+    mockElectronAPI.recordingStop.mockResolvedValueOnce({ status: 'interrupted' });
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    simulateStatus({
+      state: 'recording',
+      recordingId: 'test-id',
+      canStop: true,
+      channels: {
+        interviewer: { status: 'connected', started: true },
+        you: { status: 'connected', started: true },
+      },
+    });
+    renderApp();
+
+    await getControlPanelProps().onStopRecording?.();
+    renderApp();
+
+    expect(getErrorMessage()).toBe('Recording was interrupted. Partial audio was saved.');
+  });
+
+  it('shows capacity failure with disk space suggestion', async () => {
+    mockElectronAPI.recordingStop.mockResolvedValueOnce({ status: 'failed', category: 'capacity' });
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    simulateStatus({
+      state: 'recording',
+      recordingId: 'test-id',
+      canStop: true,
+      channels: {
+        interviewer: { status: 'connected', started: true },
+        you: { status: 'connected', started: true },
+      },
+    });
+    renderApp();
+
+    await getControlPanelProps().onStopRecording?.();
+    renderApp();
+
+    expect(getErrorMessage()).toBe('Recording stopped unexpectedly. Check available disk space.');
+  });
+
+  it('shows access failure without disk space claim', async () => {
+    mockElectronAPI.recordingStop.mockResolvedValueOnce({ status: 'failed', category: 'access' });
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    simulateStatus({
+      state: 'recording',
+      recordingId: 'test-id',
+      canStop: true,
+      channels: {
+        interviewer: { status: 'connected', started: true },
+        you: { status: 'connected', started: true },
+      },
+    });
+    renderApp();
+
+    await getControlPanelProps().onStopRecording?.();
+    renderApp();
+
+    const error = getErrorMessage();
+    expect(error).toBe('Recording stopped unexpectedly. The audio file could not be saved.');
+    expect(error).not.toContain('disk');
+    expect(error).not.toContain('space');
+  });
+
+  it('keeps the recording library visible while starting', async () => {
+    mockElectronAPI.listRecordings.mockResolvedValue({
+      success: true,
+      recordings: [{ id: 'saved', title: 'Saved interview', captureStatus: 'complete' }],
+    });
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    // Simulate starting state
+    simulateStatus({
+      state: 'starting',
+      recordingId: 'test-id',
+      canCancel: true,
+      canStop: false,
+    });
+    renderApp();
+
+    // Library should still be visible
+    expect(getControlPanelProps().recordings).toEqual([
+      { id: 'saved', title: 'Saved interview', captureStatus: 'complete' },
+    ]);
+  });
+});
+
+/* ── Recovery UI ─────────────────────────────────────────────── */
+
+describe('recovery UI', () => {
+  let statusCallback: ((snapshot: unknown) => void) | undefined;
+
+  beforeEach(() => {
+    statusCallback = undefined;
+    mockElectronAPI.onRecordingStatus.mockImplementation((cb: (snapshot: unknown) => void) => {
+      statusCallback = cb;
+      return jest.fn();
+    });
+  });
+
+  it('loads recovery items on mount', async () => {
+    mockElectronAPI.recordingListRecovery.mockResolvedValueOnce([
+      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+    ]);
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    expect(mockElectronAPI.recordingListRecovery).toHaveBeenCalled();
+  });
+
+  it('passes recovery items to ControlPanel', async () => {
+    const items = [
+      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' as const },
+      { id: 'recovery-2', createdAt: '2026-08-13T15:00:00.000Z', bytes: 2048, state: 'not-recoverable' as const },
+    ];
+    mockElectronAPI.recordingListRecovery.mockResolvedValueOnce(items);
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+    renderApp();
+
+    expect(getControlPanelProps().recoveryItems).toHaveLength(2);
+    expect(getControlPanelProps().recoveryItems![0].id).toBe('recovery-1');
+    expect(getControlPanelProps().recoveryItems![1].state).toBe('not-recoverable');
+  });
+
+  it('calls recordingRecover when recover action is triggered', async () => {
+    mockElectronAPI.recordingRecover.mockResolvedValueOnce({ outcome: 'recovered' });
+    mockElectronAPI.recordingListRecovery.mockResolvedValueOnce([
+      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+    ]);
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    await getControlPanelProps().onRecover?.('recovery-1');
+    expect(mockElectronAPI.recordingRecover).toHaveBeenCalledWith('recovery-1');
+  });
+
+  it('calls recordingTrashRecovery when trash action is triggered', async () => {
+    mockElectronAPI.recordingTrashRecovery.mockResolvedValueOnce({ outcome: 'trashed' });
+    mockElectronAPI.recordingListRecovery.mockResolvedValueOnce([
+      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+    ]);
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    await getControlPanelProps().onTrashRecovery?.('recovery-1');
+    expect(mockElectronAPI.recordingTrashRecovery).toHaveBeenCalledWith('recovery-1');
+  });
+
+  it('refreshes recovery list after successful recover', async () => {
+    mockElectronAPI.recordingRecover.mockResolvedValueOnce({ outcome: 'recovered' });
+    mockElectronAPI.recordingListRecovery
+      .mockResolvedValueOnce([
+        { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+      ])
+      .mockResolvedValueOnce([]);
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    await getControlPanelProps().onRecover?.('recovery-1');
+    await Promise.resolve();
+
+    // Should have been called twice: once on mount, once after recover
+    expect(mockElectronAPI.recordingListRecovery).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows error when recover fails without removing the item', async () => {
+    mockElectronAPI.recordingRecover.mockResolvedValueOnce({ outcome: 'recovery-failed' });
+    mockElectronAPI.recordingListRecovery.mockResolvedValueOnce([
+      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+    ]);
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    await getControlPanelProps().onRecover?.('recovery-1');
+    renderApp();
+
+    expect(getErrorMessage()).toContain('Recovery');
+  });
+
+  it('disables recovery actions during active capture', async () => {
+    mockElectronAPI.recordingListRecovery.mockResolvedValueOnce([
+      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+    ]);
+    mockElectronAPI.onRecordingStatus.mockImplementation((cb: (snapshot: unknown) => void) => {
+      statusCallback = cb;
+      return jest.fn();
+    });
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    // Simulate recording state
+    statusCallback!({
+      state: 'recording',
+      recordingId: 'test-id',
+      canCancel: false,
+      canStop: true,
+      channels: {
+        interviewer: { status: 'connected', started: true },
+        you: { status: 'connected', started: true },
+      },
+    });
+    renderApp();
+
+    expect(getControlPanelProps().isRecording).toBe(true);
+  });
+
+  it('sets recoveringId during recovery and clears it after', async () => {
+    let resolveRecover: (result: { outcome: string }) => void = () => undefined;
+    mockElectronAPI.recordingRecover.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveRecover = resolve; })
+    );
+    mockElectronAPI.recordingListRecovery
+      .mockResolvedValueOnce([
+        { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+      ])
+      .mockResolvedValueOnce([]);
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    const recoverPromise = getControlPanelProps().onRecover?.('recovery-1');
+    renderApp();
+
+    expect(getControlPanelProps().recoveringId).toBe('recovery-1');
+
+    resolveRecover({ outcome: 'recovered' });
+    await recoverPromise;
+    await Promise.resolve();
+    renderApp();
+
+    expect(getControlPanelProps().recoveringId).toBeNull();
+  });
+
+  it('refreshes recovery list after successful trash', async () => {
+    mockElectronAPI.recordingTrashRecovery.mockResolvedValueOnce({ outcome: 'trashed' });
+    mockElectronAPI.recordingListRecovery
+      .mockResolvedValueOnce([
+        { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+      ])
+      .mockResolvedValueOnce([]);
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    await getControlPanelProps().onTrashRecovery?.('recovery-1');
+    await Promise.resolve();
+
+    // Should have been called twice: once on mount, once after trash
+    expect(mockElectronAPI.recordingListRecovery).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not refresh recovery list after failed recovery', async () => {
+    mockElectronAPI.recordingRecover.mockResolvedValueOnce({ outcome: 'recovery-failed' });
+    mockElectronAPI.recordingListRecovery.mockResolvedValueOnce([
+      { id: 'recovery-1', createdAt: '2026-08-13T14:30:00.000Z', bytes: 1024, state: 'recoverable' },
+    ]);
+    renderApp();
+    mockEffects.forEach((effect) => effect());
+    await Promise.resolve();
+
+    await getControlPanelProps().onRecover?.('recovery-1');
+    await Promise.resolve();
+
+    // Should have been called only once (on mount), not refreshed after failure
+    expect(mockElectronAPI.recordingListRecovery).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ── Library card interrupted badge ──────────────────────────── */
+
+describe('library card interrupted badge', () => {
+  it('passes captureStatus to ControlPanel for each recording', async () => {
+    mockElectronAPI.listRecordings.mockResolvedValue({
+      success: true,
+      recordings: [
+        { id: 'complete-rec', title: 'Complete', captureStatus: 'complete', duration: 60, transcribed: false, interruptions: [] },
+        { id: 'interrupted-rec', title: 'Interrupted', captureStatus: 'interrupted', duration: 30, transcribed: false, interruptions: [{ channel: 'capture', startMs: 30000, endMs: 30000, recovered: false, reason: 'persistence-error' }] },
+        { id: 'legacy-rec', title: 'Legacy', captureStatus: 'legacy', duration: 45, transcribed: false, interruptions: [] },
+      ],
+    });
+    renderApp();
+    mockEffects[1](); // recordings effect
+    await Promise.resolve();
+    renderApp();
+
+    const recordings = getControlPanelProps().recordings;
+    expect(recordings).toHaveLength(3);
+    expect(recordings[0].captureStatus).toBe('complete');
+    expect(recordings[1].captureStatus).toBe('interrupted');
+    expect(recordings[2].captureStatus).toBe('legacy');
+  });
+
+  it('includes duration for interrupted recordings to support concise time summary', async () => {
+    mockElectronAPI.listRecordings.mockResolvedValue({
+      success: true,
+      recordings: [
+        { id: 'interrupted-rec', title: 'Interview with gaps', captureStatus: 'interrupted', duration: 1800, transcribed: false, interruptions: [{ channel: 'capture', startMs: 900000, endMs: 900000, recovered: false, reason: 'persistence-error' }] },
+      ],
+    });
+    renderApp();
+    mockEffects[1]();
+    await Promise.resolve();
+    renderApp();
+
+    const recordings = getControlPanelProps().recordings;
+    expect(recordings[0].duration).toBe(1800);
+    expect(recordings[0].captureStatus).toBe('interrupted');
+  });
+
+  it('preserves legacy captureStatus without interrupted badge treatment', async () => {
+    mockElectronAPI.listRecordings.mockResolvedValue({
+      success: true,
+      recordings: [
+        { id: 'legacy-rec', title: 'Old recording', captureStatus: 'legacy', duration: 120, transcribed: true, interruptions: [] },
+      ],
+    });
+    renderApp();
+    mockEffects[1]();
+    await Promise.resolve();
+    renderApp();
+
+    const recordings = getControlPanelProps().recordings;
+    expect(recordings[0].captureStatus).toBe('legacy');
+    expect(recordings[0].id).toBe('legacy-rec');
+  });
+
+  it('preserves complete captureStatus without interrupted badge treatment', async () => {
+    mockElectronAPI.listRecordings.mockResolvedValue({
+      success: true,
+      recordings: [
+        { id: 'complete-rec', title: 'Good recording', captureStatus: 'complete', duration: 240, transcribed: true, interruptions: [] },
+      ],
+    });
+    renderApp();
+    mockEffects[1]();
+    await Promise.resolve();
+    renderApp();
+
+    const recordings = getControlPanelProps().recordings;
+    expect(recordings[0].captureStatus).toBe('complete');
+    expect(recordings[0].id).toBe('complete-rec');
   });
 });

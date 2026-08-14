@@ -14,6 +14,26 @@ and stripped of transcript-shaped lines, secrets, and absolute paths.
 
 Interview Copilot does not include telemetry or analytics.
 
+## Audio capture helper
+
+The Swift audio capture helper receives local audio only. It captures system
+audio and microphone audio using CoreAudio, frames PCM with host-clock timestamps,
+and writes binary protocol frames to inherited pipes (stdout). The helper has no
+network access and receives a minimal sanitized environment that never includes
+parent credentials, paths, Node options, or dynamic-loader overrides.
+
+The helper never receives recording paths, transcript text, or credentials. It
+writes framed PCM to stdout; the main process owns all file persistence.
+
+## Recording artifacts
+
+In-progress recordings use a `.in-progress` extension and are renamed to `.wav`
+on clean finalization. Interrupted recordings use a `.recovery` extension and are
+available for user-controlled recovery or Trash disposal.
+
+No public recording appears before atomic publication. No failed artifact appears
+in the normal recordings library.
+
 ## When audio leaves the Mac
 
 Local Whisper keeps recording and prepared audio on the Mac. It runs the bundled
@@ -32,4 +52,7 @@ The Groq API key is encrypted with Electron `safeStorage`. On macOS, `safeStorag
 
 ## Permissions
 
-Interview Copilot uses macOS Screen Recording access for system audio capture and Microphone access for the user's microphone. Permission recovery is available from the recordings screen when macOS reports a blocked permission.
+Interview Copilot uses macOS Screen Recording access for system audio capture and
+Microphone access for the user's microphone. These permissions are attributed to
+the audio capture helper binary. Permission recovery is available from the
+recordings screen when macOS reports a blocked permission.

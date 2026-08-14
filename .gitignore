@@ -2,6 +2,7 @@ node_modules/
 dist/
 /release/
 /build/whisper/
+/build/audio-capture/
 .DS_Store
 *.log
 .env
@@ -22,3 +23,4 @@ test-results/
 .superpowers/
 docs/superpowers/plans/
 .worktrees/
+native/audio-capture/.build/

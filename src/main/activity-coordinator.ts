@@ -1,14 +1,5 @@
 export class AppActivityCoordinator {
-  private recording = false;
   private transcribing = false;
-
-  startRecording(): void {
-    this.recording = true;
-  }
-
-  finishRecording(): void {
-    this.recording = false;
-  }
 
   tryStartTranscription(): boolean {
     if (this.transcribing) return false;
@@ -18,10 +9,6 @@ export class AppActivityCoordinator {
 
   finishTranscription(): void {
     this.transcribing = false;
-  }
-
-  isRecording(): boolean {
-    return this.recording;
   }
 
   isTranscribing(): boolean {

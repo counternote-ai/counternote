@@ -4,8 +4,9 @@ Thanks for contributing. Keep each pull request focused on one change and update
 
 ## Requirements
 
-- macOS 13 or newer
+- macOS 13 or newer (Apple Silicon recommended)
 - Node.js 22.12 or newer
+- Xcode 15 or newer (for Swift audio capture helper)
 - npm
 - Git
 
@@ -31,10 +32,16 @@ See [Development](docs/development.md) for build, watch-mode, and verification c
 
 - Add or update unit tests for behavior changes.
 - Run the unit tests, typecheck, and production build.
+- For audio capture changes, build and verify the Swift helper.
 - For renderer changes, run the Electron E2E smoke test in a macOS GUI session.
+- Run the full verification sequence documented in [Development](docs/development.md).
 - Describe the user-facing effect and any manual verification in the pull request.
 
-The commands and E2E requirements are documented in [Development](docs/development.md).
+## Permissions
+
+The audio capture helper requires macOS Screen Recording and Microphone access.
+These permissions are attributed to the helper binary. For local development with
+unsigned builds, macOS may prompt differently than for signed release builds.
 
 ## Reporting issues
 

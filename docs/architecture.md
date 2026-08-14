@@ -4,17 +4,18 @@ Interview Copilot is a macOS Electron menu-bar app with an isolated React render
 
 ## Process boundaries
 
-- The renderer owns user interaction, display-media and microphone capture, Web Audio processing, and PCM conversion.
+- The renderer owns user interaction and command/status presentation.
 - The preload script exposes the narrow `window.electronAPI` bridge.
-- The main process owns application lifecycle, the tray, IPC handlers, WAV persistence, local configuration, transcription orchestration, and exports.
+- The main process owns application lifecycle, the tray, IPC handlers, native capture supervision, WAV persistence, local configuration, transcription orchestration, and exports.
+- The Swift audio capture helper owns real-time audio capture, host-clock framing, and protocol encoding.
 - `contextIsolation` is enabled and renderer `nodeIntegration` is disabled.
 
 ## Recording flow
 
-1. The visible Record action checks macOS screen/audio and microphone permissions.
-2. The renderer requests display loopback audio and microphone audio.
-3. An AudioWorklet interleaves system audio and microphone audio as stereo PCM.
-4. PCM chunks cross the preload bridge and the main process writes `audio.wav`.
+1. The visible Record action checks macOS Screen Recording and Microphone permissions.
+2. The main process spawns the Swift audio capture helper with inherited pipes and a minimal sanitized environment.
+3. The helper captures system audio and microphone audio using CoreAudio, frames PCM with host-clock timestamps, and writes binary protocol frames to stdout.
+4. The main process decodes protocol frames, mixes channels, detects gaps and interruptions, and persists `audio.wav` through the native WAV writer.
 5. Stop closes capture, finalizes the WAV header, and refreshes the recordings library.
 
 ## Transcription flow

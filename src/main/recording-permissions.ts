@@ -24,6 +24,15 @@ function readStatus(permission: RecordingPermission): RecordingPermissionStatus 
 }
 
 export function getRecordingPermissionSnapshot(): RecordingPermissionSnapshot {
+  if (!app.isPackaged && process.env.INTERVIEW_COPILOT_E2E === '1') {
+    return {
+      screen: 'granted',
+      microphone: 'granted',
+      permissionOwnerName: 'Electron',
+      canAttemptRecording: true,
+    };
+  }
+
   const screen = readStatus('screen');
   const microphone = readStatus('microphone');
 

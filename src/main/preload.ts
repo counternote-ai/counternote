@@ -13,10 +13,6 @@ import {
 } from '../types/settings';
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  onCaptureReady: (callback: () => void) => ipcRenderer.on('capture-ready', callback),
-  sendAudioData: (data: ArrayBuffer) => ipcRenderer.send('audio-data', data),
-  startRecording: () => ipcRenderer.invoke('start-recording'),
-  stopRecording: () => ipcRenderer.invoke('stop-recording'),
   listRecordings: () => ipcRenderer.invoke('list-recordings'),
   transcribe: (recordingId: string): Promise<TranscriptionIpcResult> =>
     ipcRenderer.invoke('transcribe', recordingId),
@@ -46,6 +42,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getRecordingPermissions: () => ipcRenderer.invoke('get-recording-permissions'),
   openRecordingPermissionSettings: (permission: RecordingPermission) =>
     ipcRenderer.invoke('open-recording-permission-settings', permission),
-  onStopRecording: (callback: () => void) => ipcRenderer.on('stop-recording-from-tray', callback),
   onOpenSettings: (callback: () => void) => ipcRenderer.on('open-settings', callback),
+
+  /* ── Native capture commands ──────────────────────────────── */
+  recordingStart: () => ipcRenderer.invoke('recording:start'),
+  recordingCancel: () => ipcRenderer.invoke('recording:cancel'),
+  recordingStop: () => ipcRenderer.invoke('recording:stop'),
+  recordingGetStatus: () => ipcRenderer.invoke('recording:get-status'),
+  recordingListRecovery: () => ipcRenderer.invoke('recording:list-recovery'),
+  recordingRecover: (id: string) => ipcRenderer.invoke('recording:recover', { id }),
+  recordingTrashRecovery: (id: string) => ipcRenderer.invoke('recording:trash-recovery', { id }),
+  onRecordingStatus: (callback: (snapshot: unknown) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, snapshot: unknown): void =>
+      callback(snapshot);
+    ipcRenderer.on('recording:status', listener);
+    return () => ipcRenderer.removeListener('recording:status', listener);
+  },
 });

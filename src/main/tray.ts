@@ -1,12 +1,15 @@
-import { Tray, Menu, nativeImage, BrowserWindow } from 'electron';
+import { Tray, Menu, nativeImage, BrowserWindow, app } from 'electron';
 import * as path from 'path';
+
+export type TrayState = 'idle' | 'recording' | 'finishing';
 
 export class TrayManager {
   private tray: Tray | null = null;
   private mainWindow: BrowserWindow | null = null;
-  private isRecording = false;
+  private state: TrayState = 'idle';
+  public onStop: (() => void) | null = null;
 
-  constructor(mainWindow: BrowserWindow) {
+  constructor(mainWindow: BrowserWindow, private readonly onQuit?: () => void) {
     this.mainWindow = mainWindow;
     this.createTray();
   }
@@ -33,12 +36,19 @@ export class TrayManager {
       },
     ];
 
-    if (this.isRecording) {
+    if (this.state === 'recording') {
       menuTemplate.push({
         label: '⏹ Stop Recording',
         click: () => {
-          this.mainWindow?.webContents.send('stop-recording-from-tray');
+          this.onStop?.();
         },
+      });
+    }
+
+    if (this.state === 'finishing') {
+      menuTemplate.push({
+        label: '⏹ Finishing…',
+        enabled: false,
       });
     }
 
@@ -46,14 +56,25 @@ export class TrayManager {
       { type: 'separator' },
       { label: 'Settings', click: () => this.mainWindow?.webContents.send('open-settings') },
       { type: 'separator' },
-      { label: 'Quit', click: () => require('electron').app.quit() }
+      { label: 'Quit', click: () => {
+        if (this.onQuit) {
+          this.onQuit();
+        } else {
+          app.quit();
+        }
+      }}
     );
 
     this.tray?.setContextMenu(Menu.buildFromTemplate(menuTemplate));
   }
 
+  /** @deprecated Use setState instead */
   setRecording(isRecording: boolean): void {
-    this.isRecording = isRecording;
+    this.setState(isRecording ? 'recording' : 'idle');
+  }
+
+  setState(state: TrayState): void {
+    this.state = state;
     this.updateMenu();
   }
 }

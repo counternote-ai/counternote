@@ -169,6 +169,13 @@ describe('AudioProcessor', () => {
   });
 
   describe('getAudioDuration', () => {
+    it('reports the fixed capture WAV byte rate without weakening RIFF validation', async () => {
+      const testFile = path.join(testDir, 'fixed-capture.wav');
+      writeWavHeader(testFile, 0.02);
+
+      await expect(getAudioDuration(testFile)).resolves.toBeCloseTo(0.02, 10);
+    });
+
     it('should calculate duration from WAV header correctly', async () => {
       const testFile = path.join(testDir, 'test.wav');
 

@@ -12,9 +12,13 @@
     "test:e2e": "npm run build && playwright test",
     "build:whisper": "bash scripts/build-whisper-sidecar.sh",
     "verify:whisper": "bash scripts/verify-whisper-sidecar.sh build/whisper/darwin-arm64/whisper-cli",
-    "pack": "npm run build:whisper && npm run build && electron-builder --dir --arm64",
+    "build:capture": "bash scripts/build-audio-capture-sidecar.sh",
+    "verify:capture": "bash scripts/verify-audio-capture-sidecar.sh build/audio-capture/darwin-arm64/interview-audio-capture",
+    "verify:capture:release": "bash scripts/verify-audio-capture-signing.sh \"release/mac-arm64/Interview Copilot.app\" signed-release",
+    "pack": "npm run build:whisper && npm run verify:whisper && npm run build:capture && npm run verify:capture && CSC_IDENTITY_AUTO_DISCOVERY=false npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir --arm64",
+    "pack:release": "npm run build:whisper && npm run verify:whisper && npm run build:capture && npm run verify:capture && npm run build && electron-builder --dir --arm64",
     "test:packaged": "playwright test --config playwright.packaged.config.ts",
-    "check:pack": "npm run pack && bash scripts/verify-whisper-sidecar.sh \"release/mac-arm64/Interview Copilot.app/Contents/Resources/whisper/bin/whisper-cli\" && npm run test:packaged"
+    "check:pack": "npm run pack && bash scripts/verify-whisper-sidecar.sh \"release/mac-arm64/Interview Copilot.app/Contents/Resources/whisper/bin/whisper-cli\" && bash scripts/verify-audio-capture-sidecar.sh \"release/mac-arm64/Interview Copilot.app/Contents/Resources/audio-capture/bin/interview-audio-capture\" && npm run test:packaged"
   },
   "keywords": [],
   "author": "",

@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, LoaderCircle, Mic, Plus, Settings, Square } from 'lucide-react';
+import { FileText, LoaderCircle, Mic, Plus, Settings, Square, X, RotateCcw, Trash2 } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Alert, AlertDescription } from './ui/alert';
 import { Button } from './ui/button';
@@ -9,22 +9,34 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/t
 import { formatDuration, getRecordingStatus, type RecordingStatusTone } from '../recording-utils';
 import { type RecordingPermissionNotice } from '../recording-permissions';
 import { type TranscriptionProgress } from '../../types/transcription';
+import { RecordingHealth } from './RecordingHealth';
+import { RecordingRecovery } from './RecordingRecovery';
+import { formatBytes, type RecordingHealthView, type RecoveryItemView } from '../native-capture-view-model';
 
 interface Recording {
   id: string;
   title: string;
   duration: number;
   transcribed: boolean;
+  captureStatus?: 'legacy' | 'complete' | 'interrupted';
 }
 
 interface ControlPanelProps {
   recordings: Recording[];
   onStartRecording: () => void;
   onStopRecording: () => void;
+  onCancelRecording?: () => void;
   onTranscribe: (id: string) => void;
   onSelectRecording: (id: string) => void;
   onOpenSettings: () => void;
   isRecording: boolean;
+  isStarting?: boolean;
+  isFinishing?: boolean;
+  healthView?: RecordingHealthView | null;
+  recoveryItems?: RecordingRecoveryItem[];
+  recoveringId?: string | null;
+  onRecover?: (id: string) => void;
+  onTrashRecovery?: (id: string) => void;
   transcriptionProgress?: TranscriptionProgress | null;
   localTranscriptionUnavailable?: boolean;
   permissionNotice?: RecordingPermissionNotice | null;
@@ -42,16 +54,51 @@ export function ControlPanel({
   recordings,
   onStartRecording,
   onStopRecording,
+  onCancelRecording,
   onTranscribe,
   onSelectRecording,
   onOpenSettings,
   isRecording,
+  isStarting = false,
+  isFinishing = false,
+  healthView,
+  recoveryItems = [],
+  recoveringId = null,
+  onRecover,
+  onTrashRecovery,
   transcriptionProgress,
   localTranscriptionUnavailable = false,
   permissionNotice,
   onOpenPermissionSettings,
   onDismissPermissionNotice,
 }: ControlPanelProps) {
+  const recoveryViews: RecoveryItemView[] = recoveryItems.map((item) => {
+    const base: RecoveryItemView = {
+      id: item.id,
+      dateLabel: new Date(item.createdAt).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }),
+      sizeLabel: formatBytes(item.bytes),
+      stateLabel:
+        item.state === 'recoverable'
+          ? 'Partial audio can be recovered'
+          : 'Partial audio could not be repaired',
+      state: item.state,
+    };
+    if (recoveringId === item.id) {
+      return { ...base, stateLabel: 'Recovering partial recording…', state: 'recovering' as const };
+    }
+    return base;
+  });
+
+  const recoveryNotice = recoveryItems.length === 0
+    ? 'No recordings to recover'
+    : recoveryItems.length === 1
+      ? `1 recording, ${formatBytes(sumBytes(recoveryItems))}`
+      : `${recoveryItems.length} recordings, ${formatBytes(sumBytes(recoveryItems))}`;
+
   return (
     <TooltipProvider>
       <main className="app-shell">
@@ -75,8 +122,13 @@ export function ControlPanel({
             <p className="text-sm text-muted-foreground">
               {recordings.length === 1 ? '1 saved interview' : `${recordings.length} saved interviews`}
             </p>
-            {isRecording ? (
-              <Button variant="destructive" size="pill" onClick={onStopRecording}>
+            {isStarting && onCancelRecording ? (
+              <Button variant="outline" size="pill" onClick={onCancelRecording}>
+                <X />
+                Cancel
+              </Button>
+            ) : isRecording || isFinishing ? (
+              <Button variant="destructive" size="pill" onClick={onStopRecording} disabled={isFinishing}>
                 <Square />
                 Stop
               </Button>
@@ -88,6 +140,10 @@ export function ControlPanel({
             )}
           </div>
         </header>
+
+        {healthView && (isStarting || isRecording || isFinishing) && (
+          <RecordingHealth view={healthView} />
+        )}
 
         {permissionNotice && (
           <Alert variant={permissionNotice.tone === 'error' ? 'destructive' : 'default'}>
@@ -107,7 +163,17 @@ export function ControlPanel({
           </Alert>
         )}
 
-        {recordings.length === 0 ? (
+        {recoveryItems.length > 0 && onRecover && onTrashRecovery && (
+          <RecordingRecovery
+            notice={recoveryNotice}
+            items={recoveryViews}
+            onRecover={onRecover}
+            onTrash={onTrashRecovery}
+            disabled={isRecording || isStarting}
+          />
+        )}
+
+        {recordings.length === 0 && !isStarting && !isRecording ? (
           <Card className="flex flex-1 items-center justify-center border-dashed bg-card/80">
             <CardContent className="flex max-w-64 flex-col items-center gap-3 p-6 text-center">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
@@ -138,6 +204,7 @@ export function ControlPanel({
                   transcriptionProgress: progress,
                 });
                 const canOpen = rec.transcribed;
+                const isInterrupted = rec.captureStatus === 'interrupted';
 
                 return (
                   <Card
@@ -157,6 +224,9 @@ export function ControlPanel({
                             <div className="flex items-center gap-2">
                               <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                               <h2 className="truncate text-sm font-semibold text-foreground">{rec.title}</h2>
+                              {isInterrupted && (
+                                <Badge variant="destructive">Interrupted</Badge>
+                              )}
                             </div>
                             <p className="text-xs text-muted-foreground">{formatDuration(rec.duration)}</p>
                           </div>
@@ -164,7 +234,7 @@ export function ControlPanel({
                         </div>
                       </button>
 
-                      {!rec.transcribed && (
+                      {!rec.transcribed && !isInterrupted && (
                         <div className="border-t border-border px-4 py-3">
                           <Button
                             variant="secondary"
@@ -197,4 +267,19 @@ export function ControlPanel({
       </main>
     </TooltipProvider>
   );
+}
+
+/* ── Helpers ─────────────────────────────────────────────────── */
+
+function sumBytes(items: RecordingRecoveryItem[]): number {
+  let total = 0;
+  for (const item of items) {
+    const safe = Number.isSafeInteger(item.bytes) && item.bytes >= 0 ? item.bytes : 0;
+    if (total <= Number.MAX_SAFE_INTEGER - safe) {
+      total += safe;
+    } else {
+      return Number.MAX_SAFE_INTEGER;
+    }
+  }
+  return total;
 }

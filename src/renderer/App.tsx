@@ -4,7 +4,6 @@ import { TranscriptView } from './components/TranscriptView';
 import { Settings } from './components/Settings';
 import { Alert, AlertDescription } from './components/ui/alert';
 import { Button } from './components/ui/button';
-import { AudioCapture } from './audio-capture';
 import { getRecordingPermissionNotice } from './recording-permissions';
 import { type RecordingPermissionSnapshot } from '../types/recording-permissions';
 import {
@@ -14,6 +13,12 @@ import {
 } from '../types/transcription';
 import { type TranscriptionSettings } from '../types/settings';
 import { getTranscriptionErrorMessage } from './transcription-ui';
+import {
+  toRecordingHealthView,
+  toStartErrorMessage,
+  toStopFeedback,
+  type RecordingHealthView,
+} from './native-capture-view-model';
 import './styles.css';
 
 type View = 'recordings' | 'transcript' | 'settings';
@@ -24,6 +29,8 @@ interface AppRecording {
   duration: number;
   transcribed: boolean;
   segments?: Array<{ start: number; end: number; text: string; speaker: string }>;
+  captureStatus?: 'legacy' | 'complete' | 'interrupted';
+  interruptions?: Array<{ channel: string; startMs: number; endMs: number; recovered: boolean; reason: string }>;
 }
 
 function getErrorMessage(fallback: string): string {
@@ -33,7 +40,6 @@ function getErrorMessage(fallback: string): string {
 
 export default function App() {
   const [view, setView] = useState<View>('recordings');
-  const [isRecording, setIsRecording] = useState(false);
   const [recordings, setRecordings] = useState<AppRecording[]>([]);
   const [selectedRecording, setSelectedRecording] = useState<AppRecording | null>(null);
   const [settings, setSettings] = useState<{
@@ -47,8 +53,13 @@ export default function App() {
   const [permissions, setPermissions] = useState<RecordingPermissionSnapshot | null>(null);
   const [permissionNoticeDismissed, setPermissionNoticeDismissed] = useState(false);
 
-  const audioCaptureRef = useRef<AudioCapture | null>(null);
+  /* ── Native capture state ─────────────────────────────────── */
+  const [statusSnapshot, setStatusSnapshot] = useState<RecordingStatusSnapshot | null>(null);
+  const [recoveryItems, setRecoveryItems] = useState<RecordingRecoveryItem[]>([]);
+  const [recoveringId, setRecoveringId] = useState<string | null>(null);
+
   const activeTranscriptionIdRef = useRef<string | null>(null);
+  const recordingWasActiveRef = useRef(false);
 
   const refreshRecordingPermissions = useCallback(async (): Promise<RecordingPermissionSnapshot> => {
     try {
@@ -127,12 +138,36 @@ export default function App() {
 
   // Listen for tray events
   useEffect(() => {
-    window.electronAPI.onStopRecording(() => {
-      handleStopRecording();
-    });
     window.electronAPI.onOpenSettings(() => {
       setView('settings');
     });
+  }, []);
+
+  /* ── Subscribe to native capture status ───────────────────── */
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onRecordingStatus((snapshot) => {
+      const finishedRecording = recordingWasActiveRef.current && snapshot.state === 'idle';
+      recordingWasActiveRef.current = snapshot.state !== 'idle';
+      setStatusSnapshot(snapshot);
+      if (finishedRecording) {
+        void loadRecordings();
+        void window.electronAPI.recordingListRecovery().then(setRecoveryItems).catch(() => undefined);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  /* ── Load recovery items on mount ─────────────────────────── */
+  useEffect(() => {
+    const loadRecovery = async () => {
+      try {
+        const items = await window.electronAPI.recordingListRecovery();
+        setRecoveryItems(items);
+      } catch {
+        console.error('Renderer recovery list load failed.');
+      }
+    };
+    void loadRecovery();
   }, []);
 
   const loadRecordings = async () => {
@@ -154,44 +189,89 @@ export default function App() {
       return;
     }
 
-    let capture: AudioCapture;
     try {
-      // Start audio capture first (requests media permissions)
-      capture = new AudioCapture();
-      await capture.start();
-      audioCaptureRef.current = capture;
+      const result = await window.electronAPI.recordingStart();
+      if (!result.ok) {
+        const message = toStartErrorMessage(result);
+        if (message) setError(message);
+      }
     } catch {
-      // Clean up if partially started
-      audioCaptureRef.current?.stop();
-      audioCaptureRef.current = null;
       console.error('Renderer recording start failed.');
-
-      // A prompt may have changed permission state while capture was starting.
-      const updatedPermissions = await refreshRecordingPermissions();
-      if (!updatedPermissions.canAttemptRecording) {
-        setPermissionNoticeDismissed(false);
-        setError(null);
-      } else {
-        setError('Unable to start recording. Check your recording permissions and try again.');
-      }
-      return;
+      setError('Unable to start recording. Please try again.');
     }
+  };
 
+  const handleStopRecording = async () => {
+    setError(null);
     try {
-      // Then create the WAV file on the main process.
-      const result = await window.electronAPI.startRecording();
-      if (!result.success) {
-        throw new Error('Unable to create recording file');
+      const result = await window.electronAPI.recordingStop();
+      const feedback = toStopFeedback(result);
+      if (feedback) setError(feedback);
+      await loadRecordings();
+      // Refresh recovery list after stop
+      try {
+        const items = await window.electronAPI.recordingListRecovery();
+        setRecoveryItems(items);
+      } catch {
+        // Non-fatal
       }
-
-      setIsRecording(true);
-      // Notify main process for tray update
-      window.electronAPI.sendAudioData(new ArrayBuffer(0)); // noop, just to ensure channel is warm
     } catch {
-      capture.stop();
-      audioCaptureRef.current = null;
-      console.error('Renderer recording file creation failed.');
-      setError('Unable to create the recording file. Check available disk space and try again.');
+      setError(getErrorMessage('Failed to stop recording'));
+    }
+  };
+
+  const handleCancelRecording = async () => {
+    setError(null);
+    try {
+      await window.electronAPI.recordingCancel();
+    } catch {
+      console.error('Renderer recording cancel failed.');
+    }
+  };
+
+  const handleRecover = async (id: string) => {
+    setError(null);
+    setRecoveringId(id);
+    try {
+      const result = await window.electronAPI.recordingRecover(id);
+      if (result.outcome === 'recovered' || result.outcome === 'recovered-with-retained-source') {
+        // Refresh recovery list and recordings
+        const [items] = await Promise.all([
+          window.electronAPI.recordingListRecovery(),
+          loadRecordings(),
+        ]);
+        setRecoveryItems(items);
+      } else if (result.outcome === 'recovery-failed') {
+        setError('Recovery failed. The recording could not be repaired.');
+      } else if (result.outcome === 'busy') {
+        setError('A recording operation is in progress. Try again after it completes.');
+      } else if (result.outcome === 'not-found') {
+        setError('The recording could not be found.');
+      } else if (result.outcome === 'not-recoverable') {
+        setError('This recording cannot be recovered.');
+      }
+    } catch {
+      setError(getErrorMessage('Recovery failed'));
+    } finally {
+      setRecoveringId(null);
+    }
+  };
+
+  const handleTrashRecovery = async (id: string) => {
+    setError(null);
+    try {
+      const result = await window.electronAPI.recordingTrashRecovery(id);
+      if (result.outcome === 'trashed') {
+        // Refresh recovery list
+        const items = await window.electronAPI.recordingListRecovery();
+        setRecoveryItems(items);
+      } else if (result.outcome === 'trash-failed') {
+        setError('Could not move the recording to Trash.');
+      } else if (result.outcome === 'busy') {
+        setError('A recording operation is in progress. Try again after it completes.');
+      }
+    } catch {
+      setError(getErrorMessage('Could not move the recording to Trash.'));
     }
   };
 
@@ -211,27 +291,6 @@ export default function App() {
       }
     } catch {
       setError('Unable to open System Settings. Open System Settings → Privacy & Security manually.');
-    }
-  };
-
-  const handleStopRecording = async () => {
-    setError(null);
-    try {
-      // Stop audio capture first
-      audioCaptureRef.current?.stop();
-      audioCaptureRef.current = null;
-
-      // Then finalize the WAV file
-      const result = await window.electronAPI.stopRecording();
-      if (result.success) {
-        setIsRecording(false);
-        // Refresh recordings list
-        await loadRecordings();
-      }
-    } catch {
-      setError(getErrorMessage('Failed to stop recording'));
-      // Still mark as not recording even if error
-      setIsRecording(false);
     }
   };
 
@@ -310,6 +369,15 @@ export default function App() {
     }
   };
 
+  /* ── Derived native capture state ─────────────────────────── */
+  const controllerState = statusSnapshot?.state ?? 'idle';
+  const isRecording = controllerState === 'recording';
+  const isStarting = controllerState === 'starting';
+  const isFinishing = controllerState === 'finishing';
+  const healthView: RecordingHealthView | null = statusSnapshot
+    ? toRecordingHealthView(statusSnapshot)
+    : null;
+
   // Error banner component
   const ErrorBanner = error ? (
     <Alert variant="destructive" className="fixed left-4 right-4 top-4 z-50 shadow-md">
@@ -361,10 +429,18 @@ export default function App() {
         recordings={recordings}
         onStartRecording={handleStartRecording}
         onStopRecording={handleStopRecording}
+        onCancelRecording={handleCancelRecording}
         onTranscribe={handleTranscribe}
         onSelectRecording={handleSelectRecording}
         onOpenSettings={() => setView('settings')}
         isRecording={isRecording}
+        isStarting={isStarting}
+        isFinishing={isFinishing}
+        healthView={healthView}
+        recoveryItems={recoveryItems}
+        recoveringId={recoveringId}
+        onRecover={handleRecover}
+        onTrashRecovery={handleTrashRecovery}
         transcriptionProgress={transcriptionProgress}
         localTranscriptionUnavailable={
           settings.transcriptionProvider === 'local' && localModelStatus.state === 'unavailable'

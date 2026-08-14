@@ -12,15 +12,4 @@ describe('AppActivityCoordinator', () => {
     expect(activity.isTranscribing()).toBe(false);
     expect(activity.tryStartTranscription()).toBe(true);
   });
-
-  it('reports recording and transcription independently', () => {
-    const activity = new AppActivityCoordinator();
-
-    activity.startRecording();
-    expect(activity.isRecording()).toBe(true);
-    expect(activity.isTranscribing()).toBe(false);
-
-    activity.finishRecording();
-    expect(activity.isRecording()).toBe(false);
-  });
 });

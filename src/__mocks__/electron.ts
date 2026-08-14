@@ -2,8 +2,11 @@ export const app = {
   whenReady: jest.fn().mockResolvedValue(undefined),
   on: jest.fn(),
   quit: jest.fn(),
+  exit: jest.fn(),
   isPackaged: false,
   getPath: jest.fn().mockReturnValue('/tmp/interview-copilot'),
+  requestSingleInstanceLock: jest.fn().mockReturnValue(true),
+  hasSingleInstanceLock: jest.fn().mockReturnValue(true),
 };
 
 export const BrowserWindow = jest.fn().mockImplementation(() => ({
@@ -26,16 +29,6 @@ export const ipcRenderer = {
 
 export const contextBridge = {
   exposeInMainWorld: jest.fn(),
-};
-
-export const session = {
-  defaultSession: {
-    setDisplayMediaRequestHandler: jest.fn(),
-  },
-};
-
-export const desktopCapturer = {
-  getSources: jest.fn().mockResolvedValue([]),
 };
 
 export const Tray = jest.fn().mockImplementation(() => ({
@@ -62,4 +55,5 @@ export const systemPreferences = {
 
 export const shell = {
   openExternal: jest.fn().mockResolvedValue(undefined),
+  trashItem: jest.fn().mockResolvedValue(undefined),
 };
