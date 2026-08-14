@@ -1,9 +1,14 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { source as axeSource } from 'axe-core';
 import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
+
+/* Freeze time rendering: visual baselines are generated under UTC so locale
+ * date strings in screenshots do not depend on the runner's timezone. */
+process.env.TZ = 'UTC';
 
 /* ── Shared model server ────────────────────────────────────────────
  *
@@ -82,17 +87,19 @@ function writeMinimalWav(filePath: string, pcmFrames: number): number {
   return dataSize;
 }
 
-function createRecoveryFixture(recordingsRoot: string, uuid: string, pcmFrames: number): void {
+function createRecoveryFixture(recordingsRoot: string, uuid: string, pcmFrames: number, startedAtIso: string): void {
   const dir = path.join(recordingsRoot, '.recovery', uuid);
   fs.mkdirSync(dir, { recursive: true });
   writeMinimalWav(path.join(dir, 'audio.wav'), pcmFrames);
-  const now = new Date();
+  // Fixed timestamps keep the rendered recovery dates deterministic for
+  // visual baselines; distinct values per fixture keep list order stable.
+  const startedAt = new Date(startedAtIso);
   const durationMs = (pcmFrames * 2 * 2) / 64; // pcmBytes / byteRate * 1000
   fs.writeFileSync(path.join(dir, 'capture.json'), JSON.stringify({
     version: 1,
     status: 'failed',
-    startedAt: now.toISOString(),
-    endedAt: new Date(now.getTime() + durationMs).toISOString(),
+    startedAt: startedAt.toISOString(),
+    endedAt: new Date(startedAt.getTime() + durationMs).toISOString(),
     channels: { interviewer: { started: true }, you: { started: true } },
     interruptions: [],
   }));
@@ -191,6 +198,56 @@ async function launchTestApp(
   return { electronApp, window, testHome };
 }
 
+/* ── Design guardrails ─────────────────────────────────────────────
+ *
+ * Every settled state below asserts two invariants:
+ * - the window never grows horizontal scroll (the 400px width is fixed);
+ * - the rendered tree passes axe WCAG checks.
+ * Deterministic states additionally compare against committed visual
+ * baselines via toHaveScreenshot; states with wall-clock content (live
+ * recording timers, new-recording titles) keep manual screenshots under
+ * test-results/ instead.
+ * ─────────────────────────────────────────────────────────────────── */
+
+async function expectNoHorizontalOverflow(window: Page): Promise<void> {
+  const metrics = await window.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth);
+}
+
+interface AxeViolationSummary {
+  id: string;
+  impact: string | null;
+  targets: string[];
+}
+
+interface AxeRunResults {
+  violations: Array<{
+    id: string;
+    impact: string | null;
+    nodes: Array<{ target: unknown }>;
+  }>;
+}
+
+/* axe runs in the page itself: @axe-core/playwright finishes runs on a
+ * blank page, and Electron cannot open new targets, so inject axe-core
+ * directly instead. */
+async function expectAccessible(window: Page): Promise<void> {
+  await window.evaluate(axeSource);
+  const violations = await window.evaluate(async (): Promise<AxeViolationSummary[]> => {
+    const axe = (window as unknown as { axe: { run: () => Promise<AxeRunResults> } }).axe;
+    const results = await axe.run();
+    return results.violations.map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      targets: violation.nodes.map((node) => String(node.target)),
+    }));
+  });
+  expect(violations).toEqual([]);
+}
+
 /* ── Global model-server lifecycle ──────────────────────────────── */
 
 test.beforeAll(async () => {
@@ -217,6 +274,8 @@ test('launches a 400x600 window titled Interview Copilot', async () => {
       return win.getSize();
     });
     expect(windowSize).toEqual([400, 600]);
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
   } finally {
     await electronApp.close();
   }
@@ -228,7 +287,9 @@ test('recordings home renders primary controls', async () => {
   try {
     await expect(window.getByRole('button', { name: 'Record', exact: true })).toBeVisible();
     await expect(window.getByRole('button', { name: 'Open settings' })).toBeVisible();
-    await window.screenshot({ path: 'test-results/recordings-home.png' });
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
+    await expect(window).toHaveScreenshot('recordings-home.png');
   } finally {
     await electronApp.close();
   }
@@ -240,13 +301,16 @@ test('transcribes a local recording through the loopback model server and fake s
   try {
     await window.getByRole('button', { name: 'Transcribe audio' }).click();
     await expect(window.getByText(/^Downloading model/).first()).toBeVisible();
-    await window.screenshot({ path: 'test-results/local-transcription-progress.png' });
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
+    await expect(window).toHaveScreenshot('local-transcription-progress.png');
 
     releaseSecondModelChunk?.();
 
     await expect(window.getByText('Ready', { exact: true })).toBeVisible();
     expect(modelRequests).toEqual(['/model.bin']);
-    await window.screenshot({ path: 'test-results/local-transcription-ready.png' });
+    await expectNoHorizontalOverflow(window);
+    await expect(window).toHaveScreenshot('local-transcription-ready.png');
   } finally {
     await electronApp.close();
   }
@@ -265,7 +329,9 @@ test('navigates to settings and back', async () => {
     await expect(
       window.getByText('Auto-transcribe after recording')
     ).toHaveCount(0);
-    await window.screenshot({ path: 'test-results/settings-local.png' });
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
+    await expect(window).toHaveScreenshot('settings-local.png');
 
     await window.getByRole('combobox', { name: 'Transcription provider' }).click();
     await window.getByRole('option', { name: 'Groq' }).click();
@@ -283,7 +349,9 @@ test('navigates to settings and back', async () => {
     await window.getByRole('option', { name: 'Groq' }).click();
     await expect(window.getByLabel('Groq API Key')).toHaveValue('provider-secret-value');
 
-    await window.screenshot({ path: 'test-results/settings-groq.png' });
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
+    await expect(window).toHaveScreenshot('settings-groq.png');
 
     await window.getByRole('button', { name: 'Back' }).click();
     await expect(window.getByRole('button', { name: 'Record', exact: true })).toBeVisible();
@@ -320,7 +388,9 @@ test('opens a ready transcript in the reading view', async () => {
     await expect(window.getByText(/8 segments/)).toBeVisible();
     await expect(window.getByText('Interviewer').first()).toBeVisible();
     await expect(window.getByText('You').first()).toBeVisible();
-    await window.screenshot({ path: 'test-results/transcript-reader.png' });
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
+    await expect(window).toHaveScreenshot('transcript-reader.png');
   } finally {
     await electronApp.close();
   }
@@ -337,7 +407,9 @@ test('renders the empty library state', async () => {
   try {
     await expect(window.getByText('No recordings yet')).toBeVisible();
     await expect(window.getByRole('button', { name: 'Start recording' })).toBeVisible();
-    await window.screenshot({ path: 'test-results/recordings-empty.png' });
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
+    await expect(window).toHaveScreenshot('recordings-empty.png');
   } finally {
     await electronApp.close();
   }
@@ -357,7 +429,9 @@ test('shows a recoverable error when local transcription fails', async () => {
   try {
     await window.getByRole('button', { name: 'Transcribe audio' }).click();
     await expect(window.getByText(/Your recording is still saved/)).toBeVisible({ timeout: 10_000 });
-    await window.screenshot({ path: 'test-results/transcription-error.png' });
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
+    await expect(window).toHaveScreenshot('transcription-error.png');
   } finally {
     await electronApp.close();
   }
@@ -376,6 +450,9 @@ test('Starting -> Recording -> Stop -> published library item', async () => {
     // user-visible recording count instead of an implementation detail.
     await expect(window.getByText('2 saved interviews')).toBeVisible({ timeout: 10_000 });
 
+    await expectNoHorizontalOverflow(window);
+    // The new recording's title carries the wall clock, so this state keeps a
+    // manual screenshot instead of a visual baseline.
     await window.screenshot({ path: 'test-results/native-capture-published.png' });
   } finally {
     await electronApp.close();
@@ -405,7 +482,9 @@ test('Cancel during Starting', async () => {
     const afterCount = await window.locator('main button[type="button"]').count();
     expect(afterCount).toBe(beforeCount);
 
-    await window.screenshot({ path: 'test-results/native-capture-cancel.png' });
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
+    await expect(window).toHaveScreenshot('native-capture-cancel.png');
   } finally {
     await electronApp.close();
   }
@@ -465,11 +544,14 @@ test('One-channel interruption remaining visible after save', async () => {
         .length
     );
     expect(overflowingBadges).toBe(0);
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
 
     // The seeded legacy recording remains transcribable; the newly interrupted
     // recording does not add a second Transcribe action.
     await expect(window.getByRole('button', { name: 'Transcribe audio' })).toHaveCount(1);
 
+    // Wall-clock title on the new recording: manual screenshot only.
     await window.screenshot({ path: 'test-results/native-capture-interruption.png' });
   } finally {
     await electronApp.close();
@@ -491,6 +573,8 @@ test('Output overflow leaving both rows Connected -- audio gap detected', async 
     const gapBadges = window.getByRole('status').getByText('Connected (gap detected)');
     await expect(gapBadges).toHaveCount(2, { timeout: 5_000 });
 
+    await expectNoHorizontalOverflow(window);
+    // Live recording timer: manual screenshot only.
     await window.screenshot({ path: 'test-results/native-capture-overflow.png' });
   } finally {
     try { await electronApp.close(); } catch { /* best effort */ }
@@ -505,9 +589,9 @@ test('Exact recovery count/total/date/size/state presentation', async () => {
   const { electronApp, window } = await launchTestApp('default', (testHome) => {
     const recordingsRoot = path.join(testHome, 'InterviewCopilot', 'recordings');
     // 1000 frames * 2 channels * 2 bytes = 4000 bytes PCM + 44 header = 4044 bytes each
-    createRecoveryFixture(recordingsRoot, recoveryUuid1, 1000);
+    createRecoveryFixture(recordingsRoot, recoveryUuid1, 1000, '2026-07-26T14:32:00.000Z');
     // 500 frames * 2 channels * 2 bytes = 2000 bytes PCM + 44 header = 2044 bytes
-    createRecoveryFixture(recordingsRoot, recoveryUuid2, 500);
+    createRecoveryFixture(recordingsRoot, recoveryUuid2, 500, '2026-07-26T14:41:00.000Z');
   });
 
   try {
@@ -528,7 +612,9 @@ test('Exact recovery count/total/date/size/state presentation', async () => {
     // Two item sizes plus the aggregate-size notice end with KB.
     await expect(window.getByText(/KB$/)).toHaveCount(3);
 
-    await window.screenshot({ path: 'test-results/recovery-presentation.png' });
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
+    await expect(window).toHaveScreenshot('recovery-presentation.png');
   } finally {
     await electronApp.close();
   }
@@ -539,7 +625,7 @@ test('Recovery/Trash confirmation', async () => {
 
   const { electronApp, window } = await launchTestApp('default', (testHome) => {
     const recordingsRoot = path.join(testHome, 'InterviewCopilot', 'recordings');
-    createRecoveryFixture(recordingsRoot, recoveryUuid, 800);
+    createRecoveryFixture(recordingsRoot, recoveryUuid, 800, '2026-07-26T14:50:00.000Z');
   });
 
   try {
@@ -568,7 +654,9 @@ test('Recovery/Trash confirmation', async () => {
     // The recovery item should be removed
     await expect(window.getByText('Recover recordings')).toHaveCount(0, { timeout: 5_000 });
 
-    await window.screenshot({ path: 'test-results/recovery-trash-confirm.png' });
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
+    await expect(window).toHaveScreenshot('recovery-trash-confirm.png');
   } finally {
     await electronApp.close();
   }

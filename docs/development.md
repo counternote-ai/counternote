@@ -80,7 +80,17 @@ The Electron smoke test requires a macOS GUI session:
 npm run test:e2e
 ```
 
-It launches an isolated 400 × 600 app window and stores ignored screenshots under `test-results/`.
+It launches an isolated 400 × 600 app window and enforces the renderer design
+guardrails: every settled state asserts no horizontal overflow and passes an
+axe accessibility scan, and deterministic states compare against committed
+visual baselines in `e2e/smoke.spec.ts-snapshots/`. States with wall-clock
+content (live timers, new-recording titles) keep manual screenshots under the
+ignored `test-results/` instead. After an intentional visual change, review the
+diff, then regenerate baselines with `npx playwright test --update-snapshots`.
+The jest suite also includes a token guard (`src/renderer/token-guard.test.ts`)
+that fails when product components hardcode color values instead of resolving
+through the tokens in `src/renderer/styles.css` or the `components/ui`
+primitives.
 
 ## Full verification sequence
 
