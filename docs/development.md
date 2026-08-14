@@ -69,6 +69,7 @@ command again after changing its build inputs.
 Run the focused tests while developing, then the full suite before committing:
 
 ```bash
+npm run lint
 npm test
 npx tsc --noEmit
 npm run build
@@ -92,9 +93,10 @@ that fails when product components hardcode color values instead of resolving
 through the tokens in `src/renderer/styles.css` or the `components/ui`
 primitives.
 
-A version-controlled pre-push hook in `scripts/git-hooks/` runs this smoke test
-on every `git push`, since CI does not. The npm `prepare` script wires
-`core.hooksPath` to that directory automatically on `npm install`.
+Version-controlled hooks in `scripts/git-hooks/` run lint, typecheck, and unit
+tests on every commit, and this smoke test on every `git push` (CI does not run
+the e2e). The npm `prepare` script wires `core.hooksPath` to that directory
+automatically on `npm install`.
 
 ## Full verification sequence
 

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Version-controlled pre-commit hook, enabled via core.hooksPath=scripts/git-hooks
+# (wired automatically by the npm "prepare" script).
+#
+# Fast gates only: lint, typecheck, unit tests. The Electron e2e smoke test
+# gates at pre-push instead.
+
+set -e
+
+echo "pre-commit: lint (npm run lint)..."
+npm run lint
+
+echo "pre-commit: typecheck (npx tsc --noEmit)..."
+npx tsc --noEmit
+
+echo "pre-commit: unit tests (npm test)..."
+npm test
