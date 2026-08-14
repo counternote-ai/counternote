@@ -40,6 +40,6 @@ describe('recording renderer utilities', () => {
   });
 
   it('builds transcript metadata from duration and segment count', () => {
-    expect(getTranscriptMeta({ duration: 1850, segmentCount: 42 })).toBe('30:50 - 42 segments - transcript ready');
+    expect(getTranscriptMeta({ duration: 1850, segmentCount: 42 })).toBe('30:50 · 42 segments · transcript ready');
   });
 });

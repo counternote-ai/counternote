@@ -33,5 +33,5 @@ export function getRecordingStatus(input: RecordingStatusInput): RecordingStatus
 
 export function getTranscriptMeta(input: { duration: number; segmentCount: number }): string {
   const segmentLabel = input.segmentCount === 1 ? '1 segment' : `${input.segmentCount} segments`;
-  return `${formatDuration(input.duration)} - ${segmentLabel} - transcript ready`;
+  return `${formatDuration(input.duration)} · ${segmentLabel} · transcript ready`;
 }

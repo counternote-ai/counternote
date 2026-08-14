@@ -462,7 +462,7 @@ ipcMain.handle('list-recordings', async () => {
 
           return {
             id: entry.name,
-            title: `Interview — ${date.toLocaleDateString()} ${date.toLocaleTimeString()}`,
+            title: `Interview — ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`,
             duration,
             transcribed: hasTranscriptSegments(segments),
             segments,

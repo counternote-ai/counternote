@@ -44,7 +44,7 @@ export function RecordingRecovery({
     <Card>
       <CardContent className="space-y-3 p-4">
         <div className="space-y-1">
-          <h3 className="text-sm font-semibold text-foreground">Recover recordings</h3>
+          <h2 className="text-sm font-semibold text-foreground">Recover recordings</h2>
           <p className="text-xs text-muted-foreground">{notice}</p>
           <p className="text-xs text-muted-foreground">
             Partial recordings are stored locally until you recover or remove them.

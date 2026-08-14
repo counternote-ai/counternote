@@ -64,26 +64,26 @@ export function TranscriptView({ title, duration = 0, segments, onBack, onExport
         </Card>
       ) : (
         <ScrollArea className="app-scroll-shadow min-h-0 flex-1 pr-1">
-          <div className="space-y-3 pb-1">
-            {segments.map((seg, i) => {
-              const isInterviewer = seg.speaker === 'Interviewer';
+          <Card>
+            <CardContent className="p-4">
+              {segments.map((seg, i) => {
+                const isInterviewer = seg.speaker === 'Interviewer';
 
-              return (
-                <Card
-                  key={`${seg.start}-${i}`}
-                  className={isInterviewer ? 'border-l-4 border-l-[oklch(0.58_0.055_80)]' : 'border-l-4 border-l-[oklch(0.55_0.07_145)]'}
-                >
-                  <CardContent className="space-y-2 p-4">
+                return (
+                  <div
+                    key={`${seg.start}-${i}`}
+                    className={i === 0 ? undefined : 'mt-4 border-t border-border pt-4'}
+                  >
                     <div className="flex items-center justify-between gap-3">
-                      <Badge variant={isInterviewer ? 'pending' : 'ready'}>{seg.speaker}</Badge>
+                      <Badge variant={isInterviewer ? 'interviewer' : 'you'}>{seg.speaker}</Badge>
                       <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatDuration(seg.start)}</span>
                     </div>
-                    <p className="text-sm leading-relaxed text-foreground">{seg.text}</p>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+                    <p className="mt-2 text-sm leading-relaxed text-foreground">{seg.text}</p>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
         </ScrollArea>
       )}
     </main>
