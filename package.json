@@ -5,6 +5,7 @@
   "description": "A lightweight Mac menu bar app that records audio from video interviews, transcribes them, and provides readable transcripts with speaker labels.",
   "main": "dist/main/index.js",
   "scripts": {
+    "prepare": "git config core.hooksPath scripts/git-hooks",
     "dev": "webpack --mode development --watch",
     "build": "webpack --mode production",
     "start": "electron .",

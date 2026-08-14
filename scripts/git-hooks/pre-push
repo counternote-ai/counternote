@@ -1,0 +1,13 @@
+#!/bin/sh
+# Version-controlled pre-push hook, enabled via core.hooksPath=scripts/git-hooks
+# (wired automatically by the npm "prepare" script).
+#
+# CI runs typecheck, unit tests, and the webpack build, but not the Electron
+# e2e smoke test: its visual baselines are host-generated and can differ
+# across macOS versions on runners. AGENTS.md requires the smoke test for
+# user-visible renderer or tray changes, so the push gate lives here.
+
+set -e
+
+echo "pre-push: running the Electron e2e smoke test (npm run test:e2e)..."
+npm run test:e2e
