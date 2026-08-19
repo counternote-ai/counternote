@@ -3,28 +3,27 @@ import type { Readable } from 'stream';
 export interface StderrDiagnostic {
   readonly level: 'debug' | 'info' | 'warn' | 'error';
   readonly code: string;
+  readonly [key: string]: unknown;
 }
 
 const MAX_LINE_BYTES = 1_024;
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 20;
+const RATE_LIMIT_MAX = 120;
 
 const VALID_LEVELS: ReadonlySet<string> = new Set(['debug', 'info', 'warn', 'error']);
-const VALID_CODES: ReadonlySet<string> = new Set([
-  'helper-started',
-  'source-restart-attempt',
-  'source-restart-failed',
-  'helper-stopping',
-]);
+// Helper diagnostic codes are kebab-case; extra fields (ts, channel, attempt,
+// error, ...) are passed through so persisted diagnostics keep their context.
+const CODE_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 export interface StderrDrainHandle {
   close(): void;
 }
 
 /**
- * Continuously drains helper stderr, validates allow-listed diagnostics,
- * rate-limits output, and never blocks capture. Synchronous listener
- * attachment ensures no stderr data is lost before `ready`.
+ * Continuously drains helper stderr, validates diagnostic shape (known level,
+ * kebab-case code), passes extra fields through, rate-limits output, and never
+ * blocks capture. Synchronous listener attachment ensures no stderr data is
+ * lost before `ready`.
  */
 export function createStderrDrain(
   stderr: Readable,
@@ -48,14 +47,10 @@ export function createStderrDrain(
     }
 
     if (!isPlainObject(parsed)) return;
-    const keys = Object.keys(parsed);
-    if (keys.length !== 2) return;
-    if (!keys.includes('level') || !keys.includes('code')) return;
-
-    const level = parsed.level as string;
-    const code = parsed.code as string;
-    if (!VALID_LEVELS.has(level)) return;
-    if (!VALID_CODES.has(code)) return;
+    const level = parsed.level;
+    const code = parsed.code;
+    if (typeof level !== 'string' || !VALID_LEVELS.has(level)) return;
+    if (typeof code !== 'string' || !CODE_PATTERN.test(code)) return;
 
     const now = Date.now();
     while (windowTimestamps.length > 0 && windowTimestamps[0] <= now - RATE_LIMIT_WINDOW_MS) {
@@ -72,7 +67,7 @@ export function createStderrDrain(
     }
 
     windowTimestamps.push(now);
-    onDiagnostic({ level: level as StderrDiagnostic['level'], code });
+    onDiagnostic({ ...parsed, level: level as StderrDiagnostic['level'], code });
   }
 
   function handleData(chunk: Buffer): void {

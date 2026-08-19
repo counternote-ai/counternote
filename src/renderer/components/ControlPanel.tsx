@@ -271,7 +271,7 @@ export function ControlPanel({
                         </div>
                       </button>
 
-                      {!rec.transcribed && !isInterrupted && (
+                      {!rec.transcribed && (
                         <div className="border-t border-border px-4 py-3">
                           <Button
                             variant="secondary"
@@ -289,6 +289,12 @@ export function ControlPanel({
                                 ? getTranscriptionStageLabel(progress)
                                 : 'Transcribe audio'}
                           </Button>
+                          {isInterrupted && (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              Part of this recording was lost, but the saved audio can still be
+                              transcribed.
+                            </p>
+                          )}
                           {localTranscriptionUnavailable && (
                             <p className="mt-2 text-xs text-muted-foreground">
                               Local Whisper is unavailable. Check Settings for details.

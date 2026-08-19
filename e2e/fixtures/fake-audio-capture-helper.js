@@ -238,6 +238,29 @@ function runScenario() {
       break;
     }
 
+    case 'single-channel-interruption-unrecovered': {
+      // Same shape as single-channel-interruption, but the microphone channel
+      // never comes back: the interruption closes with recovered=false, so the
+      // recording genuinely lost audio and must be published as interrupted.
+      // Protocol invariant: an unrecovered close must be followed by stopped
+      // (the helper ends the capture when audio is permanently lost).
+      writeReady();
+      const beforeGap = 5;
+      for (let i = 0; i < beforeGap; i++) writePcm();
+
+      writeInterruptionOpen(1, 'you', beforeGap, 'stream-error');
+
+      const duringGap = 3;
+      const silentRight = Buffer.alloc(PCM_BLOCK_BYTES);
+      for (let i = 0; i < duringGap; i++) writePcm(silentRight);
+
+      writeInterruptionClosed(1, 'you', beforeGap, beforeGap + duringGap, 'stream-error', false);
+
+      const totalPcm = beforeGap + duringGap;
+      writeStopped(totalPcm, totalPcm, 0);
+      break;
+    }
+
     case 'recovery-ready': {
       // Ready, PCM blocks, stopped (for recovery scenario tests)
       writeReady();

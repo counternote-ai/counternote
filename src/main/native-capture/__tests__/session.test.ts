@@ -116,6 +116,33 @@ function buildInterruptionOpen(
   );
 }
 
+function buildInterruptionClose(
+  seq: number,
+  id: number,
+  channel: string,
+  startBlock: number,
+  endBlockExclusive: number,
+  reason: string,
+  recovered: boolean,
+): Buffer {
+  return buildFrame(
+    CaptureFrameType.interruption,
+    seq,
+    Buffer.from(
+      JSON.stringify({
+        type: 'interruption',
+        phase: 'closed',
+        id,
+        channel,
+        startBlock,
+        endBlockExclusive,
+        reason,
+        recovered,
+      }),
+    ),
+  );
+}
+
 function buildState(
   seq: number,
   channel: string,
@@ -234,6 +261,10 @@ class FakeStore {
     };
   }
 
+  diagnosticsPath(_recordingId: string): string {
+    return '/tmp/diagnostics/test-session.jsonl';
+  }
+
   async begin(_recordingId: string): Promise<CaptureStoreSession> {
     return this.beginResult;
   }
@@ -292,6 +323,17 @@ class FakeLibrary {
   }
 }
 
+class FakeDiagnosticsLog {
+  entries: Record<string, unknown>[] = [];
+  closed = false;
+  write(entry: Record<string, unknown>): void {
+    this.entries.push(entry);
+  }
+  close(): void {
+    this.closed = true;
+  }
+}
+
 /* ── Timer control ─────────────────────────────────────────────── */
 
 interface PendingTimer {
@@ -341,6 +383,7 @@ let fakeWriter: FakeWriter;
 let fakeStore: FakeStore;
 let fakeCoordinator: FakeMutationCoordinator;
 let fakeLibrary: FakeLibrary;
+let fakeDiagnosticsLog: FakeDiagnosticsLog;
 let timerFns: ReturnType<typeof createTimerFns>;
 let capturedSpawnOptions: SpawnOptions | undefined;
 
@@ -350,6 +393,7 @@ function createDeps(overrides?: Partial<NativeCaptureSessionDeps>): NativeCaptur
   fakeStore = new FakeStore();
   fakeCoordinator = new FakeMutationCoordinator();
   fakeLibrary = new FakeLibrary();
+  fakeDiagnosticsLog = new FakeDiagnosticsLog();
   timerFns = createTimerFns();
   capturedSpawnOptions = undefined;
 
@@ -370,6 +414,9 @@ function createDeps(overrides?: Partial<NativeCaptureSessionDeps>): NativeCaptur
     },
     setTimeout: timerFns.setTimeout,
     clearTimeout: timerFns.clearTimeout,
+    createDiagnosticsLog(_filePath: string) {
+      return fakeDiagnosticsLog;
+    },
     ...overrides,
   };
 }
@@ -881,7 +928,8 @@ describe('NativeCaptureSession', () => {
           reason: string;
         }>;
       };
-      expect(metadata.status).toBe('interrupted');
+      // A gap that recovered is recorded but does not mark the recording.
+      expect(metadata.status).toBe('complete');
 
       const gapInterruption = metadata.interruptions.find((i) => i.reason === 'buffer-overflow');
       expect(gapInterruption).toEqual({
@@ -893,7 +941,7 @@ describe('NativeCaptureSession', () => {
       });
     });
 
-    it('forces terminal status interrupted', async () => {
+    it('reports complete when the only gap recovered before stop', async () => {
       const session = await startAndReady();
 
       fakeChild.stdout.push(buildPcm(1));
@@ -910,10 +958,10 @@ describe('NativeCaptureSession', () => {
       await flushMicrotasks();
 
       const result = await stopPromise;
-      expect(result).toEqual({ status: 'interrupted' });
+      expect(result).toEqual({ status: 'complete' });
     });
 
-    it('adjacent later PCM does not clear gap interruption', async () => {
+    it('keeps the recovered gap in metadata even when later PCM arrives', async () => {
       const session = await startAndReady();
 
       fakeChild.stdout.push(buildPcm(1));
@@ -931,7 +979,13 @@ describe('NativeCaptureSession', () => {
       await flushMicrotasks();
 
       const result = await stopPromise;
-      expect(result).toEqual({ status: 'interrupted' });
+      expect(result).toEqual({ status: 'complete' });
+      const metadata = fakeStore.publishCalls[0].metadata as {
+        interruptions: Array<{ reason: string; recovered: boolean }>;
+      };
+      expect(
+        metadata.interruptions.some((i) => i.reason === 'buffer-overflow' && i.recovered),
+      ).toBe(true);
     });
 
     it('leaves both channel rows connected-with-gap', async () => {
@@ -964,6 +1018,120 @@ describe('NativeCaptureSession', () => {
 
       expect(fakeWriter.writeBlockCalls).toBe(0);
       expect(fakeStore.publishCalls).toHaveLength(0);
+    });
+  });
+
+  /* ── Status semantics ────────────────────────────────────── */
+
+  describe('status semantics', () => {
+    it('reports complete when an interruption recovered before stop', async () => {
+      const session = await startAndReady();
+
+      fakeChild.stdout.push(buildPcm(1));
+      fakeChild.stdout.push(buildInterruptionOpen(2, 1, 'you', 1, 'source-gap'));
+      fakeChild.stdout.push(buildPcm(3));
+      fakeChild.stdout.push(buildInterruptionClose(4, 1, 'you', 1, 2, 'source-gap', true));
+      await flushMicrotasks();
+
+      const stopPromise = session.stop();
+      await flushMicrotasks();
+      fakeChild.stdout.push(buildStopped(5, 2, 2, 0));
+      await flushMicrotasks();
+      fakeChild.stdout.push(null);
+      fakeChild.emit('close', 0);
+      await flushMicrotasks();
+
+      const result = await stopPromise;
+      expect(result).toEqual({ status: 'complete' });
+      const metadata = fakeStore.publishCalls[0].metadata as {
+        status: string;
+        interruptions: Array<{ channel: string; recovered: boolean; reason: string }>;
+      };
+      expect(metadata.status).toBe('complete');
+      expect(metadata.interruptions).toHaveLength(1);
+      expect(metadata.interruptions[0]).toMatchObject({
+        channel: 'you',
+        recovered: true,
+        reason: 'source-gap',
+      });
+    });
+
+    it('reports interrupted when an interruption never recovered', async () => {
+      const session = await startAndReady();
+
+      fakeChild.stdout.push(buildPcm(1));
+      fakeChild.stdout.push(buildInterruptionOpen(2, 1, 'interviewer', 1, 'late-data'));
+      fakeChild.stdout.push(buildPcm(3));
+      await flushMicrotasks();
+
+      const stopPromise = session.stop();
+      await flushMicrotasks();
+      // The helper closes the still-open interruption as unrecovered at stop.
+      fakeChild.stdout.push(buildInterruptionClose(4, 1, 'interviewer', 1, 2, 'late-data', false));
+      fakeChild.stdout.push(buildStopped(5, 2, 2, 0));
+      await flushMicrotasks();
+      fakeChild.stdout.push(null);
+      fakeChild.emit('close', 0);
+      await flushMicrotasks();
+
+      const result = await stopPromise;
+      expect(result).toEqual({ status: 'interrupted' });
+      const metadata = fakeStore.publishCalls[0].metadata as { status: string };
+      expect(metadata.status).toBe('interrupted');
+    });
+  });
+
+  /* ── Diagnostics ─────────────────────────────────────────── */
+
+  describe('diagnostics', () => {
+    it('persists helper stderr diagnostics with passthrough details', async () => {
+      await startAndReady();
+      fakeChild.stderr.push(
+        '{"level":"info","code":"source-restart-attempt","ts":"2026-08-13T00:00:01.000Z","channel":"you","attempt":"1"}\n',
+      );
+      await flushMicrotasks();
+
+      const entry = fakeDiagnosticsLog.entries.find((e) => e.code === 'source-restart-attempt');
+      expect(entry).toMatchObject({
+        source: 'helper',
+        level: 'info',
+        ts: '2026-08-13T00:00:01.000Z',
+        channel: 'you',
+        attempt: '1',
+      });
+    });
+
+    it('logs the session lifecycle and closes the log on finalize', async () => {
+      const session = await startAndReady();
+      fakeChild.stdout.push(buildPcm(1));
+      await flushMicrotasks();
+
+      const stopPromise = session.stop();
+      await flushMicrotasks();
+      fakeChild.stdout.push(buildStopped(2, 1, 1, 0));
+      await flushMicrotasks();
+      fakeChild.stdout.push(null);
+      fakeChild.emit('close', 0);
+      await flushMicrotasks();
+      await stopPromise;
+
+      const events = fakeDiagnosticsLog.entries.map((e) => e.event ?? e.code);
+      expect(events).toEqual(
+        expect.arrayContaining([
+          'session-begin',
+          'helper-spawned',
+          'ready',
+          'stop-sent',
+          'stopped',
+          'stdout-eof',
+          'child-close',
+          'finalize-begin',
+          'finalize-status',
+        ]),
+      );
+      const statusEntry = fakeDiagnosticsLog.entries.find((e) => e.event === 'finalize-status');
+      expect(statusEntry).toMatchObject({ status: 'complete', pcmBlocks: 1 });
+      expect(fakeDiagnosticsLog.closed).toBe(true);
     });
   });
 
@@ -1358,15 +1526,17 @@ describe('NativeCaptureSession', () => {
     });
 
     it('reports truthful interrupted vs failed', async () => {
-      // Interrupted: WAV succeeds but there were gaps
+      // Interrupted: WAV succeeds but an interruption never recovered
       const session1 = await startAndReady();
       fakeChild.stdout.push(buildPcm(1));
-      fakeChild.stdout.push(buildGap(2, 1, 3));
+      fakeChild.stdout.push(buildInterruptionOpen(2, 1, 'interviewer', 1, 'late-data'));
+      fakeChild.stdout.push(buildPcm(3));
       await flushMicrotasks();
 
       const stop1 = session1.stop();
       await flushMicrotasks();
-      fakeChild.stdout.push(buildStopped(3, 3, 1, 2));
+      fakeChild.stdout.push(buildInterruptionClose(4, 1, 'interviewer', 1, 2, 'late-data', false));
+      fakeChild.stdout.push(buildStopped(5, 2, 2, 0));
       await flushMicrotasks();
       fakeChild.stdout.push(null);
       fakeChild.emit('close', 0);

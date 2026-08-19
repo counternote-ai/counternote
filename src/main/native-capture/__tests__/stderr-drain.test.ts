@@ -47,16 +47,17 @@ describe('StderrDrain', () => {
     expect(diagnostics).toEqual(cases);
   });
 
-  it('drops malformed JSON and unknown lines', async () => {
+  it('drops malformed lines and passes through extra fields', async () => {
     attach();
     stream.write('not json\n');
     stream.write('{"level":"info"}\n'); // missing code
-    stream.write('{"level":"info","code":"helper-started","extra":1}\n'); // extra field
     stream.write('{"level":"bad","code":"helper-started"}\n'); // invalid level
-    stream.write('{"level":"info","code":"unknown-code"}\n'); // invalid code
-    stream.write(jsonLine('info', 'helper-started'));
+    stream.write('{"level":"info","code":"Has Spaces"}\n'); // invalid code shape
+    stream.write('{"level":"info","code":"helper-started","channel":"you","attempt":"1"}\n'); // extra fields pass through
     await new Promise((r) => setImmediate(r));
-    expect(diagnostics).toEqual([{ level: 'info', code: 'helper-started' }]);
+    expect(diagnostics).toEqual([
+      { level: 'info', code: 'helper-started', channel: 'you', attempt: '1' },
+    ]);
   });
 
   it('discards lines over 1 KiB', async () => {
@@ -94,17 +95,17 @@ describe('StderrDrain', () => {
     }
     await new Promise((r) => setImmediate(r));
     // All valid diagnostics should be emitted up to the rate limit
-    expect(diagnostics.length).toBeLessThanOrEqual(20);
+    expect(diagnostics.length).toBeLessThanOrEqual(120);
     expect(diagnostics.length).toBeGreaterThan(0);
   });
 
-  it('rate limits at 20 per minute and emits one suppression count', async () => {
+  it('rate limits at 120 per minute and emits one suppression count', async () => {
     attach();
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 125; i++) {
       stream.write(jsonLine('info', 'helper-started'));
     }
     await new Promise((r) => setImmediate(r));
-    expect(diagnostics).toHaveLength(20);
+    expect(diagnostics).toHaveLength(120);
     expect(suppressedCounts).toEqual([1]);
     // Additional diagnostics after the suppression are silently dropped
     expect(diagnostics.every((d) => d.level === 'info' && d.code === 'helper-started')).toBe(true);

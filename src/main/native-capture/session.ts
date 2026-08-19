@@ -16,6 +16,10 @@ import {
   blockIndexToMilliseconds,
 } from './capture-metadata';
 import { createStderrDrain, type StderrDrainHandle } from './stderr-drain';
+import {
+  createDiagnosticsLog as defaultCreateDiagnosticsLog,
+  type DiagnosticsLogLike,
+} from './diagnostics-log';
 
 /* ── Public types ─────────────────────────────────────────────── */
 
@@ -81,7 +85,10 @@ export interface WavWriterLike {
 
 export interface NativeCaptureSessionDeps {
   readonly helperPath: string;
-  readonly store: Pick<CaptureStore, 'begin' | 'publish' | 'retainFailed' | 'discardEmpty'>;
+  readonly store: Pick<
+    CaptureStore,
+    'begin' | 'publish' | 'retainFailed' | 'discardEmpty' | 'diagnosticsPath'
+  >;
   readonly mutationCoordinator: Pick<RecordingMutationCoordinator, 'tryAcquire'>;
   readonly recordingsLibrary: Pick<RecordingsLibrary, 'list'>;
   spawn(command: string, args: string[], options: SpawnOptions): ChildProcessLike;
@@ -89,6 +96,9 @@ export interface NativeCaptureSessionDeps {
   now(): number;
   setTimeout(callback: () => void, ms: number): unknown;
   clearTimeout(id: unknown): void;
+  /** Injectable for tests; defaults to an append-only JSONL file under the
+   *  recordings root's `.diagnostics/` directory. */
+  createDiagnosticsLog?(filePath: string): DiagnosticsLogLike;
 }
 
 export interface SpawnOptions {
@@ -128,6 +138,7 @@ export function createNativeCaptureSession(
   let child: ChildProcessLike | undefined;
   let decoder: CaptureProtocolDecoder | undefined;
   let stderrDrain: StderrDrainHandle | undefined;
+  let diagnosticsLog: DiagnosticsLogLike | undefined;
 
   /* timers */
   let initTimer: unknown;
@@ -143,7 +154,6 @@ export function createNativeCaptureSession(
   };
   const openInterruptions = new Map<SourceChannel, OpenInterruption>();
   const closedInterruptions: PersistedInterruption[] = [];
-  let hasGap = false;
   let stoppedReceived = false;
 
   /* barrier */
@@ -184,6 +194,16 @@ export function createNativeCaptureSession(
       } catch {
         /* observer errors are non-fatal */
       }
+    }
+  }
+
+  function logEvent(event: string, extra?: Record<string, unknown>): void {
+    const log = diagnosticsLog;
+    if (!log) return;
+    try {
+      log.write({ ts: new Date(deps.now()).toISOString(), source: 'main', event, ...extra });
+    } catch {
+      /* diagnostics never break capture */
     }
   }
 
@@ -268,6 +288,7 @@ export function createNativeCaptureSession(
         if (!queueProcessing) void drainFrameQueue();
       }
     } catch {
+      logEvent('protocol-error', { phase });
       if (phase === 'starting') {
         emit('protocol-error');
         void performInitCleanup('protocol-violation');
@@ -288,11 +309,13 @@ export function createNativeCaptureSession(
         if (needsDrain && writer) {
           await writer.waitForDrain();
           child?.stdout?.resume();
+          logEvent('drain-resumed', { acceptedBlocks: acceptedBlocks() });
           emit('drain-resumed');
         }
       }
     } catch {
       frameQueue = [];
+      logEvent('persistence-error', { phase });
       emit('persistence-error');
       if (!sharedStopPromise && (phase === 'recording' || phase === 'stopping')) {
         sharedStopPromise = doFinalize('persistence-error');
@@ -334,6 +357,7 @@ export function createNativeCaptureSession(
       initTimer = undefined;
     }
     phase = 'recording';
+    logEvent('ready');
     emit('ready');
     notifyStatusSubscribers();
   }
@@ -352,6 +376,7 @@ export function createNativeCaptureSession(
     acceptedPcmBlocks += 1;
     if (needsDrain) {
       child?.stdout?.pause();
+      logEvent('backpressure', { acceptedBlocks: acceptedBlocks() });
       emit('backpressure');
     }
     return needsDrain;
@@ -367,7 +392,6 @@ export function createNativeCaptureSession(
       writer.writeBlock(zeroBlock);
     }
     acceptedGapBlocks += count;
-    hasGap = true;
     closedInterruptions.push({
       channel: 'capture',
       startMs: blockIndexToMilliseconds(payload.startBlock),
@@ -438,9 +462,14 @@ export function createNativeCaptureSession(
     gapBlocks: number;
   }
 
-  function onStopped(_p: StoppedPayload): void {
+  function onStopped(p: StoppedPayload): void {
     if (phase !== 'recording' && phase !== 'stopping') return;
     stoppedReceived = true;
+    logEvent('stopped', {
+      finalBlockExclusive: p.finalBlockExclusive,
+      pcmBlocks: p.pcmBlocks,
+      gapBlocks: p.gapBlocks,
+    });
     emit('stopped');
     if (phase === 'recording') {
       phase = 'stopping';
@@ -457,6 +486,7 @@ export function createNativeCaptureSession(
   }
 
   function onError(_p: ErrorPayload): void {
+    logEvent('helper-error', { code: _p.code, phase: _p.phase });
     if (phase === 'starting') {
       emit('helper-error');
       void performInitCleanup('helper-error');
@@ -468,12 +498,14 @@ export function createNativeCaptureSession(
 
   function onStdoutEnd(): void {
     stdoutEof = true;
+    logEvent('stdout-eof');
     emit('stdout-eof');
     checkBarrier();
   }
 
-  function onClose(_code: number | null): void {
+  function onClose(code: number | null): void {
     childClosed = true;
+    logEvent('child-close', { code });
     emit('child-close');
     checkBarrier();
     // Unexpected exit during recording
@@ -488,6 +520,7 @@ export function createNativeCaptureSession(
     if (initCleanupDone) return;
     initCleanupDone = true;
     clearTimers();
+    logEvent('init-cleanup', { reason: _reason });
 
     // Abort writer first (before discardEmpty)
     let writerClosed = true;
@@ -533,12 +566,18 @@ export function createNativeCaptureSession(
     phase = 'done';
     notifyStatusSubscribers();
     emit('init-cleanup-done');
+    diagnosticsLog?.close();
+    diagnosticsLog = undefined;
   }
 
   /* ── finalization ─────────────────────────────────────────── */
 
   async function doFinalize(interruptionReason: string | undefined): Promise<StopCaptureResult> {
     phase = 'stopping';
+    logEvent('finalize-begin', {
+      reason: interruptionReason ?? null,
+      acceptedBlocks: acceptedBlocks(),
+    });
     notifyStatusSubscribers();
 
     // Close open interruptions on unexpected termination
@@ -577,6 +616,7 @@ export function createNativeCaptureSession(
       const barrier = waitForBarrier();
       const deadline = new Promise<void>((r) => {
         closeTimer = deps.setTimeout(() => {
+          logEvent('close-timeout');
           emit('close-timeout');
           stdoutEof = true;
           childClosed = true;
@@ -591,6 +631,7 @@ export function createNativeCaptureSession(
     } else {
       // Grace period for orderly stop
       graceTimer = deps.setTimeout(() => {
+        logEvent('grace-timeout');
         emit('grace-timeout');
         try {
           child?.kill('SIGTERM');
@@ -603,6 +644,7 @@ export function createNativeCaptureSession(
       const barrier = waitForBarrier();
       const deadline = new Promise<void>((r) => {
         closeTimer = deps.setTimeout(() => {
+          logEvent('close-timeout');
           emit('close-timeout');
           stdoutEof = true;
           childClosed = true;
@@ -690,6 +732,12 @@ export function createNativeCaptureSession(
 
     // Terminal metadata + publish
     const terminalStatus = determineStatus(interruptionReason);
+    logEvent('finalize-status', {
+      status: terminalStatus,
+      pcmBlocks: acceptedPcmBlocks,
+      gapBlocks: acceptedGapBlocks,
+      interruptions: closedInterruptions.length,
+    });
     try {
       await publishMetadata(terminalStatus);
       emit('metadata-replaced');
@@ -713,8 +761,12 @@ export function createNativeCaptureSession(
   }
 
   function determineStatus(interruptionReason: string | undefined): 'complete' | 'interrupted' {
+    // `interrupted` means audio was permanently lost: a capture-wide terminal
+    // failure (protocol-error, helper-exit, ...) or an interruption that never
+    // recovered before stop. Recovered gaps are recorded in metadata but never
+    // mark the recording; silence (nobody talking) is not an interruption.
     if (interruptionReason) return 'interrupted';
-    if (hasGap || closedInterruptions.length > 0) return 'interrupted';
+    if (closedInterruptions.some((i) => !i.recovered)) return 'interrupted';
     return 'complete';
   }
 
@@ -773,6 +825,8 @@ export function createNativeCaptureSession(
     child?.stderr?.destroy();
     phase = 'done';
     notifyStatusSubscribers();
+    diagnosticsLog?.close();
+    diagnosticsLog = undefined;
   }
 
   function releaseLease(): void {
@@ -812,6 +866,17 @@ export function createNativeCaptureSession(
       return { ok: false, reason: 'persistence-error' };
     }
 
+    // Diagnostics sidecar lives outside staging and never gates capture.
+    try {
+      const logPath = deps.store.diagnosticsPath(recordingId);
+      diagnosticsLog = deps.createDiagnosticsLog
+        ? deps.createDiagnosticsLog(logPath)
+        : defaultCreateDiagnosticsLog(logPath);
+    } catch {
+      diagnosticsLog = undefined;
+    }
+    logEvent('session-begin', { helperPath: deps.helperPath });
+
     try {
       const env = buildEnvironment();
       child = deps.spawn(deps.helperPath, [], {
@@ -822,9 +887,25 @@ export function createNativeCaptureSession(
       await performInitCleanup('persistence-error');
       return { ok: false, reason: 'persistence-error' };
     }
+    logEvent('helper-spawned');
 
     // Attach stderr drain synchronously
-    stderrDrain = createStderrDrain(child.stderr!, () => {});
+    stderrDrain = createStderrDrain(child.stderr!, (diagnostic) => {
+      const log = diagnosticsLog;
+      if (!log) return;
+      try {
+        const { level, code, ...rest } = diagnostic;
+        log.write({
+          ts: typeof rest.ts === 'string' ? rest.ts : new Date(deps.now()).toISOString(),
+          source: 'helper',
+          level,
+          code,
+          ...rest,
+        });
+      } catch {
+        /* diagnostics never break capture */
+      }
+    });
 
     // Set up decoder and stdout processing
     decoder = new CaptureProtocolDecoder();
@@ -834,6 +915,7 @@ export function createNativeCaptureSession(
 
     // 60-second initialization timeout
     initTimer = deps.setTimeout(() => {
+      logEvent('init-timeout');
       emit('init-timeout');
       void performInitCleanup('timeout');
     }, INIT_TIMEOUT_MS);
@@ -870,6 +952,7 @@ export function createNativeCaptureSession(
     // Send stop command
     if (child?.stdin && !child.stdin.destroyed) {
       child.stdin.write(JSON.stringify({ version: 1, type: 'stop' }) + '\n');
+      logEvent('stop-sent', { acceptedBlocks: acceptedBlocks() });
     }
 
     sharedStopPromise = doFinalize(undefined);

@@ -9,8 +9,10 @@
 - Local Whisper model files cached under Electron `app.getPath('userData')`
 
 Local sidecar lifecycle and failure diagnostics may be written to the terminal.
-Transcript stdout is never logged. Stderr diagnostics are allow-listed, bounded,
-and stripped of transcript-shaped lines, secrets, and absolute paths.
+Transcript stdout is never logged. Stderr diagnostics are shape-validated
+(known level, kebab-case code), rate-limited, and never carry transcript-shaped
+lines, secrets, or absolute paths; they are also persisted locally under the
+recordings root's `.diagnostics/` directory (see below).
 
 Interview Copilot does not include telemetry or analytics.
 
@@ -30,6 +32,12 @@ writes framed PCM to stdout; the main process owns all file persistence.
 In-progress recordings use a `.in-progress` extension and are renamed to `.wav`
 on clean finalization. Interrupted recordings use a `.recovery` extension and are
 available for user-controlled recovery or Trash disposal.
+
+Capture diagnostics are written to a local `.diagnostics/` directory inside the
+recordings root as JSONL files: capture lifecycle events (spawn, ready, stop,
+finalize) and allow-listed helper diagnostics (source failures, restart
+attempts, outcomes). They contain no audio, no transcript text, and no
+credentials, and they never leave the Mac.
 
 No public recording appears before atomic publication. No failed artifact appears
 in the normal recordings library.

@@ -37,6 +37,17 @@ export class CaptureStore {
     },
   ) {}
 
+  /** Sidecar JSONL diagnostics live outside staging so publication and
+   *  discard rules (which expect exactly two staging entries) never see them. */
+  public diagnosticsPath(recordingId: string): string {
+    if (!isRecordingId(recordingId)) throw new Error('INVALID_RECORDING_ID');
+    return path.join(
+      path.resolve(this.getConfiguredRoot()),
+      '.diagnostics',
+      `${recordingId}.jsonl`,
+    );
+  }
+
   public async begin(recordingId: string): Promise<CaptureStoreSession> {
     if (!isRecordingId(recordingId)) throw new Error('INVALID_RECORDING_ID');
     const root = await this.prepareRoot();

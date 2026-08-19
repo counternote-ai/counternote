@@ -132,8 +132,13 @@ function parseMetadata(
   }
   if (!isIsoTimestamp(value.endedAt) || Date.parse(value.endedAt) < Date.parse(value.startedAt))
     return null;
+  // Status semantics: a recording is `interrupted` only when audio was
+  // permanently lost — at least one interruption never recovered (or a
+  // capture-wide terminal event, which is persisted as recovered: false).
+  // Recovered gaps never mark a recording, so `complete` may carry
+  // interruptions as long as every one of them recovered.
   if (
-    (status === 'complete' && interruptions.length !== 0) ||
+    (status === 'complete' && interruptions.some((i) => i !== null && !i.recovered)) ||
     (status === 'interrupted' && interruptions.length === 0)
   )
     return null;

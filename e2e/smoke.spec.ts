@@ -598,9 +598,11 @@ test('Quit during recording waits for final publication', async () => {
   }
 });
 
-test('One-channel interruption remaining visible after save', async () => {
+test('Recovered one-channel interruption saves as a complete recording', async () => {
   // Uses single-channel-interruption scenario:
-  // ready, 5 PCM, interruption-open, 3 silent-right PCM, interruption-closed, 2 PCM, stopped.
+  // ready, 5 PCM, interruption-open, 3 silent-right PCM, interruption-closed
+  // (recovered=true), 2 PCM, stopped. A recovered interruption loses no audio,
+  // so the recording must not be marked Interrupted.
   const { electronApp, window } = await launchTestApp('single-channel-interruption');
 
   try {
@@ -611,8 +613,41 @@ test('One-channel interruption remaining visible after save', async () => {
       timeout: 10_000,
     });
 
-    // The published recording should have an "Interrupted" badge
-    await expect(window.getByText('Interrupted')).toBeVisible({ timeout: 5_000 });
+    // Both the seeded legacy recording and the new complete recording are
+    // transcribable; waiting for the second button also proves the new row
+    // rendered before we assert on badges.
+    await expect(window.getByRole('button', { name: 'Transcribe audio' })).toHaveCount(2, {
+      timeout: 5_000,
+    });
+
+    // No "Interrupted" badge and no interruption banner: nothing was lost.
+    await expect(window.getByText('Interrupted', { exact: true })).toHaveCount(0);
+    await expect(window.getByText(/Recording was interrupted/)).toHaveCount(0);
+
+    await expectNoHorizontalOverflow(window);
+    await expectAccessible(window);
+  } finally {
+    await electronApp.close();
+  }
+});
+
+test('Unrecovered one-channel interruption is marked Interrupted after save', async () => {
+  // Uses single-channel-interruption-unrecovered scenario: same shape, but the
+  // interruption closes with recovered=false — the channel never came back, so
+  // audio was genuinely lost.
+  const { electronApp, window } = await launchTestApp('single-channel-interruption-unrecovered');
+
+  try {
+    await window.getByRole('button', { name: 'Record', exact: true }).click();
+
+    // Wait for the recording to finish
+    await expect(window.getByRole('button', { name: 'Record', exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // The published recording must carry an "Interrupted" badge (exact match:
+    // the stop-feedback banner also contains the word "interrupted").
+    await expect(window.getByText('Interrupted', { exact: true })).toBeVisible({ timeout: 5_000 });
 
     // Layout invariant: no badge may overflow the 400px window.
     const overflowingBadges = await window.evaluate(
@@ -625,9 +660,11 @@ test('One-channel interruption remaining visible after save', async () => {
     await expectNoHorizontalOverflow(window);
     await expectAccessible(window);
 
-    // The seeded legacy recording remains transcribable; the newly interrupted
-    // recording does not add a second Transcribe action.
-    await expect(window.getByRole('button', { name: 'Transcribe audio' })).toHaveCount(1);
+    // An interrupted recording stays transcribable: the seeded legacy row plus
+    // the new interrupted row both offer a Transcribe action, and the new row
+    // explains that partial audio can still be transcribed.
+    await expect(window.getByRole('button', { name: 'Transcribe audio' })).toHaveCount(2);
+    await expect(window.getByText(/Part of this recording was lost/)).toBeVisible();
 
     // Wall-clock title on the new recording: manual screenshot only.
     await window.screenshot({ path: 'test-results/native-capture-interruption.png' });

@@ -86,6 +86,8 @@ describe('capture metadata', () => {
         ],
       }),
     ).toBeNull();
+    // `complete` may carry interruptions only when every one recovered;
+    // an unrecovered interruption contradicts the complete status.
     expect(
       parseCaptureMetadata({
         ...terminalMetadata(),
@@ -95,6 +97,20 @@ describe('capture metadata', () => {
             startMs: 0,
             endMs: 20,
             recovered: true,
+            reason: 'source-gap',
+          },
+        ],
+      }),
+    ).not.toBeNull();
+    expect(
+      parseCaptureMetadata({
+        ...terminalMetadata(),
+        interruptions: [
+          {
+            channel: 'interviewer',
+            startMs: 0,
+            endMs: 20,
+            recovered: false,
             reason: 'source-gap',
           },
         ],
