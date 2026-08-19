@@ -17,8 +17,18 @@ public extension MicrophoneSource {
 /// Captures the default macOS input with AVAudioEngine's raw input node.
 /// The tap converts each callback to the helper's 16 kHz mono s16le contract
 /// before passing it to the timeline mixer.
+///
+/// `start()` and `stop()` are serialized through a private control queue, so a
+/// `start()` can never interleave with an in-flight `stop()` (route changes
+/// can make `removeTap`/`engine.stop()` block for seconds, and an interleaved
+/// `start()` would no-op on the stale `running` flag). Every `start()` builds
+/// a FRESH AVAudioEngine: retries after a route invalidation never reuse a
+/// wedged engine. Callers may call from any thread; calls may block while a
+/// serialized peer finishes — the coordinator always calls them outside its
+/// own lock.
 public final class MicrophoneSourceImpl: NSObject, MicrophoneSource {
-    private let engine = AVAudioEngine()
+    private let controlQueue = DispatchQueue(label: "InterviewAudioCapture.microphone.control")
+    private var engine: AVAudioEngine?
     private let targetFormat = AVAudioFormat(
         commonFormat: .pcmFormatInt16,
         sampleRate: 16_000,
@@ -33,12 +43,6 @@ public final class MicrophoneSourceImpl: NSObject, MicrophoneSource {
 
     public override init() {
         super.init()
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleConfigurationChange),
-            name: .AVAudioEngineConfigurationChange,
-            object: engine
-        )
     }
 
     deinit {
@@ -46,34 +50,59 @@ public final class MicrophoneSourceImpl: NSObject, MicrophoneSource {
     }
 
     public func start() throws {
-        guard !running else { return }
-        let input = engine.inputNode
-        let format = input.inputFormat(forBus: 0)
-        guard format.sampleRate > 0, format.channelCount > 0 else {
-            throw NativeMicrophoneError.invalidInputFormat
-        }
-        converter = AVAudioConverter(from: format, to: targetFormat)
-        input.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak self] buffer, time in
-            self?.handle(buffer: buffer, time: time)
-        }
-        do {
-            engine.prepare()
-            try engine.start()
-            currentDeviceName = "Default Input"
-            running = true
-        } catch {
-            input.removeTap(onBus: 0)
-            converter = nil
-            throw error
+        try controlQueue.sync {
+            guard !running else { return }
+            let newEngine = AVAudioEngine()
+            let input = newEngine.inputNode
+            let format = input.inputFormat(forBus: 0)
+            guard format.sampleRate > 0, format.channelCount > 0 else {
+                throw NativeMicrophoneError.invalidInputFormat
+            }
+            // The tap can fire the moment the engine starts rendering, so the
+            // converter must be in place before the engine is started.
+            converter = AVAudioConverter(from: format, to: targetFormat)
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleConfigurationChange),
+                name: .AVAudioEngineConfigurationChange,
+                object: newEngine
+            )
+            input.installTap(onBus: 0, bufferSize: 1_024, format: format) { [weak self] buffer, time in
+                self?.handle(buffer: buffer, time: time)
+            }
+            do {
+                newEngine.prepare()
+                try newEngine.start()
+                engine = newEngine
+                currentDeviceName = "Default Input"
+                running = true
+            } catch {
+                NotificationCenter.default.removeObserver(
+                    self,
+                    name: .AVAudioEngineConfigurationChange,
+                    object: newEngine
+                )
+                input.removeTap(onBus: 0)
+                converter = nil
+                throw error
+            }
         }
     }
 
     public func stop() {
-        guard running else { return }
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        converter = nil
-        running = false
+        controlQueue.sync {
+            guard running, let engine else { return }
+            NotificationCenter.default.removeObserver(
+                self,
+                name: .AVAudioEngineConfigurationChange,
+                object: engine
+            )
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+            self.engine = nil
+            converter = nil
+            running = false
+        }
     }
 
     public func setCallback(_ callback: @escaping (Data, UInt64) -> Void) {

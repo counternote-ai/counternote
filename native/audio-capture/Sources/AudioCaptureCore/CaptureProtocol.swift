@@ -346,6 +346,28 @@ public class CaptureProtocolDecoder {
 
     // MARK: - Header Reading
 
+    /// StrictJSONParser yields Double for every JSON number, and Swift numeric
+    /// casts (`as? UInt32`) fail across types, so integer fields are extracted
+    /// through this helper: exactly representable, in-range values only.
+    private func uint32Value(_ value: Any?) -> UInt32? {
+        if let uint = value as? UInt32 { return uint }
+        guard let double = value as? Double,
+              double >= 0,
+              double <= Double(UInt32.max),
+              double.rounded() == double else { return nil }
+        return UInt32(double)
+    }
+
+    private func uint32Array(_ value: Any?) -> [UInt32]? {
+        guard let array = value as? [Any] else { return nil }
+        var result: [UInt32] = []
+        for element in array {
+            guard let uint = uint32Value(element) else { return nil }
+            result.append(uint)
+        }
+        return result
+    }
+
     private struct FrameHeader {
         let frameType: CaptureFrameType
         let payloadLength: UInt32
@@ -554,8 +576,8 @@ public class CaptureProtocolDecoder {
             throw CaptureProtocolError(code: .invalidInvariant, message: "Gap payload does not describe a valid contiguous timeline range.")
         }
 
-        guard let startBlock = dict["startBlock"] as? UInt32,
-              let endBlockExclusive = dict["endBlockExclusive"] as? UInt32 else {
+        guard let startBlock = uint32Value(dict["startBlock"]),
+              let endBlockExclusive = uint32Value(dict["endBlockExclusive"]) else {
             throw CaptureProtocolError(code: .invalidSchema, message: "Gap payload missing block indices.")
         }
 
@@ -595,10 +617,10 @@ public class CaptureProtocolDecoder {
             }
 
             guard dict["type"] as? String == "interruption",
-                  let id = dict["id"] as? UInt32,
+                  let id = uint32Value(dict["id"]),
                   let channelStr = dict["channel"] as? String,
                   let channel = SourceChannel(rawValue: channelStr),
-                  let startBlock = dict["startBlock"] as? UInt32,
+                  let startBlock = uint32Value(dict["startBlock"]),
                   let reasonStr = dict["reason"] as? String,
                   let reason = SourceInterruptionReason(rawValue: reasonStr) else {
                 throw CaptureProtocolError(code: .invalidSchema, message: "Interruption open payload is invalid.")
@@ -631,11 +653,11 @@ public class CaptureProtocolDecoder {
             }
 
             guard dict["type"] as? String == "interruption",
-                  let id = dict["id"] as? UInt32,
+                  let id = uint32Value(dict["id"]),
                   let channelStr = dict["channel"] as? String,
                   let channel = SourceChannel(rawValue: channelStr),
-                  let startBlock = dict["startBlock"] as? UInt32,
-                  let endBlockExclusive = dict["endBlockExclusive"] as? UInt32,
+                  let startBlock = uint32Value(dict["startBlock"]),
+                  let endBlockExclusive = uint32Value(dict["endBlockExclusive"]),
                   let reasonStr = dict["reason"] as? String,
                   let reason = SourceInterruptionReason(rawValue: reasonStr),
                   let recovered = dict["recovered"] as? Bool else {
@@ -679,7 +701,7 @@ public class CaptureProtocolDecoder {
               let channel = SourceChannel(rawValue: channelStr),
               let statusStr = dict["status"] as? String,
               let status = StateStatus(rawValue: statusStr),
-              let effectiveBlock = dict["effectiveBlock"] as? UInt32 else {
+              let effectiveBlock = uint32Value(dict["effectiveBlock"]) else {
             throw CaptureProtocolError(code: .invalidSchema, message: "State payload is invalid.")
         }
 
@@ -708,7 +730,7 @@ public class CaptureProtocolDecoder {
             guard Set(dict.keys) == allowedKeys else {
                 throw CaptureProtocolError(code: .invalidSchema, message: "No-audio-detected state contains unknown fields.")
             }
-            guard let silentBlocks = dict["silentBlocks"] as? UInt32, silentBlocks >= 1_500 else {
+            guard let silentBlocks = uint32Value(dict["silentBlocks"]), silentBlocks >= 1_500 else {
                 throw CaptureProtocolError(code: .invalidInvariant, message: "No-audio state requires at least 1500 silent blocks.")
             }
         case .reconnecting, .disconnected:
@@ -720,7 +742,7 @@ public class CaptureProtocolDecoder {
                   RecoverableReason(rawValue: reasonStr) != nil else {
                 throw CaptureProtocolError(code: .invalidSchema, message: "Reconnecting/disconnected reason is invalid.")
             }
-            guard let attempt = dict["attempt"] as? UInt32 else {
+            guard let attempt = uint32Value(dict["attempt"]) else {
                 throw CaptureProtocolError(code: .invalidSchema, message: "Reconnecting/disconnected attempt is invalid.")
             }
             if status == .reconnecting && attempt < 1 {
@@ -737,8 +759,8 @@ public class CaptureProtocolDecoder {
             status: status,
             effectiveBlock: effectiveBlock,
             reason: dict["reason"] as? String,
-            silentBlocks: dict["silentBlocks"] as? UInt32,
-            attempt: dict["attempt"] as? UInt32
+            silentBlocks: uint32Value(dict["silentBlocks"]),
+            attempt: uint32Value(dict["attempt"])
         )
     }
 
@@ -755,10 +777,10 @@ public class CaptureProtocolDecoder {
         guard dict["type"] as? String == "stopped",
               let reasonStr = dict["reason"] as? String,
               (reasonStr == "stop" || reasonStr == "format-limit"),
-              let finalBlockExclusive = dict["finalBlockExclusive"] as? UInt32,
-              let pcmBlocksVal = dict["pcmBlocks"] as? UInt32,
-              let gapBlocksVal = dict["gapBlocks"] as? UInt32,
-              let openInterruptionIds = dict["openInterruptionIds"] as? [UInt32] else {
+              let finalBlockExclusive = uint32Value(dict["finalBlockExclusive"]),
+              let pcmBlocksVal = uint32Value(dict["pcmBlocks"]),
+              let gapBlocksVal = uint32Value(dict["gapBlocks"]),
+              let openInterruptionIds = uint32Array(dict["openInterruptionIds"]) else {
             throw CaptureProtocolError(code: .invalidSchema, message: "Stopped payload is invalid.")
         }
 

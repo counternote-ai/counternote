@@ -24,6 +24,11 @@ struct ControlMessage: Codable {
 
 // MARK: - Main
 
+// A dead stdout/stderr reader must fail write(2) with EPIPE inside the async
+// sinks instead of killing the process with SIGPIPE (which FileHandle.write
+// would translate into an uncatchable NSFileHandleOperationException).
+signal(SIGPIPE, SIG_IGN)
+
 #if CAPTURE_TEST_SEAMS
 // Test-fixture mode: generate deterministic protocol output from a manifest
 if CommandLine.arguments.count >= 3 && CommandLine.arguments[1] == "--test-fixture" {
@@ -45,14 +50,15 @@ if CommandLine.arguments.count >= 3 && CommandLine.arguments[1] == "--test-fixtu
 }
 #endif
 
-let diagnostics = Diagnostics(sink: FileHandle.standardError)
+let stderrByteSink = AsyncByteSink(fileHandle: FileHandle.standardError)
+let diagnostics = Diagnostics(sink: AsyncLineSink(byteSink: stderrByteSink))
 try diagnostics.emit(level: .info, code: .helperStarted)
 
 // MARK: - Stdin Parsing
 
 let stdinHandle = FileHandle.standardInput
-let stdoutSink = FileHandleByteSink(FileHandle.standardOutput)
-let writer = CaptureProtocolWriter(sink: stdoutSink)
+let stdoutByteSink = AsyncByteSink(fileHandle: FileHandle.standardOutput)
+let writer = CaptureProtocolWriter(sink: stdoutByteSink)
 let coordinator = CaptureCoordinator(
     hostClock: SystemHostClock(),
     systemAudio: SystemAudioSourceImpl(),
@@ -60,6 +66,21 @@ let coordinator = CaptureCoordinator(
     writer: writer,
     diagnostics: diagnostics
 )
+
+// Surface a stalled reader: the async sink alarms once per backlog build-up,
+// and the write path it protects never blocks the capture loop.
+stdoutByteSink.onBacklog = { [weak stdoutByteSink] in
+    let depth = stdoutByteSink?.pendingBytes ?? 0
+    try? diagnostics.emit(level: .warn, code: .writerBacklog, details: ["depthBytes": String(depth)])
+}
+
+// The stopped frame is the last word: once it is enqueued, flush both async
+// sinks and exit on our own instead of waiting for the parent's kill grace.
+coordinator.onStopped = {
+    _ = stdoutByteSink.drain(timeout: 3.0)
+    _ = stderrByteSink.drain(timeout: 3.0)
+    exit(0)
+}
 let maxLineBytes = 1024 // 1 KiB cap per line
 var stdinBuffer = Data()
 
@@ -120,7 +141,7 @@ while true {
 
     // EOF = termination
     if data.isEmpty {
-        coordinator.stop()
+        coordinator.stopImmediately()
         break
     }
 
@@ -148,3 +169,9 @@ while true {
         stdinBuffer = Data()
     }
 }
+
+// The EOF path stopped the coordinator above; flush both async sinks so the
+// final stopped frame and the trailing diagnostics actually reach the pipes
+// before the process falls off the end.
+_ = stdoutByteSink.drain(timeout: 3.0)
+_ = stderrByteSink.drain(timeout: 3.0)

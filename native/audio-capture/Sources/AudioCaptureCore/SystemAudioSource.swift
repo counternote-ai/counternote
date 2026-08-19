@@ -18,14 +18,36 @@ public extension SystemAudioSource {
 /// ScreenCaptureKit system-mix source. It requests audio only and never adds a
 /// video output; callbacks are normalized to the helper's 16 kHz mono s16le
 /// contract before entering the shared host-time timeline.
+///
+/// `start()` and `stop()` are serialized through a private control queue, so a
+/// `start()` can never interleave with an in-flight `stop()` and no-op on the
+/// stale `running` flag. Callers may call from any thread; calls may block
+/// while a serialized peer finishes — the coordinator always calls them
+/// outside its own lock.
 public final class SystemAudioSourceImpl: NSObject, SystemAudioSource, SCStreamOutput, SCStreamDelegate {
     private let callbackQueue = DispatchQueue(label: "InterviewAudioCapture.system-audio")
+    private let controlQueue = DispatchQueue(label: "InterviewAudioCapture.system-audio.control")
     private var callback: ((Data, UInt64) -> Void)?
     private var failureCallback: (() -> Void)?
     private var stream: SCStream?
     private var running = false
 
     public func start() throws {
+        try controlQueue.sync {
+            try startOnControlQueue()
+        }
+    }
+
+    public func stop() {
+        controlQueue.sync {
+            guard let stream else { return }
+            running = false
+            self.stream = nil
+            stream.stopCapture { _ in }
+        }
+    }
+
+    private func startOnControlQueue() throws {
         guard !running else { return }
         let started = DispatchSemaphore(value: 0)
         var startError: Error?
@@ -64,13 +86,6 @@ public final class SystemAudioSourceImpl: NSObject, SystemAudioSource, SCStreamO
             throw NativeSystemAudioError.startTimedOut
         }
         if let startError { throw startError }
-    }
-
-    public func stop() {
-        guard let stream else { return }
-        running = false
-        self.stream = nil
-        stream.stopCapture { _ in }
     }
 
     public func setCallback(_ callback: @escaping (Data, UInt64) -> Void) {

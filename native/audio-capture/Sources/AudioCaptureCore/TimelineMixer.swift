@@ -1,325 +1,401 @@
 import Foundation
 
+// MARK: - Coverage
+
+/// Per-channel coverage of one emitted block. An uncovered block is zero-filled
+/// and carries the reason assigned at emission time; classification is final.
+public struct ChannelCoverage: Sendable, Equatable {
+    public let covered: Bool
+    public let reason: SourceInterruptionReason?
+}
+
+public struct BlockCoverage: Sendable, Equatable {
+    public let interviewer: ChannelCoverage
+    public let you: ChannelCoverage
+}
+
 // MARK: - Mixer Output
 
 public enum MixerOutput: Sendable {
-    case pcm(left: Data, right: Data, blockIndex: UInt32)
-    case gap(startBlock: UInt32, endBlockExclusive: UInt32, reason: GapReason)
+    case pcm(left: Data, right: Data, blockIndex: UInt32, coverage: BlockCoverage)
 }
 
-// MARK: - Open Interruption Record
+// MARK: - Feed Result
 
-struct OpenInterruption {
-    let id: UInt32
-    let channel: SourceChannel
-    let startBlock: UInt32
-    let reason: SourceInterruptionReason
+public enum FeedResult: Sendable, Equatable {
+    case accepted
+    /// The chunk's time span was already emitted; late data is dropped without
+    /// reclassifying what was persisted.
+    case discardedLate
+    /// The chunk's timestamp regressed or jumped beyond the 200 ms jitter bound
+    /// within one generation. The source must be rebuilt.
+    case timestampDiscontinuity
 }
 
 // MARK: - Timeline Mixer
 
+/// Places both sources onto a shared host-clock sequence of 20 ms blocks.
+/// Emission is deadline-paced: block N is emitted only once its window end plus
+/// the 200 ms jitter bound has passed, so in-window delivery jitter never
+/// becomes a gap. Uncovered frames are zero-filled per channel and reported via
+/// coverage; late data is discarded.
 public class TimelineMixer {
-    private let hostClock: HostClock
-
-    static let sampleRate: UInt64 = 16_000
-    static let framesPerBlock: Int = 320
-    static let bytesPerBlock: Int = 640
+    static let framesPerBlock = 320
     static let blockDurationNs: UInt64 = 20_000_000
     static let jitterBufferNs: UInt64 = 200_000_000
-    static let discontinuityThresholdNs: UInt64 = 200_000_000
+    private static let frameDurationNs: Double = 62_500 // 1 s / 16_000
+    /// 200 ms of frames at 16 kHz: the timestamp discontinuity bound.
+    static let discontinuityFrames: Int64 = 3_200
+    /// 5 ms of frames: timestamp noise snapped onto the contiguous timeline.
+    static let snapToleranceFrames: Int64 = 80
+    /// 2 s per channel: bound on buffered data awaiting emission.
+    static let maxBufferedFrames: Int = 32_000
 
-    private struct SourceState {
-        var started: Bool = false
-        var startTime: UInt64 = 0
-        var buffer: Data = Data()
-        var lastHostTime: UInt64 = 0
+    private struct TimedChunk {
+        var startFrame: Int64
+        var data: Data
+        var frames: Int64 { Int64(data.count / 2) }
+        var endFrame: Int64 { startFrame + frames }
     }
 
-    private var interviewerState = SourceState()
-    private var youState = SourceState()
-    private var anchorTime: UInt64? = nil
-    private var anchorSet: Bool = false
-    private var currentBlock: UInt32 = 0
-    private var pcmBlockCount: UInt32 = 0
-    private var gapBlockCount: UInt32 = 0
-    private let interviewerHealth: SourceHealth
-    private let youHealth: SourceHealth
-    private var openInterruptions: [SourceChannel: OpenInterruption] = [:]
-    private var nextInterruptionId: UInt32 = 1
-    private var pendingGapStart: UInt32? = nil
-    private var pendingGapReason: GapReason? = nil
+    private struct RawChunk {
+        var startNs: UInt64
+        var data: Data
+    }
 
-    public init(hostClock: HostClock) {
-        self.hostClock = hostClock
-        self.interviewerHealth = SourceHealth(channel: .interviewer)
-        self.youHealth = SourceHealth(channel: .you)
+    private struct ChannelState {
+        var started = false
+        var firstStartNs: UInt64 = 0
+        /// Pre-anchor chunks in nanosecond space; converted to frame space once
+        /// the anchor exists. Frame positions are always derived from the
+        /// original nanosecond timestamps in a single rounding step.
+        var rawChunks: [RawChunk] = []
+        /// Buffered chunks in timeline frame space, ordered and contiguous per
+        /// generation. Only whole unconsumed chunks are retained; consumption
+        /// advances the first chunk's start.
+        var chunks: [TimedChunk] = []
+        /// Expected start frame of the next chunk within the current generation;
+        /// nil while no chunk of this generation has been accepted.
+        var expectedStartFrame: Int64?
+        /// Nanosecond expectation used only before the anchor exists.
+        var expectedStartNs: UInt64?
+    }
+
+    private var interviewer = ChannelState()
+    private var you = ChannelState()
+    private var anchorNs: UInt64?
+    private var currentBlock: UInt32 = 0
+    private let blockLimit: UInt32
+
+    public init() {
+        self.blockLimit = maxBlocks
+    }
+
+    init(blockLimit: UInt32) {
+        self.blockLimit = blockLimit
     }
 
     // MARK: - Feed
 
-    public func feed(channel: SourceChannel, pcm: Data, hostTime: UInt64) {
-        switch channel {
-        case .interviewer:
-            feedInterviewer(pcm: pcm, hostTime: hostTime)
-        case .you:
-            feedYou(pcm: pcm, hostTime: hostTime)
+    @discardableResult
+    public func feed(channel: SourceChannel, pcm: Data, hostTime: UInt64) -> FeedResult {
+        let result = withChannel(channel) { state in
+            var data = pcm
+            // Re-base slices: Data dropped from either end shares the original
+            // buffer, and every Data stored in a chunk must be zero-based.
+            if data.count % 2 != 0 { data = Data(data.dropLast()) }
+
+            if !state.started {
+                state.started = true
+                state.firstStartNs = hostTime
+            }
+
+            if let anchor = anchorNs {
+                return feedAnchored(&state, data: data, hostTime: hostTime, anchor: anchor)
+            }
+            return feedPreAnchor(&state, data: data, hostTime: hostTime)
+        }
+        trySetAnchor()
+        return result
+    }
+
+    private func feedAnchored(
+        _ state: inout ChannelState,
+        data: Data,
+        hostTime: UInt64,
+        anchor: UInt64
+    ) -> FeedResult {
+        var startFrame = frameIndex(hostTime, anchor: anchor)
+        let frames = Int64(data.count / 2)
+        let frontier = Int64(currentBlock) * Int64(Self.framesPerBlock)
+
+        // Late data: its window (or part of it) was already emitted.
+        if startFrame + frames <= frontier { return .discardedLate }
+        var data = data
+        if startFrame < frontier {
+            let trim = frontier - startFrame
+            data = Data(data.dropFirst(Int(trim) * 2))
+            startFrame = frontier
+            if data.isEmpty { return .discardedLate }
+            // The trimmed chunk continues the timeline only if nothing is
+            // buffered ahead of the frontier; otherwise it collides with
+            // already-buffered data and its timestamps cannot be trusted.
+            if let expected = state.expectedStartFrame, expected != frontier {
+                return startFrame + Int64(data.count / 2) > expected
+                    ? .timestampDiscontinuity
+                    : .discardedLate
+            }
+        }
+
+        if let expected = state.expectedStartFrame {
+            let diff = startFrame - expected
+            if diff > Self.discontinuityFrames { return .timestampDiscontinuity }
+            if diff < -Self.snapToleranceFrames { return .timestampDiscontinuity }
+            if diff <= 0 {
+                let trim = min(-diff, Int64(data.count / 2))
+                data = Data(data.dropFirst(Int(trim) * 2))
+                if data.isEmpty { return .accepted }
+            }
+            // Within the snap tolerance the chunk is pulled onto the contiguous
+            // timeline; a larger forward jump is a real, provable hole.
+            if diff <= Self.snapToleranceFrames {
+                startFrame = expected
+            }
+        }
+
+        state.chunks.append(TimedChunk(startFrame: startFrame, data: data))
+        state.expectedStartFrame = startFrame + Int64(data.count / 2)
+        enforceBufferCap(&state)
+        return .accepted
+    }
+
+    private func feedPreAnchor(_ state: inout ChannelState, data: Data, hostTime: UInt64) -> FeedResult {
+        guard !data.isEmpty else { return .accepted }
+        var startNs = hostTime
+        var data = data
+        if let expectedNs = state.expectedStartNs {
+            let diff = Int64(startNs) - Int64(expectedNs)
+            if diff > Int64(Self.jitterBufferNs) { return .timestampDiscontinuity }
+            if diff < -5_000_000 { return .timestampDiscontinuity }
+            if diff <= 0 {
+                let trimFrames = min((-diff) / 62_500, Int64(data.count / 2))
+                data = Data(data.dropFirst(Int(trimFrames) * 2))
+                if data.isEmpty { return .accepted }
+            }
+            if diff <= 5_000_000 {
+                startNs = expectedNs
+            }
+        }
+        state.rawChunks.append(RawChunk(startNs: startNs, data: data))
+        state.expectedStartNs = startNs + UInt64(data.count / 2) * 62_500
+        return .accepted
+    }
+
+    /// Ends the current generation: buffered data keeps draining into its
+    /// timestamped windows, but the next chunk starts a fresh generation whose
+    /// timestamps are evaluated on their own.
+    public func endGeneration(_ channel: SourceChannel) {
+        withChannel(channel) { state in
+            state.expectedStartFrame = nil
+            state.expectedStartNs = nil
         }
     }
 
-    private func feedInterviewer(pcm: Data, hostTime: UInt64) {
-        if interviewerState.started && hostTime < interviewerState.lastHostTime {
-            openInterruptionIfNeeded(channel: .interviewer, reason: .timestampDiscontinuity)
-            return
-        }
-        if interviewerState.started {
-            let elapsed = hostTime &- interviewerState.lastHostTime
-            if elapsed > Self.discontinuityThresholdNs {
-                openInterruptionIfNeeded(channel: .interviewer, reason: .timestampDiscontinuity)
-            }
-        }
-        if !interviewerState.started {
-            interviewerState.started = true
-            interviewerState.startTime = hostTime
-        }
-        interviewerState.buffer.append(pcm)
-        interviewerState.lastHostTime = hostTime
-        trySetAnchor()
+    /// Drops all buffered data and restarts the channel. Used when the source
+    /// is rebuilt before the anchor exists.
+    public func resetChannel(_ channel: SourceChannel) {
+        withChannel(channel) { $0 = ChannelState() }
     }
 
-    private func feedYou(pcm: Data, hostTime: UInt64) {
-        if youState.started && hostTime < youState.lastHostTime {
-            openInterruptionIfNeeded(channel: .you, reason: .timestampDiscontinuity)
-            return
-        }
-        if youState.started {
-            let elapsed = hostTime &- youState.lastHostTime
-            if elapsed > Self.discontinuityThresholdNs {
-                openInterruptionIfNeeded(channel: .you, reason: .timestampDiscontinuity)
-            }
-        }
-        if !youState.started {
-            youState.started = true
-            youState.startTime = hostTime
-        }
-        youState.buffer.append(pcm)
-        youState.lastHostTime = hostTime
-        trySetAnchor()
-    }
+    // MARK: - Anchoring
 
     private func trySetAnchor() {
-        guard !anchorSet, interviewerState.started, youState.started else { return }
-        anchorTime = max(interviewerState.startTime, youState.startTime)
-        anchorSet = true
-        trimOverlap()
+        guard anchorNs == nil, interviewer.started, you.started else { return }
+        let later = max(interviewer.firstStartNs, you.firstStartNs)
+        // Recording time zero: the first 20 ms host-time boundary at or after
+        // the later of the two first timestamps.
+        let anchor = ((later + Self.blockDurationNs - 1) / Self.blockDurationNs) * Self.blockDurationNs
+        anchorNs = anchor
+        // Convert pre-anchor nanosecond placements into frame space.
+        convertToFrameSpace(&interviewer, anchor: anchor)
+        convertToFrameSpace(&you, anchor: anchor)
     }
 
-    private func trimOverlap() {
-        guard let anchor = anchorTime else { return }
-        trimSourceToAnchor(interviewerState.startTime, channel: .interviewer, anchor: anchor)
-        trimSourceToAnchor(youState.startTime, channel: .you, anchor: anchor)
-    }
-
-    private func trimSourceToAnchor(_ startTime: UInt64, channel: SourceChannel, anchor: UInt64) {
-        guard startTime < anchor else { return }
-        let discardNs = anchor &- startTime
-        let discardSamples = Int(discardNs * Self.sampleRate / 1_000_000_000)
-        let discardBytes = discardSamples * 2
-        switch channel {
-        case .interviewer:
-            if discardBytes <= interviewerState.buffer.count {
-                interviewerState.buffer = Data(interviewerState.buffer.dropFirst(discardBytes))
-            } else {
-                interviewerState.buffer = Data()
+    private func convertToFrameSpace(_ state: inout ChannelState, anchor: UInt64) {
+        guard state.started else { return }
+        var converted: [TimedChunk] = []
+        var expected: Int64?
+        for raw in state.rawChunks {
+            var startFrame = frameIndex(raw.startNs, anchor: anchor)
+            var data = raw.data
+            if let exp = expected {
+                let diff = startFrame - exp
+                if diff <= 0 {
+                    let trim = min(-diff, Int64(data.count / 2))
+                    data = Data(data.dropFirst(Int(trim) * 2))
+                    startFrame = exp
+                } else if diff <= Self.snapToleranceFrames {
+                    startFrame = exp
+                }
             }
-        case .you:
-            if discardBytes <= youState.buffer.count {
-                youState.buffer = Data(youState.buffer.dropFirst(discardBytes))
-            } else {
-                youState.buffer = Data()
+            if data.isEmpty { continue }
+            converted.append(TimedChunk(startFrame: startFrame, data: data))
+            expected = startFrame + Int64(data.count / 2)
+        }
+        state.chunks = converted
+        state.rawChunks = []
+        state.expectedStartFrame = expected
+        state.expectedStartNs = nil
+    }
+
+    // MARK: - Emission
+
+    /// Emits every block whose jitter deadline has passed.
+    public func emitDue(now: UInt64) -> [MixerOutput] {
+        guard let anchor = anchorNs else { return [] }
+        var outputs: [MixerOutput] = []
+        while currentBlock < blockLimit {
+            let windowEndNs = anchor + UInt64(currentBlock + 1) * Self.blockDurationNs
+            guard now >= windowEndNs + Self.jitterBufferNs else { break }
+            outputs.append(materializeBlock())
+        }
+        return outputs
+    }
+
+    /// Stop path: emits every remaining block that still holds source data.
+    /// The final block's uncovered tail on a channel whose data ends inside
+    /// that block is not a loss — the recording was stopped there.
+    public func finalDrain() -> [MixerOutput] {
+        guard anchorNs != nil else { return [] }
+        var outputs: [MixerOutput] = []
+        var lastCoveredFrames: (interviewer: Int, you: Int) = (0, 0)
+        while currentBlock < blockLimit {
+            let blockStart = Int64(currentBlock) * Int64(Self.framesPerBlock)
+            guard hasData(&interviewer, blockStart: blockStart) || hasData(&you, blockStart: blockStart)
+            else { break }
+            let (block, coveredFrames) = materializeBlockWithCounts()
+            lastCoveredFrames = coveredFrames
+            outputs.append(block)
+        }
+        if let last = outputs.last,
+           case .pcm(let left, let right, let index, let coverage) = last {
+            var fixed = coverage
+            if !coverage.interviewer.covered && lastCoveredFrames.interviewer > 0 {
+                fixed = BlockCoverage(
+                    interviewer: ChannelCoverage(covered: true, reason: nil),
+                    you: fixed.you
+                )
             }
+            if !coverage.you.covered && lastCoveredFrames.you > 0 {
+                fixed = BlockCoverage(
+                    interviewer: fixed.interviewer,
+                    you: ChannelCoverage(covered: true, reason: nil)
+                )
+            }
+            outputs[outputs.count - 1] = .pcm(left: left, right: right, blockIndex: index, coverage: fixed)
         }
+        return outputs
     }
 
-    // MARK: - Emit
-
-    public func tryEmit() -> MixerOutput? {
-        guard anchorSet else { return nil }
-        guard currentBlock < maxBlocks else { return nil }
-
-        let leftAvailable = interviewerState.buffer.count >= Self.bytesPerBlock
-        let rightAvailable = youState.buffer.count >= Self.bytesPerBlock
-
-        if leftAvailable && rightAvailable {
-            return emitPCM()
-        } else {
-            return emitGapOrWait(leftAvailable: leftAvailable, rightAvailable: rightAvailable)
+    private func hasData(_ state: inout ChannelState, blockStart: Int64) -> Bool {
+        let windowEnd = blockStart + Int64(Self.framesPerBlock)
+        while let first = state.chunks.first, first.endFrame <= blockStart {
+            state.chunks.removeFirst()
         }
+        guard let first = state.chunks.first else { return false }
+        return first.startFrame < windowEnd
     }
 
-    public func tryEmitPCM() -> (left: Data, right: Data, blockIndex: UInt32)? {
-        switch tryEmit() {
-        case .pcm(let l, let r, let idx):
-            return (l, r, idx)
-        case .gap, .none:
-            return nil
-        }
+    private func materializeBlock() -> MixerOutput {
+        materializeBlockWithCounts().0
     }
 
-    private func emitPCM() -> MixerOutput {
-        if let gap = flushPendingGap() {
-            return gap
-        }
-
-        let leftBlock = Data(interviewerState.buffer.prefix(Self.bytesPerBlock))
-        let rightBlock = Data(youState.buffer.prefix(Self.bytesPerBlock))
-        interviewerState.buffer = Data(interviewerState.buffer.dropFirst(Self.bytesPerBlock))
-        youState.buffer = Data(youState.buffer.dropFirst(Self.bytesPerBlock))
-
-        closeInterruptionIfOpen(channel: .interviewer, recovered: true)
-        closeInterruptionIfOpen(channel: .you, recovered: true)
-
-        interviewerHealth.update(pcmBlock: leftBlock, effectiveBlock: currentBlock)
-        youHealth.update(pcmBlock: rightBlock, effectiveBlock: currentBlock)
-
-        let blockIndex = currentBlock
+    private func materializeBlockWithCounts() -> (MixerOutput, (interviewer: Int, you: Int)) {
+        let blockStart = Int64(currentBlock) * Int64(Self.framesPerBlock)
+        let (left, leftCoverage, leftCount) = materializeChannel(&interviewer, blockStart: blockStart)
+        let (right, rightCoverage, rightCount) = materializeChannel(&you, blockStart: blockStart)
+        let index = currentBlock
         currentBlock &+= 1
-        pcmBlockCount &+= 1
-
-        return .pcm(left: leftBlock, right: rightBlock, blockIndex: blockIndex)
-    }
-
-    private func emitGapOrWait(leftAvailable: Bool, rightAvailable: Bool) -> MixerOutput? {
-        let reason = classifyGapReason(leftAvailable: leftAvailable, rightAvailable: rightAvailable)
-
-        if !leftAvailable {
-            interviewerHealth.markGap(effectiveBlock: currentBlock)
-        }
-        if !rightAvailable {
-            youHealth.markGap(effectiveBlock: currentBlock)
-        }
-
-        if !leftAvailable {
-            openInterruptionIfNeeded(channel: .interviewer, reason: mapGapToInterruptionReason(reason))
-        }
-        if !rightAvailable {
-            openInterruptionIfNeeded(channel: .you, reason: mapGapToInterruptionReason(reason))
-        }
-
-        if pendingGapStart == nil {
-            pendingGapStart = currentBlock
-            pendingGapReason = reason
-        }
-
-        let gapLength = currentBlock &- pendingGapStart!
-        if gapLength >= 3_000 {
-            let gap = flushPendingGap()
-            currentBlock &+= 1
-            gapBlockCount &+= 1
-            return gap
-        }
-
-        currentBlock &+= 1
-        gapBlockCount &+= 1
-        return nil
-    }
-
-    private func classifyGapReason(leftAvailable: Bool, rightAvailable: Bool) -> GapReason {
-        let leftLate = interviewerState.started && !leftAvailable && interviewerState.lastHostTime > 0
-        let rightLate = youState.started && !rightAvailable && youState.lastHostTime > 0
-        if leftLate || rightLate {
-            return .lateData
-        }
-        return .sourceGap
-    }
-
-    private func mapGapToInterruptionReason(_ gapReason: GapReason) -> SourceInterruptionReason {
-        switch gapReason {
-        case .sourceGap: return .sourceGap
-        case .lateData: return .lateData
-        case .streamError: return .streamError
-        case .callbackStall: return .callbackStall
-        case .routeInvalidated: return .routeInvalidated
-        case .timestampInvalid: return .timestampInvalid
-        case .timestampDiscontinuity: return .timestampDiscontinuity
-        }
-    }
-
-    @discardableResult
-    private func flushPendingGap() -> MixerOutput? {
-        guard let start = pendingGapStart, let reason = pendingGapReason else { return nil }
-        let end = currentBlock
-        guard end > start else {
-            pendingGapStart = nil
-            pendingGapReason = nil
-            return nil
-        }
-        pendingGapStart = nil
-        pendingGapReason = nil
-        return .gap(startBlock: start, endBlockExclusive: end, reason: reason)
-    }
-
-    // MARK: - Interruption Management
-
-    private func openInterruptionIfNeeded(channel: SourceChannel, reason: SourceInterruptionReason) {
-        guard openInterruptions[channel] == nil else { return }
-        let id = nextInterruptionId
-        nextInterruptionId &+= 1
-        openInterruptions[channel] = OpenInterruption(
-            id: id, channel: channel, startBlock: currentBlock, reason: reason
+        return (
+            .pcm(
+                left: left,
+                right: right,
+                blockIndex: index,
+                coverage: BlockCoverage(interviewer: leftCoverage, you: rightCoverage)
+            ),
+            (leftCount, rightCount)
         )
     }
 
-    private func closeInterruptionIfOpen(channel: SourceChannel, recovered: Bool) {
-        guard openInterruptions[channel] != nil else { return }
-        openInterruptions.removeValue(forKey: channel)
-    }
-
-    public func closeAllInterruptionsUnrecovered() {
-        openInterruptions.removeAll()
-    }
-
-    // MARK: - Stop / Drain
-
-    public func stop() -> [MixerOutput] {
-        var outputs: [MixerOutput] = []
-        if let gap = flushPendingGap() {
-            outputs.append(gap)
+    private func materializeChannel(
+        _ state: inout ChannelState,
+        blockStart: Int64
+    ) -> (Data, ChannelCoverage, Int) {
+        let windowEnd = blockStart + Int64(Self.framesPerBlock)
+        while let first = state.chunks.first, first.endFrame <= blockStart {
+            state.chunks.removeFirst()
         }
-        closeAllInterruptionsUnrecovered()
-        return outputs
+
+        var block = Data(count: Self.framesPerBlock * 2)
+        var coveredFrames = 0
+        var cursor = blockStart
+        while cursor < windowEnd,
+              let chunk = state.chunks.first,
+              chunk.startFrame < windowEnd,
+              chunk.startFrame <= cursor {
+            let copyEnd = min(chunk.endFrame, windowEnd)
+            let count = Int(copyEnd - cursor)
+            let srcByteOffset = Int(cursor - chunk.startFrame) * 2
+            let dstByteOffset = Int(cursor - blockStart) * 2
+            block.replaceSubrange(
+                dstByteOffset..<(dstByteOffset + count * 2),
+                with: chunk.data[srcByteOffset..<(srcByteOffset + count * 2)]
+            )
+            coveredFrames += count
+            cursor = copyEnd
+            if copyEnd == chunk.endFrame {
+                state.chunks.removeFirst()
+            } else {
+                // Data slices share the original buffer with a nonzero
+                // startIndex; re-base so later subscripts stay valid.
+                state.chunks[0].startFrame = copyEnd
+                state.chunks[0].data = Data(chunk.data.dropFirst(Int(copyEnd - chunk.startFrame) * 2))
+            }
+        }
+
+        if coveredFrames == Self.framesPerBlock {
+            return (block, ChannelCoverage(covered: true, reason: nil), coveredFrames)
+        }
+        // A remaining chunk proves the hole by its own timestamp (source-gap);
+        // nothing buffered means the deadline expired with data possibly still
+        // in flight (late-data).
+        let reason: SourceInterruptionReason = state.chunks.isEmpty ? .lateData : .sourceGap
+        return (block, ChannelCoverage(covered: false, reason: reason), coveredFrames)
     }
 
     // MARK: - Accessors
 
-    public func getCurrentBlock() -> UInt32 { return currentBlock }
-    public func getPCMBlockCount() -> UInt32 { return pcmBlockCount }
-    public func getGapBlockCount() -> UInt32 { return gapBlockCount }
-    public func getInterviewerHealth() -> SourceHealth { return interviewerHealth }
-    public func getYouHealth() -> SourceHealth { return youHealth }
+    public func getCurrentBlock() -> UInt32 { currentBlock }
 
-    public func hasOpenInterruption(channel: SourceChannel) -> Bool {
-        return openInterruptions[channel] != nil
+    // MARK: - Helpers
+
+    private func withChannel<T>(_ channel: SourceChannel, _ body: (inout ChannelState) -> T) -> T {
+        switch channel {
+        case .interviewer: return body(&interviewer)
+        case .you: return body(&you)
+        }
     }
 
-    public func getOpenInterruptionId(channel: SourceChannel) -> UInt32? {
-        return openInterruptions[channel]?.id
+    private func frameIndex(_ hostTime: UInt64, anchor: UInt64) -> Int64 {
+        Int64((Double(Int64(hostTime) - Int64(anchor)) / Self.frameDurationNs).rounded())
     }
 
-    public func getOpenInterruptionReason(channel: SourceChannel) -> SourceInterruptionReason? {
-        return openInterruptions[channel]?.reason
-    }
-
-    public func reset() {
-        interviewerState = SourceState()
-        youState = SourceState()
-        anchorTime = nil
-        anchorSet = false
-        currentBlock = 0
-        pcmBlockCount = 0
-        gapBlockCount = 0
-        openInterruptions.removeAll()
-        nextInterruptionId = 1
-        pendingGapStart = nil
-        pendingGapReason = nil
+    private func enforceBufferCap(_ state: inout ChannelState) {
+        var buffered = state.chunks.reduce(0) { $0 + Int($1.frames) }
+        while buffered > Self.maxBufferedFrames, let last = state.chunks.last {
+            state.chunks.removeLast()
+            buffered -= Int(last.frames)
+        }
+        state.expectedStartFrame = state.chunks.last?.endFrame
     }
 }

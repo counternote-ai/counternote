@@ -143,6 +143,7 @@ class FailingMicrophoneSource: MicrophoneSource {
 
 class FakeSystemAudioSource: SystemAudioSource {
     var callback: ((Data, UInt64) -> Void)?
+    var failureCallback: (() -> Void)?
     private(set) var isRunning = false
     private(set) var startCount = 0
     private(set) var stopCount = 0
@@ -165,13 +166,22 @@ class FakeSystemAudioSource: SystemAudioSource {
         self.callback = callback
     }
 
+    func setFailureCallback(_ callback: @escaping () -> Void) {
+        failureCallback = callback
+    }
+
     func simulateAudioData(_ data: Data, hostTime: UInt64) {
         callback?(data, hostTime)
+    }
+
+    func simulateFailure() {
+        failureCallback?()
     }
 }
 
 class FakeMicrophoneSource: MicrophoneSource {
     var callback: ((Data, UInt64) -> Void)?
+    var failureCallback: (() -> Void)?
     private(set) var isRunning = false
     private(set) var startCount = 0
     private(set) var stopCount = 0
@@ -195,8 +205,16 @@ class FakeMicrophoneSource: MicrophoneSource {
         self.callback = callback
     }
 
+    func setFailureCallback(_ callback: @escaping () -> Void) {
+        failureCallback = callback
+    }
+
     func simulateAudioData(_ data: Data, hostTime: UInt64) {
         callback?(data, hostTime)
+    }
+
+    func simulateFailure() {
+        failureCallback?()
     }
 
     func simulateRouteChange(newDeviceName: String) {
@@ -499,6 +517,9 @@ final class CaptureCoordinatorTests: XCTestCase {
 
         // Stop should close the interruption with recovered: false
         coordinator.stop()
+        // Stop is two-phase now: the grace-window pacing tick runs first,
+        // then the one-shot finalize emits the stopped frame.
+        scheduler.executeAll()
 
         XCTAssertEqual(coordinator.getState(), .idle)
 
@@ -537,6 +558,7 @@ final class CaptureCoordinatorTests: XCTestCase {
         microphone.simulateAudioData(makePCMData(), hostTime: clock.now())
 
         coordinator.stop()
+        scheduler.executeAll() // run the grace pacing tick + finalize
 
         // Verify stopped frame
         let counter = FrameCounter()
@@ -572,6 +594,7 @@ final class CaptureCoordinatorTests: XCTestCase {
         microphone.simulateAudioData(makePCMData(), hostTime: clock.now())
 
         coordinator.stop()
+        scheduler.executeAll() // finalize stops the sources
 
         XCTAssertFalse(systemAudio.isRunning)
         XCTAssertFalse(microphone.isRunning)
@@ -851,6 +874,7 @@ final class CaptureCoordinatorTests: XCTestCase {
 
         // Stop while interruption is open
         coordinator.stop()
+        scheduler.executeAll() // run the grace pacing tick + finalize
 
         // Verify: interruption closed with recovered: false, stopped emitted
         let counter = FrameCounter()
@@ -893,6 +917,7 @@ final class CaptureCoordinatorTests: XCTestCase {
 
         // Stop while callback-stall interruption is open
         coordinator.stop()
+        scheduler.executeAll() // run the grace pacing tick + finalize
 
         let counter = FrameCounter()
         let interruptionPayloads = counter.extractJSONPayloads(ofType: .interruption, from: sink.writtenData)
@@ -992,10 +1017,13 @@ final class CaptureCoordinatorTests: XCTestCase {
         microphone.simulateAudioData(makePCMData(), hostTime: clock.now())
 
         coordinator.stop()
+        // Complete the stop: callbacks inside the grace window still feed the
+        // mixer by design; once finalized the state guard drops them.
+        scheduler.executeAll()
 
         let dataCountBefore = sink.writtenData.count
 
-        // Callbacks after stop should be ignored
+        // Callbacks after stop has finalized should be ignored
         systemAudio.simulateAudioData(makePCMData(), hostTime: clock.now())
         microphone.simulateAudioData(makePCMData(), hostTime: clock.now())
 
@@ -1137,6 +1165,7 @@ final class CaptureCoordinatorTests: XCTestCase {
         microphone.simulateAudioData(makePCMData(), hostTime: clock.now())
 
         coordinator.stop()
+        scheduler.executeAll() // finalize emits the capture-stopped diagnostic
 
         let captureStopped = diagSink.lines.first { $0.contains("capture-stopped") }
         XCTAssertNotNil(captureStopped, "Should emit capture-stopped diagnostic")
@@ -1168,9 +1197,294 @@ final class CaptureCoordinatorTests: XCTestCase {
         systemAudio.simulateAudioData(makePCMData(), hostTime: clock.now())
         microphone.simulateAudioData(makePCMData(), hostTime: clock.now())
 
+        // Emission is deadline-gated: block 0 ships once its window end plus
+        // the 200 ms jitter bound has passed. Advance time and run the pacing
+        // tick.
+        clock.advance(by: 300_000_000)
+        scheduler.executeAll()
+
         // Should have PCM frames
         let counter = FrameCounter()
         let counts = counter.countFrames(in: sink.writtenData)
         XCTAssertGreaterThan(counts[.pcm] ?? 0, 0, "Should emit PCM frames for audio data")
+    }
+}
+
+// MARK: - Protocol conformance (decoded with the real validator)
+
+/// The frame counter used elsewhere in this file never validates the stream;
+/// these tests run the coordinator's bytes through the real protocol decoder,
+/// which enforces sequence, ordering invariants, and clean EOF.
+final class CaptureCoordinatorProtocolTests: XCTestCase {
+
+    private func makePCMData(sample: Int16 = 100, count: Int = 320) -> Data {
+        var samples = [Int16](repeating: sample, count: count)
+        return Data(bytes: &samples, count: samples.count * 2)
+    }
+
+    private func assertValidProtocolStream(_ data: Data, file: StaticString = #filePath, line: UInt = #line) {
+        let decoder = CaptureProtocolDecoder()
+        do {
+            // The decoder bounds its retained buffer, so push in small chunks
+            // like the incremental stdout reads in production.
+            var offset = 0
+            while offset < data.count {
+                let end = min(offset + 4_096, data.count)
+                _ = try decoder.push(Data(data[offset..<end]))
+                offset = end
+            }
+            try decoder.finish()
+        } catch {
+            XCTFail("protocol stream rejected: \(error)", file: file, line: line)
+        }
+    }
+
+    func testCleanRecordStopPassesProtocolValidation() throws {
+        let clock = FakeHostClock(initialTime: 1_000_000_000)
+        let systemAudio = FakeSystemAudioSource()
+        let microphone = FakeMicrophoneSource()
+        let sink = RecordingByteSink()
+        let writer = CaptureProtocolWriter(sink: sink)
+        let diagnostics = Diagnostics(sink: MockDiagnosticSink())
+        let scheduler = FakeScheduler()
+
+        let coordinator = CaptureCoordinator(
+            hostClock: clock,
+            systemAudio: systemAudio,
+            microphone: microphone,
+            writer: writer,
+            diagnostics: diagnostics,
+            scheduler: scheduler
+        )
+
+        try coordinator.start()
+        // Feed 10 blocks per channel so every deadline-gated block is covered.
+        systemAudio.simulateAudioData(makePCMData(count: 3_200), hostTime: clock.now())
+        microphone.simulateAudioData(makePCMData(count: 3_200), hostTime: clock.now())
+        clock.advance(by: 300_000_000)
+        scheduler.executeAll()
+        coordinator.stop()
+        scheduler.executeAll() // grace pacing tick + finalize emit the tail
+
+        assertValidProtocolStream(sink.writtenData)
+
+        // A clean run emits no interruptions at all.
+        let counter = FrameCounter()
+        let interruptions = counter.extractJSONPayloads(ofType: .interruption, from: sink.writtenData)
+        XCTAssertTrue(interruptions.isEmpty, "clean recording should have no interruptions")
+    }
+
+    func testOutageRecoveryStopPassesProtocolValidation() throws {
+        let clock = FakeHostClock(initialTime: 1_000_000_000)
+        let systemAudio = FakeSystemAudioSource()
+        let microphone = FakeMicrophoneSource()
+        let sink = RecordingByteSink()
+        let writer = CaptureProtocolWriter(sink: sink)
+        let diagnostics = Diagnostics(sink: MockDiagnosticSink())
+        let scheduler = FakeScheduler()
+
+        let coordinator = CaptureCoordinator(
+            hostClock: clock,
+            systemAudio: systemAudio,
+            microphone: microphone,
+            writer: writer,
+            diagnostics: diagnostics,
+            scheduler: scheduler
+        )
+
+        try coordinator.start()
+        systemAudio.simulateAudioData(makePCMData(count: 3_200), hostTime: clock.now())
+        microphone.simulateAudioData(makePCMData(count: 3_200), hostTime: clock.now())
+        clock.advance(by: 300_000_000)
+        scheduler.executeAll()
+
+        // Microphone route invalidation: failure callback, retry, restart.
+        microphone.simulateFailure()
+        scheduler.executeAll() // retry attempt restarts the source
+
+        // First callback after the restart: recovery. Feed 10 fresh blocks on
+        // the rebuilt source's timeline.
+        microphone.simulateAudioData(makePCMData(count: 3_200), hostTime: clock.now())
+        clock.advance(by: 300_000_000)
+        scheduler.executeAll()
+
+        coordinator.stop()
+        scheduler.executeAll() // grace pacing tick + finalize emit the tail
+
+        assertValidProtocolStream(sink.writtenData)
+        let counter = FrameCounter()
+        let interruptions = counter.extractJSONPayloads(ofType: .interruption, from: sink.writtenData)
+        XCTAssertTrue(interruptions.contains {
+            $0["phase"] as? String == "closed" && $0["recovered"] as? Bool == true
+        }, "outage should close recovered after the restart")
+    }
+
+    func testStopMidOutagePassesProtocolValidation() throws {
+        let clock = FakeHostClock(initialTime: 1_000_000_000)
+        let systemAudio = FakeSystemAudioSource()
+        let microphone = FakeMicrophoneSource()
+        let sink = RecordingByteSink()
+        let writer = CaptureProtocolWriter(sink: sink)
+        let diagnostics = Diagnostics(sink: MockDiagnosticSink())
+        let scheduler = FakeScheduler()
+
+        let coordinator = CaptureCoordinator(
+            hostClock: clock,
+            systemAudio: systemAudio,
+            microphone: microphone,
+            writer: writer,
+            diagnostics: diagnostics,
+            scheduler: scheduler
+        )
+
+        try coordinator.start()
+        systemAudio.simulateAudioData(makePCMData(), hostTime: clock.now())
+        microphone.simulateAudioData(makePCMData(), hostTime: clock.now())
+
+        // Stall both channels, then stop with interruptions still open
+        clock.advance(by: 2_100_000_000)
+        scheduler.executeAll()
+        coordinator.stop()
+        scheduler.executeAll() // grace pacing tick + finalize close the outage
+
+        assertValidProtocolStream(sink.writtenData)
+    }
+}
+
+// MARK: - Retry re-entry guard
+
+final class CaptureCoordinatorRetryGuardTests: XCTestCase {
+
+    private func makePCMData(sample: Int16 = 100, count: Int = 320) -> Data {
+        var samples = [Int16](repeating: sample, count: count)
+        return Data(bytes: &samples, count: samples.count * 2)
+    }
+
+    /// Route-change flapping can report the same failure repeatedly. A channel
+    /// already being retried must keep its single retry chain: no re-stop, no
+    /// extra state frame, no extra retry.
+    func testRepeatedFailureWhileRetryingDoesNotMultiplyRetries() throws {
+        let clock = FakeHostClock(initialTime: 1_000_000_000)
+        let systemAudio = FakeSystemAudioSource()
+        let microphone = FakeMicrophoneSource()
+        let sink = RecordingByteSink()
+        let writer = CaptureProtocolWriter(sink: sink)
+        let diagnostics = Diagnostics(sink: MockDiagnosticSink())
+        let scheduler = FakeScheduler()
+
+        let coordinator = CaptureCoordinator(
+            hostClock: clock,
+            systemAudio: systemAudio,
+            microphone: microphone,
+            writer: writer,
+            diagnostics: diagnostics,
+            scheduler: scheduler
+        )
+
+        try coordinator.start()
+        let t0 = clock.now()
+        microphone.simulateAudioData(makePCMData(), hostTime: t0)
+        systemAudio.simulateAudioData(makePCMData(), hostTime: t0)
+
+        systemAudio.simulateFailure()
+        XCTAssertEqual(systemAudio.stopCount, 1, "first failure stops the source once")
+        XCTAssertEqual(
+            scheduler.scheduledWork.filter { $0.delay == 0.5 }.count, 1,
+            "first failure schedules one retry"
+        )
+
+        systemAudio.simulateFailure()
+        XCTAssertEqual(systemAudio.stopCount, 1, "repeated failure must not re-stop the source")
+        XCTAssertEqual(
+            scheduler.scheduledWork.filter { $0.delay == 0.5 }.count, 1,
+            "repeated failure must not add a second retry"
+        )
+
+        let counter = FrameCounter()
+        let reconnectingStates = counter.extractJSONPayloads(ofType: .state, from: sink.writtenData).filter {
+            $0["status"] as? String == "reconnecting"
+        }
+        XCTAssertEqual(reconnectingStates.count, 1, "one reconnecting state frame per outage")
+    }
+}
+
+// MARK: - Concurrency stress
+
+/// Source callbacks, pacing ticks, and stop all run on different threads in
+/// production. The coordinator must serialize them so the protocol stream is
+/// never corrupted; this test hammers those entry points concurrently and
+/// validates the output with the real decoder.
+final class CaptureCoordinatorConcurrencyTests: XCTestCase {
+
+    func testConcurrentFeedPacingAndStopProduceValidProtocolStream() throws {
+        let clock = SystemHostClock()
+        let systemAudio = FakeSystemAudioSource()
+        let microphone = FakeMicrophoneSource()
+        let sink = RecordingByteSink()
+        let writer = CaptureProtocolWriter(sink: sink)
+        let diagnostics = Diagnostics(sink: MockDiagnosticSink())
+        let scheduler = SystemScheduler()
+
+        let coordinator = CaptureCoordinator(
+            hostClock: clock,
+            systemAudio: systemAudio,
+            microphone: microphone,
+            writer: writer,
+            diagnostics: diagnostics,
+            scheduler: scheduler
+        )
+
+        // Stop finalizes on the real scheduler after the 250 ms grace window;
+        // block the assertions on the one-shot completion signal.
+        let stopped = expectation(description: "stopped")
+        coordinator.onStopped = { stopped.fulfill() }
+
+        try coordinator.start()
+
+        // Two feeder threads deliver 20 ms chunks every ~5 ms of real time
+        // (burstier than production) while the pacing timer emits concurrently.
+        let chunk = Data(count: 640)
+        let group = DispatchGroup()
+        let feeders: [(Data, UInt64) -> Void] = [
+            { systemAudio.simulateAudioData($0, hostTime: $1) },
+            { microphone.simulateAudioData($0, hostTime: $1) },
+        ]
+        for feed in feeders {
+            group.enter()
+            DispatchQueue.global().async {
+                var timestamp = clock.now()
+                for _ in 0..<100 {
+                    feed(chunk, timestamp)
+                    timestamp += 20_000_000
+                    usleep(5_000)
+                }
+                group.leave()
+            }
+        }
+        group.wait()
+
+        // Let pacing drain past the 200 ms jitter deadline, then stop.
+        usleep(400_000)
+        coordinator.stop()
+        wait(for: [stopped], timeout: 5.0)
+
+        let decoder = CaptureProtocolDecoder()
+        do {
+            // The decoder bounds its retained buffer, so push in small chunks
+            // like the incremental stdout reads in production.
+            var offset = 0
+            while offset < sink.writtenData.count {
+                let end = min(offset + 4_096, sink.writtenData.count)
+                _ = try decoder.push(Data(sink.writtenData[offset..<end]))
+                offset = end
+            }
+            try decoder.finish()
+        } catch {
+            XCTFail("concurrent run corrupted the protocol stream: \(error)")
+        }
+
+        let counts = FrameCounter().countFrames(in: sink.writtenData)
+        XCTAssertGreaterThan(counts[.pcm] ?? 0, 0, "should have emitted pcm blocks")
+        XCTAssertEqual(counts[.stopped] ?? 0, 1, "should end with exactly one stopped frame")
     }
 }
