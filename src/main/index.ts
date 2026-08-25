@@ -314,6 +314,8 @@ function createWindow() {
     width: 400,
     height: 600,
     title: 'CounterNote',
+    titleBarStyle: 'hiddenInset',
+    backgroundColor: '#faf6ed',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

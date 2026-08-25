@@ -233,6 +233,15 @@ async function expectNoHorizontalOverflow(window: Page): Promise<void> {
   expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth);
 }
 
+async function expectScrollableContentTopOpaque(window: Page): Promise<void> {
+  const maskImage = await window
+    .locator('.app-scroll-shadow')
+    .first()
+    .evaluate((element) => getComputedStyle(element).maskImage);
+
+  expect(maskImage).toMatch(/^linear-gradient\(rgb\(0, 0, 0\)/);
+}
+
 interface AxeViolationSummary {
   id: string;
   impact: string | null;
@@ -303,6 +312,7 @@ test('recordings home renders primary controls', async () => {
   try {
     await expect(window.getByRole('button', { name: 'Record', exact: true })).toBeVisible();
     await expect(window.getByRole('button', { name: 'Open settings' })).toBeVisible();
+    await expectScrollableContentTopOpaque(window);
     await expectNoHorizontalOverflow(window);
     await expectAccessible(window);
     await expect(window).toHaveScreenshot('recordings-home.png');
@@ -360,6 +370,7 @@ test('navigates to settings and back', async () => {
     ).toBeVisible();
     await expect(window.getByLabel('Groq API Key')).toHaveCount(0);
     await expect(window.getByText('Auto-transcribe after recording')).toHaveCount(0);
+    await expectScrollableContentTopOpaque(window);
     await expectNoHorizontalOverflow(window);
     await expectAccessible(window);
     await expect(window).toHaveScreenshot('settings-local.png');

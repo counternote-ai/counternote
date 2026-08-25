@@ -114,7 +114,6 @@ export function ControlPanel({
         <header className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">CounterNote</p>
               <h1 className="truncate text-xl font-semibold tracking-normal text-foreground">
                 Recordings
               </h1>

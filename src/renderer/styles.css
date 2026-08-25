@@ -92,7 +92,7 @@ select {
   min-width: 0;
   flex-direction: column;
   gap: 12px;
-  padding: 18px;
+  padding: 48px 18px 18px;
 }
 
 .app-shell {
@@ -106,13 +106,7 @@ select {
 }
 
 .app-scroll-shadow {
-  mask-image: linear-gradient(
-    to bottom,
-    transparent,
-    black 12px,
-    black calc(100% - 12px),
-    transparent
-  );
+  mask-image: linear-gradient(to bottom, black, black calc(100% - 12px), transparent);
 }
 
 /* Radix sizes scroll content with an inline display:table wrapper, which lets

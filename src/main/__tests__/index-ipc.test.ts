@@ -38,6 +38,18 @@ function getHandler(channel: string): IpcHandler {
 }
 
 describe('single-instance startup', () => {
+  it('uses integrated macOS window chrome while preserving the semantic title', async () => {
+    await (app.whenReady as jest.Mock).mock.results[0].value;
+
+    expect(BrowserWindow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'CounterNote',
+        titleBarStyle: 'hiddenInset',
+        backgroundColor: '#faf6ed',
+      }),
+    );
+  });
+
   it('acquires the single-instance lock before whenReady', () => {
     expect(app.requestSingleInstanceLock).toHaveBeenCalled();
     expect(app.whenReady).toHaveBeenCalled();
