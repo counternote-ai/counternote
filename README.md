@@ -35,7 +35,8 @@ select Groq, enter your API key, then select **Save settings**.
 1. Select **Record** and allow Screen Recording and Microphone access when macOS asks.
 2. Select **Stop** when the conversation ends. The recording appears in Recordings.
 3. Select **Transcribe audio** on a saved recording to create its transcript.
-4. Select a transcribed recording to review timestamped segments, then select **Export** to write a plain-text export beside the recording.
+4. Select a transcribed recording to review timestamped segments, then select **Export transcript** to write a plain-text export beside the recording.
+5. Use **Show in Finder** after export, or **Show recording files** at any time, to open the recording's local files.
 
 Local Whisper keeps prepared audio on your Mac. Audio is sent to Groq only when
 you explicitly select Groq as the provider and then select **Transcribe audio**.

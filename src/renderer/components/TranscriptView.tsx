@@ -1,5 +1,6 @@
 import React from 'react';
-import { ChevronLeft, Download, FileText } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, Download, FileText, FolderOpen } from 'lucide-react';
+import { Alert, AlertDescription } from './ui/alert';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
@@ -17,16 +18,22 @@ interface TranscriptViewProps {
   title: string;
   duration?: number;
   segments: Segment[];
+  exportNotice: 'saved' | 'show-failed' | null;
   onBack: () => void;
   onExport: () => void;
+  onShowExportedTranscript: () => void;
+  onShowRecordingFiles: () => void;
 }
 
 export function TranscriptView({
   title,
   duration = 0,
   segments,
+  exportNotice,
   onBack,
   onExport,
+  onShowExportedTranscript,
+  onShowRecordingFiles,
 }: TranscriptViewProps) {
   const meta = getTranscriptMeta({ duration, segmentCount: segments.length });
 
@@ -40,7 +47,7 @@ export function TranscriptView({
           </Button>
           <Button variant="outline" size="pill" onClick={onExport} disabled={segments.length === 0}>
             <Download />
-            Export
+            Export transcript
           </Button>
         </div>
 
@@ -50,14 +57,36 @@ export function TranscriptView({
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
                 <FileText className="h-4 w-4" />
               </div>
-              <div className="min-w-0 space-y-1">
+              <div className="min-w-0 flex-1 space-y-1">
                 <h1 className="truncate text-lg font-semibold text-foreground">{title}</h1>
                 <p className="text-xs text-muted-foreground">{meta}</p>
               </div>
             </div>
+            <Button variant="ghost" size="sm" onClick={onShowRecordingFiles}>
+              <FolderOpen />
+              Show recording files
+            </Button>
           </CardContent>
         </Card>
       </header>
+
+      {exportNotice && (
+        <Alert role="status">
+          <AlertDescription className="flex items-center justify-between gap-3">
+            <span className="flex min-w-0 items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              {exportNotice === 'saved'
+                ? 'Saved transcript.txt'
+                : "Transcript saved, but it couldn't be shown in Finder."}
+            </span>
+            {exportNotice === 'saved' && (
+              <Button variant="link" size="sm" onClick={onShowExportedTranscript}>
+                Show in Finder
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {segments.length === 0 ? (
         <Card className="flex flex-1 items-center justify-center border-dashed bg-card/80">

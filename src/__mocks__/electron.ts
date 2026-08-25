@@ -55,5 +55,7 @@ export const systemPreferences = {
 
 export const shell = {
   openExternal: jest.fn().mockResolvedValue(undefined),
+  openPath: jest.fn().mockResolvedValue(''),
+  showItemInFolder: jest.fn(),
   trashItem: jest.fn().mockResolvedValue(undefined),
 };

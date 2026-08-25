@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { WavWriter as NativeWavWriter } from './native-capture/wav-writer';
@@ -26,6 +26,7 @@ import {
 import {
   type SettingsLoadIpcResult,
   type SettingsSaveIpcResult,
+  type ShowInFinderIpcResult,
   type TranscriptExportIpcResult,
   type TranscriptionSettings,
 } from '../types/settings';
@@ -565,6 +566,55 @@ ipcMain.handle(
     } catch {
       console.error('Transcript export failed.');
       return { success: false, code: 'TRANSCRIPT_EXPORT_FAILED' };
+    }
+  },
+);
+
+ipcMain.handle(
+  'show-exported-transcript',
+  async (_event, recordingId: unknown): Promise<ShowInFinderIpcResult> => {
+    if (typeof recordingId !== 'string') {
+      console.error('Show exported transcript request rejected.');
+      return { success: false, code: 'SHOW_IN_FINDER_FAILED' };
+    }
+
+    try {
+      const transcriptPath = recordingsLibrary.resolveRecordingTranscript(recordingId);
+      const exportedTranscriptPath = path.join(path.dirname(transcriptPath), 'transcript.txt');
+      if (!fs.lstatSync(exportedTranscriptPath).isFile()) {
+        throw new Error('EXPORTED_TRANSCRIPT_NOT_FOUND');
+      }
+      shell.showItemInFolder(exportedTranscriptPath);
+      return { success: true };
+    } catch {
+      console.error('Could not show exported transcript in Finder.');
+      return { success: false, code: 'SHOW_IN_FINDER_FAILED' };
+    }
+  },
+);
+
+ipcMain.handle(
+  'show-recording-files',
+  async (_event, recordingId: unknown): Promise<ShowInFinderIpcResult> => {
+    if (typeof recordingId !== 'string') {
+      console.error('Show recording files request rejected.');
+      return { success: false, code: 'SHOW_IN_FINDER_FAILED' };
+    }
+
+    try {
+      const recordingDirectory = path.dirname(recordingsLibrary.resolveRecordingAudio(recordingId));
+      const directoryStat = fs.lstatSync(recordingDirectory);
+      if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
+        throw new Error('RECORDING_DIRECTORY_NOT_FOUND');
+      }
+      const openError = await shell.openPath(recordingDirectory);
+      if (openError !== '') {
+        throw new Error('FINDER_OPEN_FAILED');
+      }
+      return { success: true };
+    } catch {
+      console.error('Could not open recording files in Finder.');
+      return { success: false, code: 'SHOW_IN_FINDER_FAILED' };
     }
   },
 );

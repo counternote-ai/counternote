@@ -22,6 +22,7 @@ import {
 import './styles.css';
 
 type View = 'recordings' | 'transcript' | 'settings';
+type ExportNotice = 'saved' | 'show-failed';
 
 interface AppRecording {
   id: string;
@@ -68,6 +69,7 @@ export default function App() {
   const [statusSnapshot, setStatusSnapshot] = useState<RecordingStatusSnapshot | null>(null);
   const [recoveryItems, setRecoveryItems] = useState<RecordingRecoveryItem[]>([]);
   const [recoveringId, setRecoveringId] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<ExportNotice | null>(null);
 
   const activeTranscriptionIdRef = useRef<string | null>(null);
   const recordingWasActiveRef = useRef(false);
@@ -344,6 +346,7 @@ export default function App() {
     if (!selectedRecording) return;
 
     setError(null);
+    setExportNotice(null);
     if (!selectedRecording.transcribed) {
       setError('No transcript available to export');
       return;
@@ -353,9 +356,39 @@ export default function App() {
       const result = await window.electronAPI.exportTranscript(selectedRecording.id, 'txt');
       if (!result.success) {
         setError('Export failed');
+        return;
       }
+      setExportNotice('saved');
     } catch {
       setError(getErrorMessage('Export failed'));
+    }
+  };
+
+  const handleShowExportedTranscript = async (): Promise<void> => {
+    if (!selectedRecording) return;
+
+    try {
+      const result = await window.electronAPI.showExportedTranscript(selectedRecording.id);
+      if (!result.success) {
+        setExportNotice('show-failed');
+      }
+    } catch {
+      console.error('Renderer could not show exported transcript.');
+      setExportNotice('show-failed');
+    }
+  };
+
+  const handleShowRecordingFiles = async (): Promise<void> => {
+    if (!selectedRecording) return;
+
+    setError(null);
+    try {
+      const result = await window.electronAPI.showRecordingFiles(selectedRecording.id);
+      if (!result.success) {
+        setError("Recording files couldn't be opened in Finder.");
+      }
+    } catch {
+      setError(getErrorMessage("Recording files couldn't be opened in Finder."));
     }
   };
 
@@ -385,6 +418,7 @@ export default function App() {
   const handleSelectRecording = (id: string) => {
     const recording = recordings.find((r) => r.id === id);
     if (recording) {
+      setExportNotice(null);
       setSelectedRecording(recording);
       setView('transcript');
     }
@@ -437,8 +471,14 @@ export default function App() {
           title={selectedRecording.title}
           duration={selectedRecording.duration}
           segments={selectedRecording.segments || []}
-          onBack={() => setView('recordings')}
+          exportNotice={exportNotice}
+          onBack={() => {
+            setExportNotice(null);
+            setView('recordings');
+          }}
           onExport={handleExport}
+          onShowExportedTranscript={handleShowExportedTranscript}
+          onShowRecordingFiles={handleShowRecordingFiles}
         />
       </div>
     );

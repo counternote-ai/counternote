@@ -462,11 +462,12 @@ test('opens and exports a legacy transcript with the current meeting-audio label
 
   try {
     await window.getByRole('button', { name: /Meeting —/ }).click();
-    await expect(window.getByRole('button', { name: 'Export' })).toBeVisible();
+    await expect(window.getByRole('button', { name: 'Export transcript' })).toBeVisible();
+    await expect(window.getByRole('button', { name: 'Show recording files' })).toBeVisible();
     await expect(window.getByText(/8 segments/)).toBeVisible();
     await expect(window.getByText('Meeting audio').first()).toBeVisible();
     await expect(window.getByText('You').first()).toBeVisible();
-    await window.getByRole('button', { name: 'Export' }).click();
+    await window.getByRole('button', { name: 'Export transcript' }).click();
     await expect
       .poll(() =>
         fs.existsSync(
@@ -480,6 +481,8 @@ test('opens and exports a legacy transcript with the current meeting-audio label
         ),
       )
       .toBe(true);
+    await expect(window.getByText('Saved transcript.txt')).toBeVisible();
+    await expect(window.getByRole('button', { name: 'Show in Finder' })).toBeVisible();
     const exported = fs.readFileSync(
       path.join(
         testHome,

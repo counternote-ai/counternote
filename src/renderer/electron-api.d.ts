@@ -9,6 +9,7 @@ type TranscriptionSettings = import('../types/settings').TranscriptionSettings;
 type SettingsSaveIpcResult = import('../types/settings').SettingsSaveIpcResult;
 type SettingsLoadIpcResult = import('../types/settings').SettingsLoadIpcResult;
 type TranscriptExportIpcResult = import('../types/settings').TranscriptExportIpcResult;
+type ShowInFinderIpcResult = import('../types/settings').ShowInFinderIpcResult;
 type PersistedInterruption =
   import('../main/native-capture/capture-metadata').PersistedInterruption;
 
@@ -99,6 +100,8 @@ interface ElectronAPI {
   installLocalModel: () => Promise<TranscriptionIpcResult>;
   onLocalModelStatus: (callback: (status: LocalModelStatus) => void) => () => void;
   exportTranscript: (recordingId: string, format: 'txt') => Promise<TranscriptExportIpcResult>;
+  showExportedTranscript: (recordingId: string) => Promise<ShowInFinderIpcResult>;
+  showRecordingFiles: (recordingId: string) => Promise<ShowInFinderIpcResult>;
   saveConfig: (config: Partial<TranscriptionSettings>) => Promise<SettingsSaveIpcResult>;
   loadConfig: () => Promise<SettingsLoadIpcResult>;
   getRecordingPermissions: () => Promise<{

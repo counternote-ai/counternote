@@ -1,6 +1,7 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
-import { app, ipcMain, BrowserWindow } from 'electron';
+import { app, ipcMain, BrowserWindow, shell } from 'electron';
 import { loadConfig, setGroqApiKey } from '../config';
 import { LocalModelManager } from '../transcription/local-model-manager';
 
@@ -295,6 +296,104 @@ describe('sensitive IPC failures', () => {
 
     expect(result).toEqual({ success: false, code: 'TRANSCRIPT_EXPORT_FAILED' });
     expect(consoleError).toHaveBeenCalledWith('Transcript export failed.');
+    expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining(rendererPath));
+  });
+
+  it('rejects renderer-supplied paths before opening recording files', async () => {
+    const rendererPath = '/private/recordings/secret';
+
+    const result = await getHandler('show-recording-files')({}, rendererPath);
+
+    expect(result).toEqual({ success: false, code: 'SHOW_IN_FINDER_FAILED' });
+    expect(shell.openPath).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining(rendererPath));
+  });
+
+  it('opens a validated recording directory without returning its path', async () => {
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'counternote-show-files-'));
+    const recordingDirectory = path.join(outputDir, '2026-07-27T12-00-00-000Z');
+    fs.mkdirSync(recordingDirectory);
+    (loadConfig as jest.MockedFunction<typeof loadConfig>).mockReturnValueOnce({
+      outputDir,
+    } as ReturnType<typeof loadConfig>);
+
+    try {
+      const result = await getHandler('show-recording-files')({}, '2026-07-27T12-00-00-000Z');
+
+      expect(shell.openPath).toHaveBeenCalledWith(recordingDirectory);
+      expect(result).toEqual({ success: true });
+      expect(JSON.stringify(result)).not.toContain(outputDir);
+    } finally {
+      fs.rmSync(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it('maps Finder directory failures to a safe result', async () => {
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'counternote-show-files-'));
+    const recordingDirectory = path.join(outputDir, '2026-07-27T12-00-00-000Z');
+    fs.mkdirSync(recordingDirectory);
+    (loadConfig as jest.MockedFunction<typeof loadConfig>).mockReturnValueOnce({
+      outputDir,
+    } as ReturnType<typeof loadConfig>);
+    (shell.openPath as jest.Mock).mockResolvedValueOnce(`Unable to open ${recordingDirectory}`);
+
+    try {
+      const result = await getHandler('show-recording-files')({}, '2026-07-27T12-00-00-000Z');
+
+      expect(result).toEqual({ success: false, code: 'SHOW_IN_FINDER_FAILED' });
+      expect(JSON.stringify(result)).not.toContain(outputDir);
+    } finally {
+      fs.rmSync(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it('reveals only the exported transcript derived from a validated recording ID', async () => {
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'counternote-show-files-'));
+    const recordingDirectory = path.join(outputDir, '2026-07-27T12-00-00-000Z');
+    const exportedTranscriptPath = path.join(recordingDirectory, 'transcript.txt');
+    fs.mkdirSync(recordingDirectory);
+    fs.writeFileSync(exportedTranscriptPath, 'Meeting audio: Hello');
+    (loadConfig as jest.MockedFunction<typeof loadConfig>).mockReturnValueOnce({
+      outputDir,
+    } as ReturnType<typeof loadConfig>);
+
+    try {
+      const result = await getHandler('show-exported-transcript')({}, '2026-07-27T12-00-00-000Z');
+
+      expect(shell.showItemInFolder).toHaveBeenCalledWith(exportedTranscriptPath);
+      expect(result).toEqual({ success: true });
+      expect(JSON.stringify(result)).not.toContain(outputDir);
+    } finally {
+      fs.rmSync(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it('fails safely when the exported transcript no longer exists', async () => {
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'counternote-show-files-'));
+    const recordingDirectory = path.join(outputDir, '2026-07-27T12-00-00-000Z');
+    fs.mkdirSync(recordingDirectory);
+    (loadConfig as jest.MockedFunction<typeof loadConfig>).mockReturnValueOnce({
+      outputDir,
+    } as ReturnType<typeof loadConfig>);
+
+    try {
+      const result = await getHandler('show-exported-transcript')({}, '2026-07-27T12-00-00-000Z');
+
+      expect(result).toEqual({ success: false, code: 'SHOW_IN_FINDER_FAILED' });
+      expect(shell.showItemInFolder).not.toHaveBeenCalled();
+      expect(JSON.stringify(result)).not.toContain(outputDir);
+    } finally {
+      fs.rmSync(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects renderer-supplied paths before revealing an exported transcript', async () => {
+    const rendererPath = '../../../private/transcript.txt';
+
+    const result = await getHandler('show-exported-transcript')({}, rendererPath);
+
+    expect(result).toEqual({ success: false, code: 'SHOW_IN_FINDER_FAILED' });
+    expect(shell.showItemInFolder).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining(rendererPath));
   });
 

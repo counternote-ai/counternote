@@ -55,6 +55,9 @@ interface MockSettingsProps {
 
 interface MockTranscriptProps {
   onExport: () => Promise<void>;
+  onShowExportedTranscript: () => Promise<void>;
+  onShowRecordingFiles: () => Promise<void>;
+  exportNotice: 'saved' | 'show-failed' | null;
 }
 
 const mockCreateElement = (
@@ -237,6 +240,8 @@ const mockElectronAPI = {
   installLocalModel: jest.fn(),
   transcribe: jest.fn(),
   exportTranscript: jest.fn(),
+  showExportedTranscript: jest.fn(),
+  showRecordingFiles: jest.fn(),
   saveConfig: jest.fn(),
   recordingStart: jest.fn(),
   recordingStop: jest.fn(),
@@ -275,6 +280,8 @@ beforeEach(() => {
   mockElectronAPI.installLocalModel.mockResolvedValue({ success: true });
   mockElectronAPI.transcribe.mockResolvedValue({ success: true });
   mockElectronAPI.exportTranscript.mockResolvedValue({ success: true });
+  mockElectronAPI.showExportedTranscript.mockResolvedValue({ success: true });
+  mockElectronAPI.showRecordingFiles.mockResolvedValue({ success: true });
   mockElectronAPI.saveConfig.mockResolvedValue({ success: true });
   mockElectronAPI.recordingStart.mockResolvedValue({ ok: true, recordingId: 'test-recording-id' });
   mockElectronAPI.recordingStop.mockResolvedValue({ status: 'complete' });
@@ -572,6 +579,68 @@ describe('transcription IPC lifecycle', () => {
       '/private/recordings/secret/transcript.json',
       'txt',
     );
+  });
+
+  it('shows a saved notice after exporting and offers to reveal the transcript', async () => {
+    mockStateValues[0] = 'transcript';
+    mockStateValues[2] = {
+      id: '2026-07-27T12-00-00-000Z',
+      title: 'Saved meeting',
+      duration: 60,
+      transcribed: true,
+    };
+    renderApp();
+
+    await getTranscriptProps().onExport();
+    renderApp();
+
+    expect(getTranscriptProps().exportNotice).toBe('saved');
+    await getTranscriptProps().onShowExportedTranscript();
+    expect(mockElectronAPI.showExportedTranscript).toHaveBeenCalledWith('2026-07-27T12-00-00-000Z');
+  });
+
+  it('keeps the saved result but reports when Finder cannot reveal the transcript', async () => {
+    mockStateValues[0] = 'transcript';
+    mockStateValues[2] = {
+      id: '2026-07-27T12-00-00-000Z',
+      title: 'Saved meeting',
+      duration: 60,
+      transcribed: true,
+    };
+    mockElectronAPI.showExportedTranscript.mockResolvedValueOnce({
+      success: false,
+      code: 'SHOW_IN_FINDER_FAILED',
+    });
+    renderApp();
+
+    await getTranscriptProps().onExport();
+    renderApp();
+    await getTranscriptProps().onShowExportedTranscript();
+    renderApp();
+
+    expect(getTranscriptProps().exportNotice).toBe('show-failed');
+    expect(getErrorMessage()).toBeNull();
+  });
+
+  it('opens the selected recording directory and maps failures to safe copy', async () => {
+    mockStateValues[0] = 'transcript';
+    mockStateValues[2] = {
+      id: '2026-07-27T12-00-00-000Z',
+      title: 'Saved meeting',
+      duration: 60,
+      transcribed: true,
+    };
+    mockElectronAPI.showRecordingFiles.mockRejectedValueOnce(
+      new Error('/private/recordings/secret'),
+    );
+    renderApp();
+
+    await getTranscriptProps().onShowRecordingFiles();
+    renderApp();
+
+    expect(mockElectronAPI.showRecordingFiles).toHaveBeenCalledWith('2026-07-27T12-00-00-000Z');
+    expect(getErrorMessage()).toBe("Recording files couldn't be opened in Finder.");
+    expect(getErrorMessage()).not.toContain('/private');
   });
 
   it('saves the selected local provider while preserving Groq values', async () => {

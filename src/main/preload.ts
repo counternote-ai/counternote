@@ -8,6 +8,7 @@ import {
 import {
   type SettingsLoadIpcResult,
   type SettingsSaveIpcResult,
+  type ShowInFinderIpcResult,
   type TranscriptExportIpcResult,
   type TranscriptionSettings,
 } from '../types/settings';
@@ -34,6 +35,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   exportTranscript: (recordingId: string, format: 'txt'): Promise<TranscriptExportIpcResult> =>
     ipcRenderer.invoke('export-transcript', recordingId, format),
+  showExportedTranscript: (recordingId: string): Promise<ShowInFinderIpcResult> =>
+    ipcRenderer.invoke('show-exported-transcript', recordingId),
+  showRecordingFiles: (recordingId: string): Promise<ShowInFinderIpcResult> =>
+    ipcRenderer.invoke('show-recording-files', recordingId),
   saveConfig: (config: Partial<TranscriptionSettings>): Promise<SettingsSaveIpcResult> =>
     ipcRenderer.invoke('save-config', config),
   loadConfig: (): Promise<SettingsLoadIpcResult> => ipcRenderer.invoke('load-config'),
