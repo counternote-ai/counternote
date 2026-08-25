@@ -13,8 +13,8 @@ let package = Package(
             targets: ["AudioCaptureCore"]
         ),
         .executable(
-            name: "InterviewAudioCapture",
-            targets: ["InterviewAudioCapture"]
+            name: "CounterNoteAudioCapture",
+            targets: ["CounterNoteAudioCapture"]
         )
     ],
     targets: [
@@ -23,9 +23,9 @@ let package = Package(
             path: "Sources/AudioCaptureCore"
         ),
         .executableTarget(
-            name: "InterviewAudioCapture",
+            name: "CounterNoteAudioCapture",
             dependencies: ["AudioCaptureCore"],
-            path: "Sources/InterviewAudioCapture"
+            path: "Sources/CounterNoteAudioCapture"
         ),
         .testTarget(
             name: "AudioCaptureCoreTests",

@@ -33,13 +33,13 @@ describe('getRecordingPermissionNotice', () => {
       getRecordingPermissionNotice({
         ...grantedSnapshot,
         microphone: 'denied',
-        permissionOwnerName: 'Interview Copilot',
+        permissionOwnerName: 'CounterNote',
         canAttemptRecording: false,
       }),
     ).toEqual({
       tone: 'info',
       message:
-        'Microphone access is off. Allow Interview Copilot in System Settings, then restart the app.',
+        'Microphone access is off. Allow CounterNote in System Settings, then restart the app.',
       settingsPermission: 'microphone',
     });
   });
@@ -82,7 +82,7 @@ describe('getRecordingPermissionNotice', () => {
     ).toEqual({
       tone: 'info',
       message:
-        "Interview Copilot couldn't confirm recording permissions. You can still try to start recording.",
+        "CounterNote couldn't confirm recording permissions. You can still try to start recording.",
     });
   });
 });

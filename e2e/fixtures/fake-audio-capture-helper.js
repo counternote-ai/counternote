@@ -8,7 +8,7 @@
  * and selects a scripted scenario from its executable basename.
  *
  * Example: copying this file to `fake-audio-capture-helper__delayed-ready.js`
- * and setting INTERVIEW_COPILOT_AUDIO_CAPTURE_HELPER to that path selects the
+ * and setting COUNTERNOTE_AUDIO_CAPTURE_HELPER to that path selects the
  * "delayed-ready" scenario.
  *
  * The helper never reads a scenario variable from the spawned child environment
@@ -133,7 +133,7 @@ function writeError(phase, code, channel) {
 
 const scenarioArgIndex = process.argv.indexOf('--scenario');
 const scenarioArg = scenarioArgIndex !== -1 ? process.argv[scenarioArgIndex + 1] : undefined;
-const envScenario = process.env.INTERVIEW_COPILOT_CAPTURE_SCENARIO;
+const envScenario = process.env.COUNTERNOTE_CAPTURE_SCENARIO;
 const basename = require('path').basename(process.argv[1] || '', '.js');
 const scenarioMatch = basename.match(/fake-audio-capture-helper__(.+)$/);
 const scenario = scenarioArg ?? envScenario ?? (scenarioMatch ? scenarioMatch[1] : 'default');

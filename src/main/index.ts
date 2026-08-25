@@ -113,7 +113,7 @@ function getNativeCaptureController(): NativeCaptureController {
 }
 
 // Set app name for macOS menu bar and Activity Monitor
-app.name = 'Interview Copilot';
+app.name = 'CounterNote';
 
 // Single-instance lock: must be acquired before whenReady
 const singleInstanceLock = app.requestSingleInstanceLock();
@@ -151,11 +151,11 @@ if (!singleInstanceLock) {
 }
 
 function e2eEnabled(): boolean {
-  return !app.isPackaged && process.env.INTERVIEW_COPILOT_E2E === '1';
+  return !app.isPackaged && process.env.COUNTERNOTE_E2E === '1';
 }
 
 function modelArtifact(): ModelArtifactSpec {
-  const manifestPath = e2eEnabled() ? process.env.INTERVIEW_COPILOT_MODEL_MANIFEST : undefined;
+  const manifestPath = e2eEnabled() ? process.env.COUNTERNOTE_MODEL_MANIFEST : undefined;
   if (!manifestPath) return PRODUCTION_MODEL_ARTIFACT;
 
   try {
@@ -312,7 +312,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 400,
     height: 600,
-    title: 'Interview Copilot',
+    title: 'CounterNote',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -485,7 +485,7 @@ ipcMain.handle('list-recordings', async () => {
 
           return {
             id: entry.name,
-            title: `Interview — ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`,
+            title: `Meeting — ${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`,
             duration,
             transcribed: hasTranscriptSegments(segments),
             segments,

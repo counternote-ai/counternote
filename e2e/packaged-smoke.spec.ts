@@ -4,16 +4,14 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-test('launches a 400x600 window titled Interview Copilot and shows Local Whisper settings', async () => {
-  const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'interview-copilot-packaged-e2e-'));
-  const appPath = path.resolve(
-    'release/mac-arm64/Interview Copilot.app/Contents/MacOS/Interview Copilot',
-  );
+test('launches a 400x600 window titled CounterNote and shows Local Whisper settings', async () => {
+  const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'counternote-packaged-e2e-'));
+  const appPath = path.resolve('release/mac-arm64/CounterNote.app/Contents/MacOS/CounterNote');
 
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: testHome };
-  delete env.INTERVIEW_COPILOT_E2E;
-  delete env.INTERVIEW_COPILOT_WHISPER_CLI;
-  delete env.INTERVIEW_COPILOT_MODEL_MANIFEST;
+  delete env.COUNTERNOTE_E2E;
+  delete env.COUNTERNOTE_WHISPER_CLI;
+  delete env.COUNTERNOTE_MODEL_MANIFEST;
 
   let electronApp: ElectronApplication | undefined;
 
@@ -27,7 +25,7 @@ test('launches a 400x600 window titled Interview Copilot and shows Local Whisper
     const window = await electronApp.firstWindow();
     await window.waitForLoadState('domcontentloaded');
 
-    expect(await window.title()).toBe('Interview Copilot');
+    expect(await window.title()).toBe('CounterNote');
 
     const windowSize = await electronApp.evaluate(({ BrowserWindow }) => {
       const [win] = BrowserWindow.getAllWindows();
@@ -64,7 +62,7 @@ test('launches a 400x600 window titled Interview Copilot and shows Local Whisper
 
 test('packaged audio capture helper exists, is executable, and exchanges a valid protocol frame', async () => {
   const helperPath = path.resolve(
-    'release/mac-arm64/Interview Copilot.app/Contents/Resources/audio-capture/bin/interview-audio-capture',
+    'release/mac-arm64/CounterNote.app/Contents/Resources/audio-capture/bin/counternote-audio-capture',
   );
 
   // Assert the helper exists at the resolved packaged resource path
@@ -77,10 +75,10 @@ test('packaged audio capture helper exists, is executable, and exchanges a valid
 
   // Verify no development override is set
   const env: NodeJS.ProcessEnv = { ...process.env };
-  delete env.INTERVIEW_COPILOT_AUDIO_CAPTURE_HELPER;
-  delete env.INTERVIEW_COPILOT_E2E;
-  delete env.INTERVIEW_COPILOT_WHISPER_CLI;
-  delete env.INTERVIEW_COPILOT_MODEL_MANIFEST;
+  delete env.COUNTERNOTE_AUDIO_CAPTURE_HELPER;
+  delete env.COUNTERNOTE_E2E;
+  delete env.COUNTERNOTE_WHISPER_CLI;
+  delete env.COUNTERNOTE_MODEL_MANIFEST;
 
   // Launch the helper and exchange a valid protocol frame within bounded timeout.
   // Send an invalid control command to trigger an error frame (valid protocol response).

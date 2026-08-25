@@ -383,12 +383,15 @@ export class TranscriptionOrchestrator {
     const dateFactory = this.deps.dateFactory ?? (() => new Date().toISOString());
     return {
       id: recordingId,
-      title: `Interview — ${new Date(recordingId).toLocaleDateString()}`,
+      title: `Meeting — ${new Date(recordingId).toLocaleDateString()}`,
       duration,
       audioFile: 'audio.wav',
       createdAt: dateFactory(),
       transcribedAt: dateFactory(),
-      segments,
+      segments: segments.map((segment) => ({
+        ...segment,
+        speaker: segment.speaker === 'Interviewer' ? 'Meeting audio' : segment.speaker,
+      })),
     };
   }
 

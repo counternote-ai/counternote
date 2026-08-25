@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Interview Copilot will be documented in this file.
+All notable changes to CounterNote will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Transcript view with timestamps and speaker labels
 - Settings panel with Groq API key configuration
 - Post-interview transcription via Groq Whisper API
-- Channel-based speaker labeling ("Interviewer" / "You")
+- Channel-based speaker labeling ("Meeting audio" / "You")
 - Export transcripts as plain text
 - WAV recording at 16kHz sample rate
 - Automatic FLAC conversion for transcription uploads

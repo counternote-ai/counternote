@@ -1,6 +1,6 @@
 # Architecture
 
-Interview Copilot is a macOS Electron menu-bar app with an isolated React renderer.
+CounterNote is a macOS Electron menu-bar app with an isolated React renderer.
 
 ## Process boundaries
 
@@ -26,7 +26,7 @@ Interview Copilot is a macOS Electron menu-bar app with an isolated React render
    channel sequentially with one CPU-only `whisper-cli` process on the Mac.
    Groq uploads prepared audio only when the user explicitly selects Groq as
    the provider.
-4. Returned segments are labeled Interviewer for system audio and You for microphone audio.
+4. Returned segments are labeled Meeting audio for system audio and You for microphone audio.
 5. Segments are merged by timestamp and saved as `transcript.json`; failures keep
    the original recording intact.
 
@@ -41,9 +41,9 @@ configured.
 
 ## Local storage
 
-The current library is stored under `~/InterviewCopilot/recordings`. Each timestamped directory contains `audio.wav`, optional `transcript.json`, and optional `transcript.txt`.
+The current library is stored under `~/CounterNote/recordings`. Each timestamped directory contains `audio.wav`, optional `transcript.json`, and optional `transcript.txt`.
 
-`~/InterviewCopilot/config.json` stores non-secret settings. `~/InterviewCopilot/secrets.enc` stores the Groq API key encrypted through Electron `safeStorage`.
+`~/CounterNote/config.json` stores non-secret settings. `~/CounterNote/secrets.enc` stores the Groq API key encrypted through Electron `safeStorage`.
 
 Local Whisper models live under `app.getPath('userData')/models`, separate from
 recordings. Changing or moving the recordings root does not automatically move

@@ -4,7 +4,7 @@ import * as os from 'os';
 import { safeStorage } from 'electron';
 import { TranscriptionProvider } from '../types/transcription';
 
-const CONFIG_DIR = path.join(os.homedir(), 'InterviewCopilot');
+const CONFIG_DIR = path.join(os.homedir(), 'CounterNote');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const SECRETS_FILE = path.join(CONFIG_DIR, 'secrets.enc');
 

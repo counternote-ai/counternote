@@ -1,7 +1,7 @@
 ---
 name: product-design
 description: >-
-  Single entry point for Interview Copilot product design and user-facing implementation.
+  Single entry point for CounterNote product design and user-facing implementation.
   Use whenever work changes what a user sees, understands, chooses, or does in the
   Electron renderer or tray: shaping flows; building or redesigning screens and
   components; reviewing screenshots, diffs, or UI; improving copy, hierarchy,
@@ -13,9 +13,9 @@ description: >-
   without shipped UI impact, or general project documentation.
 ---
 
-# Interview Copilot Product Design
+# CounterNote Product Design
 
-Make the interface correct for a job candidate trying to capture and review an interview. Working code is not sufficient: clarify the task and consequences, cover reachable states, preserve trust, and verify the rendered 400 x 600 macOS surface.
+Make the interface correct for someone capturing and reviewing an important meeting. Working code is not sufficient: clarify the task and consequences, cover reachable states, preserve trust, and verify the rendered 400 x 600 macOS surface.
 
 ## Operating contract
 

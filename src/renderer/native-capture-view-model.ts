@@ -90,7 +90,7 @@ interface SnapshotInput {
 }
 
 export function toRecordingHealthView(snapshot: SnapshotInput): RecordingHealthView {
-  const interviewer = toChannelHealthView(snapshot.channels.interviewer, 'Interviewer');
+  const interviewer = toChannelHealthView(snapshot.channels.interviewer, 'Meeting audio');
   const you = toChannelHealthView(snapshot.channels.you, 'You');
 
   return {

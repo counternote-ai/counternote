@@ -25,12 +25,12 @@ export function resolveAudioCaptureHelper(options: AudioCaptureHelperOptions): s
   }
 
   const env = options.env ?? process.env;
-  const envOverride = env.INTERVIEW_COPILOT_AUDIO_CAPTURE_HELPER;
+  const envOverride = env.COUNTERNOTE_AUDIO_CAPTURE_HELPER;
 
   if (envOverride) {
     if (options.isPackaged) {
       throw new AudioCaptureHelperError(
-        'INTERVIEW_COPILOT_AUDIO_CAPTURE_HELPER is not available in packaged production',
+        'COUNTERNOTE_AUDIO_CAPTURE_HELPER is not available in packaged production',
       );
     }
     if (!isExecutable(envOverride)) {
@@ -42,13 +42,13 @@ export function resolveAudioCaptureHelper(options: AudioCaptureHelperOptions): s
   }
 
   const resolved = options.isPackaged
-    ? path.join(options.resourcesPath, 'audio-capture', 'bin', 'interview-audio-capture')
+    ? path.join(options.resourcesPath, 'audio-capture', 'bin', 'counternote-audio-capture')
     : path.join(
         options.projectRoot,
         'build',
         'audio-capture',
         `${options.platform}-${options.arch}`,
-        'interview-audio-capture',
+        'counternote-audio-capture',
       );
 
   if (!isExecutable(resolved)) {

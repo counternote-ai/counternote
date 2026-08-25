@@ -1,4 +1,4 @@
-# Contributing to Interview Copilot
+# Contributing to CounterNote
 
 Thanks for contributing. Keep each pull request focused on one change and update documentation when user-facing behavior changes.
 

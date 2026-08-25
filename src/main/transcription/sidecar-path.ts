@@ -9,8 +9,8 @@ export interface WhisperCliPathOptions {
   platform: string;
   arch: string;
   env?: {
-    INTERVIEW_COPILOT_E2E?: string;
-    INTERVIEW_COPILOT_WHISPER_CLI?: string;
+    COUNTERNOTE_E2E?: string;
+    COUNTERNOTE_WHISPER_CLI?: string;
   };
 }
 
@@ -33,8 +33,8 @@ export function resolveWhisperCliPath(options: WhisperCliPathOptions): string {
   }
 
   const env = options.env ?? (process.env as NodeJS.ProcessEnv);
-  const e2eCliPath = env.INTERVIEW_COPILOT_WHISPER_CLI;
-  if (!options.isPackaged && env.INTERVIEW_COPILOT_E2E === '1' && e2eCliPath) {
+  const e2eCliPath = env.COUNTERNOTE_WHISPER_CLI;
+  if (!options.isPackaged && env.COUNTERNOTE_E2E === '1' && e2eCliPath) {
     if (!isExecutable(e2eCliPath)) {
       throw new WhisperSidecarError(
         'LOCAL_UNAVAILABLE',

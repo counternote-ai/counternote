@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SWIFT_PACKAGE_DIR="${REPO_ROOT}/native/audio-capture"
 OUTPUT_DIR="${REPO_ROOT}/build/audio-capture/darwin-arm64"
-OUTPUT_PATH="${OUTPUT_DIR}/interview-audio-capture"
+OUTPUT_PATH="${OUTPUT_DIR}/counternote-audio-capture"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo 'ERROR: this script must run on macOS' >&2
@@ -30,9 +30,9 @@ fi
 
 cd "$SWIFT_PACKAGE_DIR"
 
-swift build --configuration release --product InterviewAudioCapture 2>&1
+swift build --configuration release --product CounterNoteAudioCapture 2>&1
 
-BUILT_BINARY="${SWIFT_PACKAGE_DIR}/.build/arm64-apple-macosx/release/InterviewAudioCapture"
+BUILT_BINARY="${SWIFT_PACKAGE_DIR}/.build/arm64-apple-macosx/release/CounterNoteAudioCapture"
 
 if [[ ! -f "$BUILT_BINARY" ]]; then
   echo "ERROR: expected build output not found at '${BUILT_BINARY}'" >&2

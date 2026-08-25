@@ -13,9 +13,9 @@ import {
 
 describe('toChannelHealthView', () => {
   it('maps connected status to ok tone with Connected label', () => {
-    const view = toChannelHealthView({ status: 'connected', started: true }, 'Interviewer');
+    const view = toChannelHealthView({ status: 'connected', started: true }, 'Meeting audio');
 
-    expect(view.label).toBe('Interviewer');
+    expect(view.label).toBe('Meeting audio');
     expect(view.statusText).toBe('Connected');
     expect(view.tone).toBe('ok');
   });
@@ -29,7 +29,7 @@ describe('toChannelHealthView', () => {
   });
 
   it('maps reconnecting status to warning tone', () => {
-    const view = toChannelHealthView({ status: 'reconnecting', started: true }, 'Interviewer');
+    const view = toChannelHealthView({ status: 'reconnecting', started: true }, 'Meeting audio');
 
     expect(view.statusText).toBe('Reconnecting…');
     expect(view.tone).toBe('warning');
@@ -43,7 +43,10 @@ describe('toChannelHealthView', () => {
   });
 
   it('maps no-audio-detected status to warning tone', () => {
-    const view = toChannelHealthView({ status: 'no-audio-detected', started: true }, 'Interviewer');
+    const view = toChannelHealthView(
+      { status: 'no-audio-detected', started: true },
+      'Meeting audio',
+    );
 
     expect(view.statusText).toBe('No audio detected');
     expect(view.tone).toBe('warning');
@@ -57,7 +60,7 @@ describe('toChannelHealthView', () => {
   });
 
   it('maps idle status to idle tone', () => {
-    const view = toChannelHealthView({ status: 'idle', started: false }, 'Interviewer');
+    const view = toChannelHealthView({ status: 'idle', started: false }, 'Meeting audio');
 
     expect(view.statusText).toBe('Waiting');
     expect(view.tone).toBe('idle');
@@ -71,9 +74,9 @@ describe('toChannelHealthView', () => {
   });
 
   it('provides an aria label combining label and status', () => {
-    const view = toChannelHealthView({ status: 'connected', started: true }, 'Interviewer');
+    const view = toChannelHealthView({ status: 'connected', started: true }, 'Meeting audio');
 
-    expect(view.ariaLabel).toBe('Interviewer: Connected');
+    expect(view.ariaLabel).toBe('Meeting audio: Connected');
   });
 });
 
@@ -149,11 +152,11 @@ describe('toRecordingHealthView', () => {
       },
     });
 
-    expect(view.ariaSummary).toContain('Interviewer: Connected');
+    expect(view.ariaSummary).toContain('Meeting audio: Connected');
     expect(view.ariaSummary).toContain('You: Disconnected');
   });
 
-  it('labels channels independently as Interviewer and You', () => {
+  it('labels channels independently as Meeting audio and You', () => {
     const view = toRecordingHealthView({
       ...baseSnapshot,
       state: 'recording',
@@ -164,7 +167,7 @@ describe('toRecordingHealthView', () => {
       },
     });
 
-    expect(view.channels[0].label).toBe('Interviewer');
+    expect(view.channels[0].label).toBe('Meeting audio');
     expect(view.channels[1].label).toBe('You');
   });
 });

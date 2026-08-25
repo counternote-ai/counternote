@@ -2,8 +2,8 @@
 
 ## Product frame
 
-- **Primary user:** a job candidate conducting and reviewing remote interviews.
-- **Primary job:** reliably capture both sides of an interview, turn the recording into a readable transcript, and revisit what was said.
+- **Primary user:** someone conducting and reviewing an important remote conversation.
+- **Primary job:** reliably capture both sides of a meeting, turn the recording into a readable transcript, and revisit what was said.
 - **Trust model:** local-first capture with explicit cloud transcription through Groq.
 - **Core objects:** recording, transcript, transcript segment, speaker, transcription configuration.
 - **Current surfaces:** recordings home, transcript reader, settings, tray/menu-bar entry points, and system permission prompts.
@@ -15,7 +15,7 @@
 2. **Review is the destination.** Optimize completed transcripts for calm reading and scanning.
 3. **System truth must remain visible.** Distinguish recording, saved audio, transcribing, ready transcript, and failure.
 4. **Privacy claims must be literal.** Audio is local until transcription runs; transcription sends audio to Groq.
-5. **Speaker labels describe channels, not identity inference.** “Interviewer” is system audio and “You” is microphone audio; do not present it as true diarization.
+5. **Speaker labels describe channels, not identity inference.** “Meeting audio” is system audio and “You” is microphone audio; do not present it as true diarization.
 6. **Keep the utility lightweight.** Prefer strong defaults and direct actions over dashboard complexity or settings proliferation.
 7. **Preserve recovery.** A failed transcription must not imply that the underlying recording is lost.
 

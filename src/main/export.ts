@@ -15,7 +15,8 @@ export function exportToPlainText(transcript: Transcript): string {
     const timestamp = `${Math.floor(segment.start / 60)}:${Math.floor(segment.start % 60)
       .toString()
       .padStart(2, '0')}`;
-    lines.push(`[${timestamp}] ${segment.speaker}:`);
+    const speaker = segment.speaker === 'Interviewer' ? 'Meeting audio' : segment.speaker;
+    lines.push(`[${timestamp}] ${speaker}:`);
     lines.push(segment.text);
     lines.push('');
   }

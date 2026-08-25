@@ -22,7 +22,7 @@ import * as os from 'os';
 import { safeStorage } from 'electron';
 
 // Mock the config directory to use a temp directory
-const TEST_CONFIG_DIR = path.join(os.homedir(), 'InterviewCopilot');
+const TEST_CONFIG_DIR = path.join(os.homedir(), 'CounterNote');
 const TEST_CONFIG_FILE = path.join(TEST_CONFIG_DIR, 'config.json');
 const fsMock = fs as unknown as {
   existsSync: jest.Mock;

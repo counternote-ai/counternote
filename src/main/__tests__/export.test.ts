@@ -4,7 +4,7 @@ import { Transcript } from '../../types/transcript';
 describe('Export', () => {
   const mockTranscript: Transcript = {
     id: '2026-07-08T14-30-00',
-    title: 'Interview — Jul 8, 2026',
+    title: 'Meeting — Jul 8, 2026',
     duration: 1847,
     audioFile: 'audio.wav',
     createdAt: '2026-07-08T14:30:00Z',
@@ -30,15 +30,15 @@ describe('Export', () => {
     const result = exportToPlainText(mockTranscript);
 
     // Should contain title
-    expect(result).toContain('Interview — Jul 8, 2026');
+    expect(result).toContain('Meeting — Jul 8, 2026');
 
     // Should contain duration
     expect(result).toContain('Duration: 30:47');
 
     // Should contain timestamps
-    expect(result).toContain('[0:00] Interviewer:');
+    expect(result).toContain('[0:00] Meeting audio:');
     expect(result).toContain('[0:04] You:');
-    expect(result).toContain('[0:28] Interviewer:');
+    expect(result).toContain('[0:28] Meeting audio:');
 
     // Should contain segment text
     expect(result).toContain('Tell me about yourself.');
@@ -54,7 +54,7 @@ describe('Export', () => {
 
     const result = exportToPlainText(emptyTranscript);
 
-    expect(result).toContain('Interview — Jul 8, 2026');
+    expect(result).toContain('Meeting — Jul 8, 2026');
     expect(result).toContain('Duration: 30:47');
   });
 
@@ -75,10 +75,13 @@ describe('Export', () => {
     expect(result).toContain('[61:01] You:');
   });
 
-  it('should preserve speaker labels', () => {
+  it('should normalize the legacy Interviewer label without changing other speaker labels', () => {
+    const originalSegments = structuredClone(mockTranscript.segments);
     const result = exportToPlainText(mockTranscript);
 
-    expect(result).toContain('Interviewer:');
+    expect(result).not.toContain('Interviewer:');
+    expect(result).toContain('Meeting audio:');
     expect(result).toContain('You:');
+    expect(mockTranscript.segments).toEqual(originalSegments);
   });
 });

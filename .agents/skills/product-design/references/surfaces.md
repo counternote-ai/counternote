@@ -15,11 +15,11 @@ Reachable states: loading recordings, empty, populated, recording active, start 
 
 ## Transcript reader
 
-**Job:** read the interview in sequence and export the completed transcript.
+**Job:** read the meeting in sequence and export the completed transcript.
 
 - Keep Back and Export in a utility toolbar.
 - Show title and compact metadata before the transcript.
-- Distinguish `Interviewer` and `You` with restrained badges or borders plus text.
+- Distinguish `Meeting audio` and `You` with restrained badges or borders plus text.
 - Align timestamps consistently and optimize body text for reading.
 - Disable or omit export when no transcript content exists, and explain an empty transcript.
 - Do not imply that channel labels are verified human identities.

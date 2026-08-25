@@ -27,7 +27,7 @@ public extension MicrophoneSource {
 /// serialized peer finishes — the coordinator always calls them outside its
 /// own lock.
 public final class MicrophoneSourceImpl: NSObject, MicrophoneSource {
-    private let controlQueue = DispatchQueue(label: "InterviewAudioCapture.microphone.control")
+    private let controlQueue = DispatchQueue(label: "CounterNoteAudioCapture.microphone.control")
     private var engine: AVAudioEngine?
     private let targetFormat = AVAudioFormat(
         commonFormat: .pcmFormatInt16,

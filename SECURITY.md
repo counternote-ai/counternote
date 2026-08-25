@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Interview Copilot is not yet publicly released, and a private security-reporting address has not been published.
+CounterNote is not yet publicly released, and a private security-reporting address has not been published.
 
 Do not include sensitive vulnerability details in a public issue. The maintainer will add a private reporting email here before public release.
 
@@ -13,8 +13,8 @@ For the detailed local-data and upload boundary, see [Privacy and Local Data](do
 ### Data storage
 
 - The Groq API key is encrypted with Electron `safeStorage`.
-- Audio recordings, transcripts, and text exports are stored locally under `~/InterviewCopilot`.
-- Non-secret settings are stored locally in `~/InterviewCopilot/config.json`.
+- Audio recordings, transcripts, and text exports are stored locally under `~/CounterNote`.
+- Non-secret settings are stored locally in `~/CounterNote/config.json`.
 
 ### Network communication
 
@@ -22,7 +22,7 @@ For the detailed local-data and upload boundary, see [Privacy and Local Data](do
   provider and then explicitly selects **Transcribe audio**. Local Whisper keeps
   prepared audio on the Mac.
 - Groq API requests use HTTPS.
-- Interview Copilot does not include telemetry or analytics.
+- CounterNote does not include telemetry or analytics.
 
 ### Electron security
 

@@ -103,7 +103,7 @@ public final class AsyncByteSink: ByteSink {
         // The loop runs for the sink's lifetime and intentionally retains it:
         // the sink is a process-lifetime object and the worker must outlive
         // every writer.
-        DispatchQueue(label: "InterviewAudioCapture.async-byte-sink.\(fileDescriptor)").async {
+        DispatchQueue(label: "CounterNoteAudioCapture.async-byte-sink.\(fileDescriptor)").async {
             self.workerLoop()
         }
     }

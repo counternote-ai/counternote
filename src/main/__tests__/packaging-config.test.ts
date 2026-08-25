@@ -72,15 +72,15 @@ describe('packaging configuration', () => {
 
     const checkPack = packageJson.scripts['check:pack'];
     expect(checkPack).toContain(
-      'release/mac-arm64/Interview Copilot.app/Contents/Resources/whisper/bin/whisper-cli',
+      'release/mac-arm64/CounterNote.app/Contents/Resources/whisper/bin/whisper-cli',
     );
     expect(checkPack.indexOf('verify-whisper-sidecar.sh')).toBeLessThan(
       checkPack.indexOf('npm run test:packaged'),
     );
 
-    expect(packagedSmoke).toContain('delete env.INTERVIEW_COPILOT_E2E;');
-    expect(packagedSmoke).toContain('delete env.INTERVIEW_COPILOT_WHISPER_CLI;');
-    expect(packagedSmoke).toContain('delete env.INTERVIEW_COPILOT_MODEL_MANIFEST;');
+    expect(packagedSmoke).toContain('delete env.COUNTERNOTE_E2E;');
+    expect(packagedSmoke).toContain('delete env.COUNTERNOTE_WHISPER_CLI;');
+    expect(packagedSmoke).toContain('delete env.COUNTERNOTE_MODEL_MANIFEST;');
   });
 
   it('configures hardened runtime and entitlements for audio capture helper', () => {
@@ -105,10 +105,10 @@ describe('packaging configuration', () => {
     const builderYaml = readRepoFile('electron-builder.yml');
 
     expect(builderYaml).toContain('binaries:');
-    expect(builderYaml).toContain('audio-capture/bin/interview-audio-capture');
+    expect(builderYaml).toContain('audio-capture/bin/counternote-audio-capture');
   });
 
-  it('includes both usage descriptions naming Interview Copilot', () => {
+  it('includes both usage descriptions naming CounterNote', () => {
     const builderYaml = readRepoFile('electron-builder.yml');
 
     expect(builderYaml).toContain('NSMicrophoneUsageDescription:');
@@ -117,16 +117,16 @@ describe('packaging configuration', () => {
     // Usage description values should name the app, not the helper executable
     const micMatch = builderYaml.match(/NSMicrophoneUsageDescription:\s*(.+)/);
     expect(micMatch).not.toBeNull();
-    expect(micMatch![1]).toContain('Interview Copilot');
-    expect(micMatch![1]).not.toContain('interview-audio-capture');
+    expect(micMatch![1]).toContain('CounterNote');
+    expect(micMatch![1]).not.toContain('counternote-audio-capture');
 
     // screen capture line may be in extendInfo, check the full value
     const screenLine = builderYaml
       .split('\n')
       .find((l) => l.includes('NSScreenCaptureUsageDescription'));
     if (screenLine) {
-      expect(screenLine).toContain('Interview Copilot');
-      expect(screenLine).not.toContain('interview-audio-capture');
+      expect(screenLine).toContain('CounterNote');
+      expect(screenLine).not.toContain('counternote-audio-capture');
     }
   });
 
@@ -135,8 +135,10 @@ describe('packaging configuration', () => {
 
     expect(builderYaml).toContain('from: build/whisper/darwin-arm64/whisper-cli');
     expect(builderYaml).toContain('to: whisper/bin/whisper-cli');
-    expect(builderYaml).toContain('from: build/audio-capture/darwin-arm64/interview-audio-capture');
-    expect(builderYaml).toContain('to: audio-capture/bin/interview-audio-capture');
+    expect(builderYaml).toContain(
+      'from: build/audio-capture/darwin-arm64/counternote-audio-capture',
+    );
+    expect(builderYaml).toContain('to: audio-capture/bin/counternote-audio-capture');
   });
 
   it('adds build:capture and verify:capture scripts', () => {
@@ -146,7 +148,7 @@ describe('packaging configuration', () => {
       'bash scripts/build-audio-capture-sidecar.sh',
     );
     expect(packageJson.scripts['verify:capture']).toBe(
-      'bash scripts/verify-audio-capture-sidecar.sh build/audio-capture/darwin-arm64/interview-audio-capture',
+      'bash scripts/verify-audio-capture-sidecar.sh build/audio-capture/darwin-arm64/counternote-audio-capture',
     );
   });
 

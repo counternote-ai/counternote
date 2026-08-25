@@ -1,13 +1,13 @@
-# Interview Copilot
+# CounterNote
 
-Interview Copilot is a macOS Electron menu-bar app that records video-interview audio, transcribes it locally with Whisper or through Groq when selected, and presents timestamped channel-labeled transcripts for review.
+CounterNote is a private, local-first meeting companion for macOS. It records system audio and your microphone, transcribes locally with Whisper or through Groq when selected, and presents timestamped channel-labeled transcripts for review.
 
 ## Features
 
 - Separate system-audio and microphone capture
 - Menu-bar recording controls and a local recordings library
 - Local Whisper transcription by default, with optional Groq transcription
-- Channel-based Interviewer and You labels
+- Channel-based Meeting audio and You labels
 - Timestamped transcript review
 - Plain-text transcript export
 
@@ -30,10 +30,10 @@ npm start
 Open **Settings** and download the Local Whisper model. To use Groq instead,
 select Groq, enter your API key, then select **Save settings**.
 
-## Use Interview Copilot
+## Use CounterNote
 
 1. Select **Record** and allow Screen Recording and Microphone access when macOS asks.
-2. Select **Stop** when the interview ends. The recording appears in Past Interviews.
+2. Select **Stop** when the conversation ends. The recording appears in Recordings.
 3. Select **Transcribe audio** on a saved recording to create its transcript.
 4. Select a transcribed recording to review timestamped segments, then select **Export** to write a plain-text export beside the recording.
 
@@ -43,7 +43,7 @@ you explicitly select Groq as the provider and then select **Transcribe audio**.
 ## Local data
 
 ```text
-~/InterviewCopilot/
+~/CounterNote/
 ├── recordings/
 │   └── <timestamp>/
 │       ├── audio.wav

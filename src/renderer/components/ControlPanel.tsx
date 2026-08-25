@@ -114,9 +114,9 @@ export function ControlPanel({
         <header className="space-y-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">Interview Copilot</p>
+              <p className="text-xs text-muted-foreground">CounterNote</p>
               <h1 className="truncate text-xl font-semibold tracking-normal text-foreground">
-                Past Interviews
+                Recordings
               </h1>
             </div>
             <Tooltip>
@@ -137,8 +137,8 @@ export function ControlPanel({
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
               {recordings.length === 1
-                ? '1 saved interview'
-                : `${recordings.length} saved interviews`}
+                ? '1 saved recording'
+                : `${recordings.length} saved recordings`}
             </p>
             {isStarting && onCancelRecording ? (
               <Button variant="outline" size="pill" onClick={onCancelRecording}>
@@ -209,7 +209,7 @@ export function ControlPanel({
               <div className="space-y-1">
                 <h2 className="text-base font-semibold">No recordings yet</h2>
                 <p className="text-sm leading-relaxed text-muted-foreground">
-                  Start a recording when your next interview begins. Transcripts will appear here
+                  Start a recording when your next conversation begins. Transcripts will appear here
                   afterward.
                 </p>
               </div>

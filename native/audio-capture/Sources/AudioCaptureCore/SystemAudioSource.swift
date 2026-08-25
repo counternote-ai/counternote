@@ -25,8 +25,8 @@ public extension SystemAudioSource {
 /// while a serialized peer finishes — the coordinator always calls them
 /// outside its own lock.
 public final class SystemAudioSourceImpl: NSObject, SystemAudioSource, SCStreamOutput, SCStreamDelegate {
-    private let callbackQueue = DispatchQueue(label: "InterviewAudioCapture.system-audio")
-    private let controlQueue = DispatchQueue(label: "InterviewAudioCapture.system-audio.control")
+    private let callbackQueue = DispatchQueue(label: "CounterNoteAudioCapture.system-audio")
+    private let controlQueue = DispatchQueue(label: "CounterNoteAudioCapture.system-audio.control")
     private var callback: ((Data, UInt64) -> Void)?
     private var failureCallback: (() -> Void)?
     private var stream: SCStream?

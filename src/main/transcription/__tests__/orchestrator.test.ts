@@ -337,7 +337,7 @@ describe('TranscriptionOrchestrator', () => {
       const result = await orchestrator.transcribe(request);
 
       expect(order).toEqual(['Interviewer', 'You']);
-      expect(result.segments[0].speaker).toBe('Interviewer');
+      expect(result.segments[0].speaker).toBe('Meeting audio');
       expect(result.segments[1].speaker).toBe('You');
     });
 

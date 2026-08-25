@@ -416,7 +416,7 @@ describe('recording permission lifecycle', () => {
     expect(getControlPanelProps().permissionNotice).toEqual({
       tone: 'info',
       message:
-        "Interview Copilot couldn't confirm recording permissions. You can still try to start recording.",
+        "CounterNote couldn't confirm recording permissions. You can still try to start recording.",
     });
     expect(getErrorMessage()).toBeNull();
   });
@@ -893,7 +893,7 @@ describe('native capture lifecycle', () => {
     expect(mockElectronAPI.listRecordings).toHaveBeenCalledTimes(1);
   });
 
-  it('provides independent Interviewer and You channel rows', async () => {
+  it('provides independent Meeting audio and You channel rows', async () => {
     renderApp();
     mockEffects.forEach((effect) => effect());
     await Promise.resolve();
@@ -911,7 +911,7 @@ describe('native capture lifecycle', () => {
 
     const healthView = getControlPanelProps().healthView;
     expect(healthView).toBeDefined();
-    expect(healthView!.channels[0].label).toBe('Interviewer');
+    expect(healthView!.channels[0].label).toBe('Meeting audio');
     expect(healthView!.channels[0].statusText).toBe('Connected');
     expect(healthView!.channels[1].label).toBe('You');
     expect(healthView!.channels[1].statusText).toBe('Reconnecting…');

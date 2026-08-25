@@ -2,7 +2,7 @@
 
 ## Voice
 
-Use calm, direct, literal language. Write for a candidate who may already be under interview pressure.
+Use calm, direct, literal language. Write for someone who needs a dependable record of an important conversation.
 
 - Prefer short sentences and familiar verbs.
 - Name the object and consequence: `Stop recording`, `Transcribe audio`, `Save settings`, `Export transcript`.
@@ -13,10 +13,10 @@ Use calm, direct, literal language. Write for a candidate who may already be und
 
 ## Canonical product language
 
-- Product: `Interview Copilot`
+- Product: `CounterNote`
 - Library item: `recording`
 - Generated text: `transcript`
-- Remote/system channel: `Interviewer`
+- Remote/system channel: `Meeting audio`
 - Microphone channel: `You`
 - Provider: `Groq`
 
@@ -36,7 +36,7 @@ An error should state what failed, what was preserved, and the next useful actio
 - Weak: `Something went wrong.`
 - Better: `Transcription failed. Your recording is still saved. Check your Groq API key and try again.`
 - Weak: `Permission error.`
-- Better: `Microphone access is off. Allow Interview Copilot in System Settings, then start recording again.`
+- Better: `Microphone access is off. Allow CounterNote in System Settings, then start recording again.`
 
 Do not expose stack traces, internal IPC names, file implementation details, or raw provider payloads in the UI.
 

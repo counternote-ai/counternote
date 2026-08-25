@@ -14,7 +14,7 @@ export function getTranscriptionStageLabel(progress: TranscriptionProgress): str
         ? 'Downloading model'
         : `Downloading model · ${progress.percent}%`;
     case 'transcribing-interviewer':
-      return 'Transcribing interviewer';
+      return 'Transcribing meeting audio';
     case 'transcribing-you':
       return 'Transcribing you';
     case 'finishing-transcript':

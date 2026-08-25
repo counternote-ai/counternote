@@ -21,7 +21,7 @@ export class TrayManager {
     // Create tray icon (you'll need to provide an icon file)
     const icon = nativeImage.createFromPath(path.join(__dirname, '../assets/tray-icon.png'));
     this.tray = new Tray(icon);
-    this.tray.setToolTip('Interview Copilot');
+    this.tray.setToolTip('CounterNote');
 
     this.updateMenu();
   }

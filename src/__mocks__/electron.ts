@@ -4,7 +4,7 @@ export const app = {
   quit: jest.fn(),
   exit: jest.fn(),
   isPackaged: false,
-  getPath: jest.fn().mockReturnValue('/tmp/interview-copilot'),
+  getPath: jest.fn().mockReturnValue('/tmp/counternote'),
   requestSingleInstanceLock: jest.fn().mockReturnValue(true),
   hasSingleInstanceLock: jest.fn().mockReturnValue(true),
 };

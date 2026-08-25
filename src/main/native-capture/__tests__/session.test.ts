@@ -398,7 +398,7 @@ function createDeps(overrides?: Partial<NativeCaptureSessionDeps>): NativeCaptur
   capturedSpawnOptions = undefined;
 
   return {
-    helperPath: '/usr/local/bin/interview-audio-capture',
+    helperPath: '/usr/local/bin/counternote-audio-capture',
     store: fakeStore,
     mutationCoordinator: fakeCoordinator,
     recordingsLibrary: fakeLibrary,

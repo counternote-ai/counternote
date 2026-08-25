@@ -12,7 +12,7 @@ const BINARY_PATH = path.join(
   '.build',
   'arm64-apple-macosx',
   'debug',
-  'InterviewAudioCapture',
+  'CounterNoteAudioCapture',
 );
 
 let binaryBuilt = false;

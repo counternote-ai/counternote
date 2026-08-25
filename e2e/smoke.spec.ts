@@ -168,11 +168,11 @@ async function launchTestApp(
   scenario: string,
   extraSetup?: (testHome: string) => void,
 ): Promise<{ electronApp: ElectronApplication; window: Page; testHome: string }> {
-  const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'interview-copilot-e2e-'));
+  const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'counternote-e2e-'));
   testHomes.push(testHome);
 
   const modelManifestPath = path.join(testHome, 'model-manifest.json');
-  const recordingsDir = path.join(testHome, 'InterviewCopilot', 'recordings');
+  const recordingsDir = path.join(testHome, 'CounterNote', 'recordings');
   const fakeCaptureHelperPath = path.join(testHome, `fake-audio-capture-helper__${scenario}.js`);
 
   const recordingId = '2026-07-27T00-00-00-000Z';
@@ -202,10 +202,10 @@ async function launchTestApp(
     env: {
       ...process.env,
       HOME: testHome,
-      INTERVIEW_COPILOT_E2E: '1',
-      INTERVIEW_COPILOT_WHISPER_CLI: path.resolve('e2e/fixtures/fake-whisper-cli.js'),
-      INTERVIEW_COPILOT_MODEL_MANIFEST: modelManifestPath,
-      INTERVIEW_COPILOT_AUDIO_CAPTURE_HELPER: fakeCaptureHelperPath,
+      COUNTERNOTE_E2E: '1',
+      COUNTERNOTE_WHISPER_CLI: path.resolve('e2e/fixtures/fake-whisper-cli.js'),
+      COUNTERNOTE_MODEL_MANIFEST: modelManifestPath,
+      COUNTERNOTE_AUDIO_CAPTURE_HELPER: fakeCaptureHelperPath,
     },
   });
 
@@ -279,11 +279,11 @@ test.afterAll(async () => {
 
 /* ── Shared-app tests ──────────────────────────────────────────── */
 
-test('launches a 400x600 window titled Interview Copilot', async () => {
+test('launches a 400x600 window titled CounterNote', async () => {
   const { electronApp, window } = await launchTestApp('default');
 
   try {
-    expect(await window.title()).toBe('Interview Copilot');
+    expect(await window.title()).toBe('CounterNote');
 
     const windowSize = await electronApp.evaluate(({ BrowserWindow }) => {
       const [win] = BrowserWindow.getAllWindows();
@@ -312,7 +312,7 @@ test('recordings home renders primary controls', async () => {
 });
 
 test('transcribes a local recording through the loopback model server and fake sidecar', async () => {
-  const { electronApp, window } = await launchTestApp('default');
+  const { electronApp, window, testHome } = await launchTestApp('default');
 
   try {
     await window.getByRole('button', { name: 'Transcribe audio' }).click();
@@ -325,6 +325,19 @@ test('transcribes a local recording through the loopback model server and fake s
 
     await expect(window.getByText('Ready', { exact: true })).toBeVisible();
     expect(modelRequests).toEqual(['/model.bin']);
+    const transcript = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          testHome,
+          'CounterNote',
+          'recordings',
+          '2026-07-27T00-00-00-000Z',
+          'transcript.json',
+        ),
+        'utf8',
+      ),
+    ) as { segments: Array<{ speaker: string }> };
+    expect(transcript.segments.map(({ speaker }) => speaker)).toEqual(['Meeting audio', 'You']);
     await expectNoHorizontalOverflow(window);
     await expect(window).toHaveScreenshot('local-transcription-ready.png');
   } finally {
@@ -382,7 +395,7 @@ test('navigates to settings and back', async () => {
   }
 });
 
-test('opens a ready transcript in the reading view', async () => {
+test('opens and exports a legacy transcript with the current meeting-audio label', async () => {
   const seededSegments = [
     {
       start: 0,
@@ -434,10 +447,10 @@ test('opens a ready transcript in the reading view', async () => {
     },
   ];
 
-  const { electronApp, window } = await launchTestApp('default', (testHome) => {
+  const { electronApp, window, testHome } = await launchTestApp('default', (testHome) => {
     const recordingDir = path.join(
       testHome,
-      'InterviewCopilot',
+      'CounterNote',
       'recordings',
       '2026-07-27T00-00-00-000Z',
     );
@@ -448,11 +461,52 @@ test('opens a ready transcript in the reading view', async () => {
   });
 
   try {
-    await window.getByRole('button', { name: /Interview —/ }).click();
+    await window.getByRole('button', { name: /Meeting —/ }).click();
     await expect(window.getByRole('button', { name: 'Export' })).toBeVisible();
     await expect(window.getByText(/8 segments/)).toBeVisible();
-    await expect(window.getByText('Interviewer').first()).toBeVisible();
+    await expect(window.getByText('Meeting audio').first()).toBeVisible();
     await expect(window.getByText('You').first()).toBeVisible();
+    await window.getByRole('button', { name: 'Export' }).click();
+    await expect
+      .poll(() =>
+        fs.existsSync(
+          path.join(
+            testHome,
+            'CounterNote',
+            'recordings',
+            '2026-07-27T00-00-00-000Z',
+            'transcript.txt',
+          ),
+        ),
+      )
+      .toBe(true);
+    const exported = fs.readFileSync(
+      path.join(
+        testHome,
+        'CounterNote',
+        'recordings',
+        '2026-07-27T00-00-00-000Z',
+        'transcript.txt',
+      ),
+      'utf8',
+    );
+    expect(exported).toContain('Meeting audio:');
+    expect(exported).not.toContain('Interviewer:');
+    const persistedLegacyTranscript = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          testHome,
+          'CounterNote',
+          'recordings',
+          '2026-07-27T00-00-00-000Z',
+          'transcript.json',
+        ),
+        'utf8',
+      ),
+    ) as { segments: Array<{ speaker: string }> };
+    expect(persistedLegacyTranscript.segments.map(({ speaker }) => speaker)).toContain(
+      'Interviewer',
+    );
     await expectNoHorizontalOverflow(window);
     await expectAccessible(window);
     await expect(window).toHaveScreenshot('transcript-reader.png');
@@ -463,7 +517,7 @@ test('opens a ready transcript in the reading view', async () => {
 
 test('renders the empty library state', async () => {
   const { electronApp, window } = await launchTestApp('default', (testHome) => {
-    fs.rmSync(path.join(testHome, 'InterviewCopilot', 'recordings', '2026-07-27T00-00-00-000Z'), {
+    fs.rmSync(path.join(testHome, 'CounterNote', 'recordings', '2026-07-27T00-00-00-000Z'), {
       recursive: true,
       force: true,
     });
@@ -518,7 +572,7 @@ test('Starting -> Recording -> Stop -> published library item', async () => {
 
     // The card and its Transcribe action are separate buttons, so assert the
     // user-visible recording count instead of an implementation detail.
-    await expect(window.getByText('2 saved interviews')).toBeVisible({ timeout: 10_000 });
+    await expect(window.getByText('2 saved recordings')).toBeVisible({ timeout: 10_000 });
 
     await expectNoHorizontalOverflow(window);
     // The new recording's title carries the wall clock, so this state keeps a
@@ -584,7 +638,7 @@ test('Quit during recording waits for final publication', async () => {
     await electronApp.close();
 
     // Verify a recording was published to disk before the app exited.
-    const recordingsDir = path.join(testHome, 'InterviewCopilot', 'recordings');
+    const recordingsDir = path.join(testHome, 'CounterNote', 'recordings');
     const entries = fs.readdirSync(recordingsDir, { withFileTypes: true });
     const publishedDirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith('.'));
     expect(publishedDirs.length).toBeGreaterThanOrEqual(2); // fixture + new recording
@@ -706,7 +760,7 @@ test('Exact recovery count/total/date/size/state presentation', async () => {
   const recoveryUuid2 = '22222222-2222-4222-8222-222222222222';
 
   const { electronApp, window } = await launchTestApp('default', (testHome) => {
-    const recordingsRoot = path.join(testHome, 'InterviewCopilot', 'recordings');
+    const recordingsRoot = path.join(testHome, 'CounterNote', 'recordings');
     // 1000 frames * 2 channels * 2 bytes = 4000 bytes PCM + 44 header = 4044 bytes each
     createRecoveryFixture(recordingsRoot, recoveryUuid1, 1000, '2026-07-26T14:32:00.000Z');
     // 500 frames * 2 channels * 2 bytes = 2000 bytes PCM + 44 header = 2044 bytes
@@ -743,7 +797,7 @@ test('Recovery/Trash confirmation', async () => {
   const recoveryUuid = '33333333-3333-4333-8333-333333333333';
 
   const { electronApp, window } = await launchTestApp('default', (testHome) => {
-    const recordingsRoot = path.join(testHome, 'InterviewCopilot', 'recordings');
+    const recordingsRoot = path.join(testHome, 'CounterNote', 'recordings');
     createRecoveryFixture(recordingsRoot, recoveryUuid, 800, '2026-07-26T14:50:00.000Z');
   });
 

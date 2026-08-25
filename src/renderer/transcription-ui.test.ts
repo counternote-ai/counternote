@@ -106,7 +106,7 @@ describe('transcription UI copy', () => {
     ).toBe('Downloading model · 42%');
     expect(
       getTranscriptionStageLabel({ recordingId: 'rec-1', stage: 'transcribing-interviewer' }),
-    ).toBe('Transcribing interviewer');
+    ).toBe('Transcribing meeting audio');
     expect(getTranscriptionStageLabel({ recordingId: 'rec-1', stage: 'transcribing-you' })).toBe(
       'Transcribing you',
     );
@@ -207,7 +207,7 @@ describe('transcription progress cards', () => {
 
     expect(cards[0].props['aria-busy']).toBe(true);
     expect(cards[1].props['aria-busy']).toBeUndefined();
-    expect(renderedText(cards[0])).toContain('Transcribing interviewer');
+    expect(renderedText(cards[0])).toContain('Transcribing meeting audio');
 
     const readyCardAction = findElements(cards[1], (element) => element.type === 'button')[0];
     expect(readyCardAction.props.disabled).toBe(false);
@@ -217,7 +217,7 @@ describe('transcription progress cards', () => {
 
   it.each([
     ['preparing-audio', 'Preparing audio'],
-    ['transcribing-interviewer', 'Transcribing interviewer'],
+    ['transcribing-interviewer', 'Transcribing meeting audio'],
     ['transcribing-you', 'Transcribing you'],
     ['finishing-transcript', 'Finishing transcript'],
   ] as const)('renders %s as %s on the active card', (stage, label) => {

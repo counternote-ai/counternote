@@ -258,7 +258,7 @@ describe('sensitive IPC failures', () => {
   });
 
   it('returns a typed settings-save failure without safe-storage details', async () => {
-    const rawError = new Error('safeStorage failed for /private/keychain/Interview Copilot');
+    const rawError = new Error('safeStorage failed for /private/keychain/CounterNote');
     (setGroqApiKey as jest.MockedFunction<typeof setGroqApiKey>).mockRejectedValueOnce(rawError);
 
     const result = await getHandler('save-config')(
@@ -276,7 +276,7 @@ describe('sensitive IPC failures', () => {
   });
 
   it('returns a typed settings-load failure without filesystem details', async () => {
-    const rawError = new Error('ENOENT: /private/config/interview-copilot.json');
+    const rawError = new Error('ENOENT: /private/config/counternote.json');
     (loadConfig as jest.MockedFunction<typeof loadConfig>).mockImplementationOnce(() => {
       throw rawError;
     });

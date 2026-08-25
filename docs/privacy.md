@@ -14,7 +14,7 @@ Transcript stdout is never logged. Stderr diagnostics are shape-validated
 lines, secrets, or absolute paths; they are also persisted locally under the
 recordings root's `.diagnostics/` directory (see below).
 
-Interview Copilot does not include telemetry or analytics.
+CounterNote does not include telemetry or analytics.
 
 ## Audio capture helper
 
@@ -56,11 +56,11 @@ prepared-audio and partial-transcript artifacts are cleaned up separately.
 
 ## Credentials
 
-The Groq API key is encrypted with Electron `safeStorage`. On macOS, `safeStorage` uses operating-system-backed encryption. The encrypted value is stored in `~/InterviewCopilot/secrets.enc`.
+The Groq API key is encrypted with Electron `safeStorage`. On macOS, `safeStorage` uses operating-system-backed encryption. The encrypted value is stored in `~/CounterNote/secrets.enc`.
 
 ## Permissions
 
-Interview Copilot uses macOS Screen Recording access for system audio capture and
+CounterNote uses macOS Screen Recording access for system audio capture and
 Microphone access for the user's microphone. These permissions are attributed to
 the audio capture helper binary. Permission recovery is available from the
 recordings screen when macOS reports a blocked permission.

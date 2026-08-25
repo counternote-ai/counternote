@@ -24,7 +24,7 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
-HELPER_EMBEDDED_PATH="${APP_PATH}/Contents/Resources/audio-capture/bin/interview-audio-capture"
+HELPER_EMBEDDED_PATH="${APP_PATH}/Contents/Resources/audio-capture/bin/counternote-audio-capture"
 
 if [[ ! -f "$HELPER_EMBEDDED_PATH" ]]; then
   echo "ERROR: helper not found at expected embedded path: '${HELPER_EMBEDDED_PATH}'" >&2

@@ -50,7 +50,7 @@ export function getRecordingPermissionNotice(
     return {
       tone: 'info',
       message:
-        "Interview Copilot couldn't confirm recording permissions. You can still try to start recording.",
+        "CounterNote couldn't confirm recording permissions. You can still try to start recording.",
     };
   }
   return null;

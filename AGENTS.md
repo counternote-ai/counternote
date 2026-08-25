@@ -1,4 +1,4 @@
-# Interview Copilot Agent Guidelines
+# CounterNote Agent Guidelines
 
 ## Product design routing
 

@@ -35,11 +35,11 @@ describe('recording permissions', () => {
   it('uses the packaged app name as the permission owner', () => {
     appMock.isPackaged = true;
 
-    expect(getRecordingPermissionSnapshot().permissionOwnerName).toBe('Interview Copilot');
+    expect(getRecordingPermissionSnapshot().permissionOwnerName).toBe('CounterNote');
   });
 
   it('grants recording permissions only for the development E2E harness', () => {
-    process.env.INTERVIEW_COPILOT_E2E = '1';
+    process.env.COUNTERNOTE_E2E = '1';
     systemPreferencesMock.getMediaAccessStatus.mockReturnValue('denied');
 
     expect(getRecordingPermissionSnapshot()).toEqual({
@@ -49,7 +49,7 @@ describe('recording permissions', () => {
       canAttemptRecording: true,
     });
 
-    delete process.env.INTERVIEW_COPILOT_E2E;
+    delete process.env.COUNTERNOTE_E2E;
   });
 
   it.each(['not-determined', 'unknown'] as const)(

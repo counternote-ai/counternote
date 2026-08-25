@@ -64,7 +64,7 @@ export function TranscriptView({
           <CardContent className="max-w-64 space-y-2 p-6 text-center">
             <h2 className="text-base font-semibold">No transcript segments</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Transcribed interview text will appear here once this recording has segments.
+              Transcribed meeting text will appear here once this recording has segments.
             </p>
           </CardContent>
         </Card>
@@ -73,7 +73,9 @@ export function TranscriptView({
           <Card>
             <CardContent className="p-4">
               {segments.map((seg, i) => {
-                const isInterviewer = seg.speaker === 'Interviewer';
+                const isMeetingAudio =
+                  seg.speaker === 'Meeting audio' || seg.speaker === 'Interviewer';
+                const speakerLabel = isMeetingAudio ? 'Meeting audio' : seg.speaker;
 
                 return (
                   <div
@@ -81,7 +83,7 @@ export function TranscriptView({
                     className={i === 0 ? undefined : 'mt-4 border-t border-border pt-4'}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <Badge variant={isInterviewer ? 'interviewer' : 'you'}>{seg.speaker}</Badge>
+                      <Badge variant={isMeetingAudio ? 'interviewer' : 'you'}>{speakerLabel}</Badge>
                       <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                         {formatDuration(seg.start)}
                       </span>

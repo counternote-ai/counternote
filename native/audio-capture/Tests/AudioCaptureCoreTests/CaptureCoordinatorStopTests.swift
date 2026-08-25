@@ -164,7 +164,7 @@ final class CaptureCoordinatorStopTests: XCTestCase {
         )
 
         try coordinator.start()
-        // Interviewer is healthy for the whole run; the mic dies after block 0.
+        // System audio is healthy for the whole run; the mic dies after block 0.
         systemAudio.simulateAudioData(makePCMData(count: 3_200), hostTime: clock.now())
         microphone.simulateAudioData(makePCMData(), hostTime: clock.now())
 

@@ -12,7 +12,7 @@ function makeOptions(
 ): AudioCaptureHelperOptions {
   return {
     isPackaged: false,
-    resourcesPath: '/Applications/Interview Copilot.app/Contents/Resources',
+    resourcesPath: '/Applications/CounterNote.app/Contents/Resources',
     projectRoot: '/repo',
     platform: 'darwin',
     arch: 'arm64',
@@ -36,15 +36,15 @@ describe('resolveAudioCaptureHelper', () => {
     );
   });
 
-  it('resolves from INTERVIEW_COPILOT_AUDIO_CAPTURE_HELPER in development', async () => {
+  it('resolves from COUNTERNOTE_AUDIO_CAPTURE_HELPER in development', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'helper-path-'));
-    const helperPath = path.join(dir, 'interview-audio-capture');
+    const helperPath = path.join(dir, 'counternote-audio-capture');
     await fs.writeFile(helperPath, 'fake binary');
     await fs.chmod(helperPath, 0o755);
 
     const resolved = resolveAudioCaptureHelper(
       makeOptions({
-        env: { INTERVIEW_COPILOT_AUDIO_CAPTURE_HELPER: helperPath },
+        env: { COUNTERNOTE_AUDIO_CAPTURE_HELPER: helperPath },
       }),
     );
     expect(resolved).toBe(helperPath);
@@ -54,7 +54,7 @@ describe('resolveAudioCaptureHelper', () => {
 
   it('rejects the env override in packaged production', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'helper-path-'));
-    const helperPath = path.join(dir, 'interview-audio-capture');
+    const helperPath = path.join(dir, 'counternote-audio-capture');
     await fs.writeFile(helperPath, 'fake binary');
     await fs.chmod(helperPath, 0o755);
 
@@ -62,7 +62,7 @@ describe('resolveAudioCaptureHelper', () => {
       resolveAudioCaptureHelper(
         makeOptions({
           isPackaged: true,
-          env: { INTERVIEW_COPILOT_AUDIO_CAPTURE_HELPER: helperPath },
+          env: { COUNTERNOTE_AUDIO_CAPTURE_HELPER: helperPath },
         }),
       ),
     ).toThrow(AudioCaptureHelperError);
@@ -70,7 +70,7 @@ describe('resolveAudioCaptureHelper', () => {
       resolveAudioCaptureHelper(
         makeOptions({
           isPackaged: true,
-          env: { INTERVIEW_COPILOT_AUDIO_CAPTURE_HELPER: helperPath },
+          env: { COUNTERNOTE_AUDIO_CAPTURE_HELPER: helperPath },
         }),
       ),
     ).toThrow(/not available in packaged production/);
@@ -83,7 +83,7 @@ describe('resolveAudioCaptureHelper', () => {
       resolveAudioCaptureHelper(
         makeOptions({
           env: {
-            INTERVIEW_COPILOT_AUDIO_CAPTURE_HELPER: '/nonexistent/binary',
+            COUNTERNOTE_AUDIO_CAPTURE_HELPER: '/nonexistent/binary',
           },
         }),
       ),
@@ -92,7 +92,7 @@ describe('resolveAudioCaptureHelper', () => {
       resolveAudioCaptureHelper(
         makeOptions({
           env: {
-            INTERVIEW_COPILOT_AUDIO_CAPTURE_HELPER: '/nonexistent/binary',
+            COUNTERNOTE_AUDIO_CAPTURE_HELPER: '/nonexistent/binary',
           },
         }),
       ),
@@ -103,7 +103,7 @@ describe('resolveAudioCaptureHelper', () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'helper-path-'));
     const buildDir = path.join(dir, 'build', 'audio-capture', 'darwin-arm64');
     await fs.mkdir(buildDir, { recursive: true });
-    const helperPath = path.join(buildDir, 'interview-audio-capture');
+    const helperPath = path.join(buildDir, 'counternote-audio-capture');
     await fs.writeFile(helperPath, 'fake binary');
     await fs.chmod(helperPath, 0o755);
 
@@ -117,7 +117,7 @@ describe('resolveAudioCaptureHelper', () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'helper-path-'));
     const resourceDir = path.join(dir, 'audio-capture', 'bin');
     await fs.mkdir(resourceDir, { recursive: true });
-    const helperPath = path.join(resourceDir, 'interview-audio-capture');
+    const helperPath = path.join(resourceDir, 'counternote-audio-capture');
     await fs.writeFile(helperPath, 'fake binary');
     await fs.chmod(helperPath, 0o755);
 
@@ -142,7 +142,7 @@ describe('resolveAudioCaptureHelper', () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'helper-path-'));
     const buildDir = path.join(dir, 'build', 'audio-capture', 'darwin-arm64');
     await fs.mkdir(buildDir, { recursive: true });
-    const helperPath = path.join(buildDir, 'interview-audio-capture');
+    const helperPath = path.join(buildDir, 'counternote-audio-capture');
     await fs.writeFile(helperPath, 'fake binary');
     // Not chmod +x
 
@@ -158,7 +158,7 @@ describe('resolveAudioCaptureHelper', () => {
     const buildDir = path.join(dir, 'build', 'audio-capture', 'darwin-arm64');
     await fs.mkdir(buildDir, { recursive: true });
     // Create a directory instead of a file
-    const helperPath = path.join(buildDir, 'interview-audio-capture');
+    const helperPath = path.join(buildDir, 'counternote-audio-capture');
     await fs.mkdir(helperPath);
 
     expect(() => resolveAudioCaptureHelper(makeOptions({ projectRoot: dir }))).toThrow(

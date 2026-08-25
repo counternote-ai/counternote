@@ -1,4 +1,4 @@
 interface:
   display_name: "Product Design"
-  short_description: "Design and review Interview Copilot UI"
+  short_description: "Design and review CounterNote UI"
   default_prompt: "Use $product-design to shape, implement, or review this user-facing change."

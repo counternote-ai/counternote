@@ -21,7 +21,7 @@ function readStatus(permission: RecordingPermission): RecordingPermissionStatus 
 }
 
 export function getRecordingPermissionSnapshot(): RecordingPermissionSnapshot {
-  if (!app.isPackaged && process.env.INTERVIEW_COPILOT_E2E === '1') {
+  if (!app.isPackaged && process.env.COUNTERNOTE_E2E === '1') {
     return {
       screen: 'granted',
       microphone: 'granted',
@@ -36,7 +36,7 @@ export function getRecordingPermissionSnapshot(): RecordingPermissionSnapshot {
   return {
     screen,
     microphone,
-    permissionOwnerName: app.isPackaged ? 'Interview Copilot' : 'Electron',
+    permissionOwnerName: app.isPackaged ? 'CounterNote' : 'Electron',
     canAttemptRecording: !BLOCKING_STATUSES.has(screen) && !BLOCKING_STATUSES.has(microphone),
   };
 }

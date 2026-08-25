@@ -53,7 +53,7 @@ final class TimelineMixerAlignmentTests: XCTestCase {
     func testAnchorUsesFirstBoundaryAtOrAfterLaterStart() {
         let mixer = TimelineMixer()
 
-        // Interviewer starts at 100 ms; you start at 203 ms -> anchor = 220 ms.
+        // System audio starts at 100 ms; microphone audio starts at 203 ms -> anchor = 220 ms.
         mixer.feed(channel: .interviewer, pcm: counterData(startFrame: 0, frames: 6400), hostTime: 100_000_000)
         mixer.feed(channel: .you, pcm: counterData(startFrame: 0, frames: 6400), hostTime: 203_000_000)
 
@@ -67,7 +67,7 @@ final class TimelineMixerAlignmentTests: XCTestCase {
             XCTAssertTrue(output.coverage.interviewer.covered)
             XCTAssertTrue(output.coverage.you.covered)
         }
-        // Block 0 covers [220 ms, 240 ms): interviewer sample = frame 1920, you sample = frame 272.
+        // Block 0 covers [220 ms, 240 ms): system sample = frame 1920, mic sample = frame 272.
         XCTAssertEqual(sampleValue(outputs[0].left, frame: 0), 1920)
         XCTAssertEqual(sampleValue(outputs[0].right, frame: 0), 272)
     }

@@ -120,8 +120,8 @@ describe('resolveWhisperCliPath', () => {
         platform: 'darwin',
         arch: 'arm64',
         env: {
-          INTERVIEW_COPILOT_E2E: '1',
-          INTERVIEW_COPILOT_WHISPER_CLI: override,
+          COUNTERNOTE_E2E: '1',
+          COUNTERNOTE_WHISPER_CLI: override,
         },
       }),
     ).toBe(override);
@@ -143,8 +143,8 @@ describe('resolveWhisperCliPath', () => {
         platform: 'darwin',
         arch: 'arm64',
         env: {
-          INTERVIEW_COPILOT_E2E: '1',
-          INTERVIEW_COPILOT_WHISPER_CLI: override,
+          COUNTERNOTE_E2E: '1',
+          COUNTERNOTE_WHISPER_CLI: override,
         },
       }),
     ).toBe(expected);
@@ -166,8 +166,8 @@ describe('resolveWhisperCliPath', () => {
         platform: 'darwin',
         arch: 'arm64',
         env: {
-          INTERVIEW_COPILOT_E2E: '0',
-          INTERVIEW_COPILOT_WHISPER_CLI: override,
+          COUNTERNOTE_E2E: '0',
+          COUNTERNOTE_WHISPER_CLI: override,
         },
       }),
     ).toBe(expected);
