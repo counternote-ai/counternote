@@ -1,5 +1,9 @@
 # CounterNote Agent Guidelines
 
+## Release routing
+
+For any work that prepares, publishes, retries, or verifies a CounterNote macOS beta, GitHub prerelease, release tag, or DMG, load and follow `.agents/skills/releasing-counternote-beta/SKILL.md` before changing release metadata or mutating GitHub.
+
 ## Product design routing
 
 For any work that changes what a user sees, understands, chooses, or does in the renderer or tray, load and follow `.agents/skills/product-design/SKILL.md` before proposing or editing UI. This includes product shaping, UX/UI implementation, copy, accessibility, permissions, loading, empty, error, privacy, responsive, and visual review work, plus backend changes with user-visible outcomes.

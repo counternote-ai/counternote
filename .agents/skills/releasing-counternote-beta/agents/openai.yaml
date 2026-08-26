@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release CounterNote Beta"
+  short_description: "Publish and verify a CounterNote macOS beta"
+  default_prompt: "Use $releasing-counternote-beta to prepare, publish, and verify the next CounterNote macOS beta."
