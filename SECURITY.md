@@ -26,4 +26,4 @@ See [PRIVACY.md](PRIVACY.md) for the complete data boundary.
 
 ## Beta distribution
 
-The first beta is unsigned and unnotarized. Download it only from this repository's GitHub Releases page and verify the SHA-256 checksum published with the release.
+The current beta is ad-hoc signed but not Developer ID signed or notarized. Download it only from this repository's GitHub Releases page and verify the SHA-256 checksum published with the release.

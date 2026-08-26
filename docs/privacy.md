@@ -1,6 +1,6 @@
 # Privacy and Local Data
 
-This document describes the implementation-level data flow for CounterNote `v0.1.0-beta.1`. The public summary is [PRIVACY.md](../PRIVACY.md).
+This document describes the implementation-level data flow for CounterNote `v0.1.0-beta.2`. The public summary is [PRIVACY.md](../PRIVACY.md).
 
 ## Local storage
 

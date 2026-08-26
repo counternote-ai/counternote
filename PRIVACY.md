@@ -1,6 +1,6 @@
 # CounterNote Privacy
 
-CounterNote `v0.1.0-beta.1` supports local transcription only.
+CounterNote `v0.1.0-beta.2` supports local transcription only.
 
 ## Data stored on your Mac
 

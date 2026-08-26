@@ -34,7 +34,7 @@ The labels describe audio channels, not inferred human identities or diarization
 
 The release is an Apple Silicon DMG targeting macOS 13. The app bundle contains the three webpack runtime bundles, the Swift capture helper, and a pinned statically built `whisper-cli`. Tests, declarations, source maps, and build tooling are excluded from `app.asar`.
 
-The beta is unsigned and unnotarized. Developer ID signing, notarization, automatic updates, and Intel builds are intentionally out of scope.
+The beta is structurally ad-hoc signed but not Developer ID signed or notarized. Developer ID signing, notarization, automatic updates, and Intel builds are intentionally out of scope.
 
 ## Local storage
 

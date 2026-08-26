@@ -53,7 +53,7 @@ describe('packaging configuration', () => {
     expect(packageJson.directories).toBeUndefined();
     expect(packageJson.dependencies.electron).toBeUndefined();
     expect(packageJson.devDependencies.electron).toBe('43.1.0');
-    expect(packageJson.version).toBe('0.1.0-beta.1');
+    expect(packageJson.version).toBe('0.1.0-beta.2');
     expect(packageJson.license).toBe('GPL-3.0-only');
     expect(packageJson.scripts['build:whisper']).toBe('bash scripts/build-whisper-sidecar.sh');
     expect(packageJson.scripts['verify:whisper']).toBe(
@@ -119,11 +119,13 @@ describe('packaging configuration', () => {
     expect(builderYaml).toContain('entitlementsInherit: build/entitlements.inherit.plist');
 
     expect(entitlementsMac).toContain('com.apple.security.cs.allow-jit');
+    expect(entitlementsMac).toContain('com.apple.security.cs.disable-library-validation');
     expect(entitlementsMac).toContain('com.apple.security.device.audio-input');
     expect(entitlementsMac).toContain('com.apple.security.device.screen-capture');
 
     expect(entitlementsInherit).toContain('com.apple.security.cs.allow-jit');
     expect(entitlementsInherit).toContain('com.apple.security.cs.allow-unsigned-executable-memory');
+    expect(entitlementsInherit).toContain('com.apple.security.cs.disable-library-validation');
     expect(entitlementsInherit).toContain('com.apple.security.device.audio-input');
   });
 
@@ -131,7 +133,8 @@ describe('packaging configuration', () => {
     const builderYaml = readRepoFile('electron-builder.yml');
 
     expect(builderYaml).toContain('binaries:');
-    expect(builderYaml).toContain('audio-capture/bin/counternote-audio-capture');
+    expect(builderYaml).toContain('Contents/Resources/audio-capture/bin/counternote-audio-capture');
+    expect(builderYaml).toContain('Contents/Resources/whisper/bin/whisper-cli');
   });
 
   it('includes both usage descriptions naming CounterNote', () => {
@@ -168,9 +171,14 @@ describe('packaging configuration', () => {
   });
 
   it('ships project and third-party license notices outside app.asar', () => {
+    const packageJson = JSON.parse(readRepoFile('package.json'));
     const builderYaml = readRepoFile('electron-builder.yml');
     const notices = readRepoFile('THIRD_PARTY_NOTICES.md');
 
+    expect(packageJson.scripts['prepare:electron']).toBe('node node_modules/electron/install.js');
+    expect(packageJson.scripts.pack.indexOf('npm run prepare:electron')).toBeLessThan(
+      packageJson.scripts.pack.indexOf('electron-builder --mac dmg --arm64'),
+    );
     expect(builderYaml).toContain('from: LICENSE');
     expect(builderYaml).toContain('to: LICENSE.txt');
     expect(builderYaml).toContain('from: node_modules/electron/dist/LICENSE');
@@ -195,23 +203,19 @@ describe('packaging configuration', () => {
     expect(readRepoFile('scripts/verify-audio-capture-sidecar.sh')).toContain('expected 13.0');
   });
 
-  it('adds verify:capture:release script that invokes signing verifier', () => {
+  it('does not expose the Developer ID verifier as an ad-hoc beta release command', () => {
     const packageJson = JSON.parse(readRepoFile('package.json'));
 
-    expect(packageJson.scripts['verify:capture:release']).toContain(
-      'verify-audio-capture-signing.sh',
-    );
-    expect(packageJson.scripts['verify:capture:release']).toContain('signed-release');
+    expect(packageJson.scripts['verify:capture:release']).toBeUndefined();
   });
 
-  it('does not hard-code identity: null in release configuration', () => {
+  it('explicitly selects ad-hoc signing for the beta', () => {
     const builderYaml = readRepoFile('electron-builder.yml');
 
-    // identity: null means unsigned; release should not have this
-    expect(builderYaml).not.toMatch(/identity:\s*null/);
+    expect(builderYaml).toContain("identity: '-'");
   });
 
-  it('builds the unsigned Apple Silicon beta as a DMG', () => {
+  it('builds the ad-hoc-signed Apple Silicon beta as a DMG', () => {
     const packageJson = JSON.parse(readRepoFile('package.json'));
 
     const packScript = packageJson.scripts['pack'];
@@ -225,15 +229,21 @@ describe('packaging configuration', () => {
     const verifyScript = readRepoFile('scripts/verify-release-artifact.sh');
 
     expect(packageJson.scripts['verify:release-artifact']).toContain(
-      'CounterNote-0.1.0-beta.1-arm64.dmg',
+      'CounterNote-0.1.0-beta.2-arm64.dmg',
     );
     expect(verifyScript).toContain('CFBundleShortVersionString');
     expect(verifyScript).toContain('LSMinimumSystemVersion');
-    expect(verifyScript).toContain('Mach-O 64-bit executable arm64');
     expect(verifyScript).toContain('THIRD_PARTY_NOTICES.md');
     expect(verifyScript).toContain('LICENSES.chromium.html');
     expect(verifyScript).toContain('app-update.yml');
     expect(verifyScript).toContain('Groq integration');
+    expect(verifyScript).toContain('codesign --verify --deep --strict');
+    expect(verifyScript).toContain('Contents/_CodeSignature/CodeResources');
+    expect(verifyScript).toContain('hdiutil attach');
+    expect(verifyScript).toContain('lipo -archs');
+    expect(verifyScript).toContain("stat -f '%Lp'");
+    expect(verifyScript).toContain('plutil -extract');
+    expect(verifyScript).toContain('CounterNote Helper (Renderer).app');
   });
 
   it('does not reference FFmpeg in production dependencies or Jest configuration', () => {

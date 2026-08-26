@@ -4,13 +4,13 @@
 
 CounterNote is a local-first macOS meeting recorder and transcription app. It captures meeting audio and your microphone as separate channels, creates a timestamped transcript with Local Whisper, and keeps the supported workflow on your Mac.
 
-> CounterNote is beta software. The first public build is unsigned and unnotarized, supports Apple Silicon only, and may contain bugs. Keep a backup of important recordings.
+> CounterNote is beta software. The current build is ad-hoc signed but not Developer ID signed or notarized, supports Apple Silicon only, and may contain bugs. Keep a backup of important recordings.
 
 ## Download
 
-Download the latest beta from [GitHub Releases](https://github.com/counternote-ai/counternote/releases). The first release is `v0.1.0-beta.1`:
+Download the latest beta from [GitHub Releases](https://github.com/counternote-ai/counternote/releases). The current release is `v0.1.0-beta.2`:
 
-`CounterNote-0.1.0-beta.1-arm64.dmg`
+`CounterNote-0.1.0-beta.2-arm64.dmg`
 
 Requirements:
 
@@ -18,7 +18,7 @@ Requirements:
 - macOS 13 or newer
 - About 547 MB of additional disk space for the Local Whisper model
 
-## Install the unsigned beta
+## Install the unnotarized beta
 
 1. Download and open the DMG.
 2. Drag CounterNote to Applications.
@@ -26,7 +26,7 @@ Requirements:
 4. If macOS blocks it, open **System Settings → Privacy & Security**, find the CounterNote message, then select **Open Anyway**.
 5. Return to Applications and open CounterNote again.
 
-This beta is not notarized. Only download it from this repository's GitHub Releases page and compare its SHA-256 checksum with the release notes.
+This beta is ad-hoc signed but is not Developer ID signed or notarized. Only download it from this repository's GitHub Releases page and compare its SHA-256 checksum with the release notes.
 
 ## Record and transcribe
 
@@ -53,7 +53,7 @@ You are responsible for following applicable recording and consent laws, workpla
 
 - Apple Silicon only; Intel Macs are not supported.
 - macOS 13 or newer is required.
-- The beta is unsigned and unnotarized.
+- The beta is ad-hoc signed but not Developer ID signed or notarized.
 - Transcription is post-recording and local only.
 - The Local Whisper model is a separate first-use download.
 - There is no automatic update mechanism yet.

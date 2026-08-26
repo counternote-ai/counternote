@@ -27,6 +27,7 @@ extraResources:
   - from: build/audio-capture/darwin-arm64/counternote-audio-capture
     to: audio-capture/bin/counternote-audio-capture
 mac:
+  identity: '-'
   minimumSystemVersion: '13.0'
   target:
     - target: dmg
@@ -39,6 +40,7 @@ mac:
     NSMicrophoneUsageDescription: CounterNote needs microphone access to record your side of a conversation.
     NSScreenCaptureUsageDescription: CounterNote needs screen capture access to record meeting audio.
   binaries:
-    - audio-capture/bin/counternote-audio-capture
+    - Contents/Resources/audio-capture/bin/counternote-audio-capture
+    - Contents/Resources/whisper/bin/whisper-cli
 dmg:
   sign: false

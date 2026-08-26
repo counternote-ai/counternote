@@ -35,7 +35,7 @@ assignees: ''
 
 - macOS Version: [e.g., 14.0]
 - Node.js Version: [e.g., 18.17.0]
-- App Version: [e.g., 0.1.0-beta.1]
+- App Version: [e.g., 0.1.0-beta.2]
 
 ## Screenshots
 
