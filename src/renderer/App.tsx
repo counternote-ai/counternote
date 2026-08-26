@@ -6,12 +6,7 @@ import { Alert, AlertDescription } from './components/ui/alert';
 import { Button } from './components/ui/button';
 import { getRecordingPermissionNotice } from './recording-permissions';
 import { type RecordingPermissionSnapshot } from '../types/recording-permissions';
-import {
-  type LocalModelStatus,
-  type TranscriptionProgress,
-  type TranscriptionProvider,
-} from '../types/transcription';
-import { type TranscriptionSettings } from '../types/settings';
+import { type LocalModelStatus, type TranscriptionProgress } from '../types/transcription';
 import { getTranscriptionErrorMessage } from './transcription-ui';
 import {
   toRecordingHealthView,
@@ -49,11 +44,6 @@ export default function App() {
   const [view, setView] = useState<View>('recordings');
   const [recordings, setRecordings] = useState<AppRecording[]>([]);
   const [selectedRecording, setSelectedRecording] = useState<AppRecording | null>(null);
-  const [settings, setSettings] = useState<{
-    apiKey: string;
-    model: string;
-    transcriptionProvider: TranscriptionProvider;
-  }>({ apiKey: '', model: 'whisper-large-v3-turbo', transcriptionProvider: 'local' });
   const [error, setError] = useState<string | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState<TranscriptionProgress | null>(
     null,
@@ -98,21 +88,6 @@ export default function App() {
         return unknownPermissions;
       }
     }, []);
-
-  // Load settings from main process on mount
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const result = await window.electronAPI.loadConfig();
-        if (result.success && result.config) {
-          setSettings(result.config);
-        }
-      } catch {
-        console.error('Renderer settings load failed.');
-      }
-    };
-    loadSettings();
-  }, []);
 
   // Load recordings on mount
   useEffect(() => {
@@ -400,21 +375,6 @@ export default function App() {
     return result;
   };
 
-  const handleSaveSettings = async (newSettings: TranscriptionSettings): Promise<void> => {
-    setError(null);
-    try {
-      const result = await window.electronAPI.saveConfig(newSettings);
-      if (!result.success) {
-        setError('Settings could not be saved. Your changes are still here. Try again.');
-        return;
-      }
-      setSettings(newSettings);
-      setView('recordings');
-    } catch {
-      setError(getErrorMessage('Failed to save settings'));
-    }
-  };
-
   const handleSelectRecording = (id: string) => {
     const recording = recordings.find((r) => r.id === id);
     if (recording) {
@@ -451,12 +411,8 @@ export default function App() {
       <div className="app-frame">
         {ErrorBanner}
         <Settings
-          apiKey={settings.apiKey}
-          model={settings.model}
-          provider={settings.transcriptionProvider}
           localModelStatus={localModelStatus}
           onInstallLocalModel={handleInstallLocalModel}
-          onSave={handleSaveSettings}
           onBack={() => setView('recordings')}
         />
       </div>
@@ -504,9 +460,7 @@ export default function App() {
         onRecover={handleRecover}
         onTrashRecovery={handleTrashRecovery}
         transcriptionProgress={transcriptionProgress}
-        localTranscriptionUnavailable={
-          settings.transcriptionProvider === 'local' && localModelStatus.state === 'unavailable'
-        }
+        localTranscriptionUnavailable={localModelStatus.state === 'unavailable'}
         permissionNotice={permissionNoticeDismissed ? null : permissionNotice}
         permissionEscalated={permissionEscalated}
         onOpenPermissionSettings={handleOpenPermissionSettings}

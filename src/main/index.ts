@@ -4,13 +4,8 @@ import * as fs from 'fs';
 import { WavWriter as NativeWavWriter } from './native-capture/wav-writer';
 import { TrayManager } from './tray';
 import { saveExport } from './export';
-import { loadConfig, saveConfig, getGroqApiKey, setGroqApiKey } from './config';
-import {
-  getAudioDuration,
-  getAudibleIntervals,
-  splitChannels,
-  convertToFlac,
-} from './audio-processor';
+import { loadConfig } from './config';
+import { getAudioDuration, getAudibleIntervals, splitChannels } from './audio-processor';
 import { AppActivityCoordinator } from './activity-coordinator';
 import { hasTranscriptSegments, RecordingsLibrary } from './recordings-library';
 import {
@@ -23,13 +18,7 @@ import {
   type TranscriptionErrorCode,
   type TranscriptionIpcResult,
 } from '../types/transcription';
-import {
-  type SettingsLoadIpcResult,
-  type SettingsSaveIpcResult,
-  type ShowInFinderIpcResult,
-  type TranscriptExportIpcResult,
-  type TranscriptionSettings,
-} from '../types/settings';
+import { type ShowInFinderIpcResult, type TranscriptExportIpcResult } from '../types/settings';
 import { TranscriptionOrchestrator } from './transcription/orchestrator';
 import { TranscriptionError } from './transcription/errors';
 import { ConsoleTranscriptionLogger } from './transcription/logger';
@@ -37,7 +26,6 @@ import { LocalModelManager, ModelInstallError } from './transcription/local-mode
 import { PRODUCTION_MODEL_ARTIFACT, type ModelArtifactSpec } from './transcription/model-artifact';
 import { HttpsModelDownloadTransport } from './transcription/model-download';
 import { LocalWhisperProvider } from './transcription/local-whisper-provider';
-import { GroqProvider } from './transcription/groq-provider';
 import { WhisperProcessRunner } from './transcription/whisper-process';
 import { resolveWhisperCliPath } from './transcription/sidecar-path';
 import { QuitCoordinator } from './quit-coordinator';
@@ -282,12 +270,8 @@ function getTranscriptionService(): TranscriptionOrchestrator {
   transcriptionService = new TranscriptionOrchestrator({
     coordinator: activity,
     recordingsLibrary,
-    loadConfig: () => loadConfig(),
-    getGroqApiKey,
     localProvider,
-    groqProvider: new GroqProvider({ fetch, setTimeout, clearTimeout }),
-    splitChannels: (audioPath, output) => splitChannels(audioPath, undefined, output),
-    convertToFlac,
+    splitChannels,
     getAudioDuration,
     fs: fs.promises,
     logger: new ConsoleTranscriptionLogger(),
@@ -620,64 +604,6 @@ ipcMain.handle(
     }
   },
 );
-
-// Settings IPC handlers
-ipcMain.handle('save-config', async (_event, config: unknown): Promise<SettingsSaveIpcResult> => {
-  if (!isSettingsUpdate(config)) {
-    console.error('Settings config request rejected.');
-    return { success: false, code: 'SETTINGS_SAVE_FAILED' };
-  }
-
-  try {
-    // Save API key via safeStorage if provided
-    if (config.apiKey !== undefined) {
-      await setGroqApiKey(config.apiKey);
-    }
-    // Save other config fields
-    const currentConfig = loadConfig();
-    saveConfig({
-      ...currentConfig,
-      ...(config.model !== undefined && { groqModel: config.model }),
-      ...(config.transcriptionProvider !== undefined && {
-        transcriptionProvider: config.transcriptionProvider,
-      }),
-    });
-    return { success: true };
-  } catch {
-    console.error('Settings config save failed.');
-    return { success: false, code: 'SETTINGS_SAVE_FAILED' };
-  }
-});
-
-ipcMain.handle('load-config', async (): Promise<SettingsLoadIpcResult> => {
-  try {
-    const config = loadConfig();
-    const apiKey = await getGroqApiKey();
-    return {
-      success: true,
-      config: {
-        apiKey: apiKey || '',
-        model: config.groqModel,
-        transcriptionProvider: config.transcriptionProvider,
-      },
-    };
-  } catch {
-    console.error('Settings config load failed.');
-    return { success: false, code: 'SETTINGS_LOAD_FAILED' };
-  }
-});
-
-function isSettingsUpdate(value: unknown): value is Partial<TranscriptionSettings> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    (candidate.apiKey === undefined || typeof candidate.apiKey === 'string') &&
-    (candidate.model === undefined || typeof candidate.model === 'string') &&
-    (candidate.transcriptionProvider === undefined ||
-      candidate.transcriptionProvider === 'local' ||
-      candidate.transcriptionProvider === 'groq')
-  );
-}
 
 app.whenReady().then(() => {
   createWindow();

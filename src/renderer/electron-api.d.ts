@@ -1,13 +1,9 @@
 type RecordingPermission = import('../types/recording-permissions').RecordingPermission;
 type RecordingPermissionSnapshot =
   import('../types/recording-permissions').RecordingPermissionSnapshot;
-type TranscriptionProvider = import('../types/transcription').TranscriptionProvider;
 type TranscriptionProgress = import('../types/transcription').TranscriptionProgress;
 type TranscriptionIpcResult = import('../types/transcription').TranscriptionIpcResult;
 type LocalModelStatus = import('../types/transcription').LocalModelStatus;
-type TranscriptionSettings = import('../types/settings').TranscriptionSettings;
-type SettingsSaveIpcResult = import('../types/settings').SettingsSaveIpcResult;
-type SettingsLoadIpcResult = import('../types/settings').SettingsLoadIpcResult;
 type TranscriptExportIpcResult = import('../types/settings').TranscriptExportIpcResult;
 type ShowInFinderIpcResult = import('../types/settings').ShowInFinderIpcResult;
 type PersistedInterruption =
@@ -102,8 +98,6 @@ interface ElectronAPI {
   exportTranscript: (recordingId: string, format: 'txt') => Promise<TranscriptExportIpcResult>;
   showExportedTranscript: (recordingId: string) => Promise<ShowInFinderIpcResult>;
   showRecordingFiles: (recordingId: string) => Promise<ShowInFinderIpcResult>;
-  saveConfig: (config: Partial<TranscriptionSettings>) => Promise<SettingsSaveIpcResult>;
-  loadConfig: () => Promise<SettingsLoadIpcResult>;
   getRecordingPermissions: () => Promise<{
     success: boolean;
     permissions?: RecordingPermissionSnapshot;

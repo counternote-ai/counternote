@@ -1,7 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { TranscriptionSegment } from '../../types/transcript';
-import { TranscriptionErrorCode } from '../../types/transcription';
+
+type GroqTranscriptionErrorCode =
+  'GROQ_KEY_MISSING' | 'GROQ_RATE_LIMITED' | 'GROQ_TIMEOUT' | 'GROQ_REJECTED';
 
 export interface GroqProviderRequest {
   audioPath: string;
@@ -24,7 +26,7 @@ export interface GroqProviderDependencies {
  */
 export class GroqTranscriptionError extends Error {
   constructor(
-    readonly code: TranscriptionErrorCode,
+    readonly code: GroqTranscriptionErrorCode,
     message: string,
     readonly retryAfterSeconds?: number,
   ) {

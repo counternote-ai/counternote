@@ -42,17 +42,6 @@ interface MockControlPanelProps {
   onTrashRecovery?: (id: string) => Promise<void>;
 }
 
-interface MockSettingsProps {
-  apiKey: string;
-  model: string;
-  provider?: 'local' | 'groq';
-  onSave: (settings: {
-    apiKey: string;
-    model: string;
-    transcriptionProvider?: 'local' | 'groq';
-  }) => Promise<void>;
-}
-
 interface MockTranscriptProps {
   onExport: () => Promise<void>;
   onShowExportedTranscript: () => Promise<void>;
@@ -162,15 +151,6 @@ function getControlPanelProps(): MockControlPanelProps {
   return panel.props as unknown as MockControlPanelProps;
 }
 
-function getSettingsProps(): MockSettingsProps {
-  if (!mockLatestTree) {
-    throw new Error('App has not been rendered');
-  }
-
-  const children = mockLatestTree.props.children as unknown[];
-  return (children[1] as MockElement).props as unknown as MockSettingsProps;
-}
-
 function getTranscriptProps(): MockTranscriptProps {
   if (!mockLatestTree) {
     throw new Error('App has not been rendered');
@@ -231,7 +211,6 @@ function blockedPermissions() {
 const mockElectronAPI = {
   getRecordingPermissions: jest.fn(),
   openRecordingPermissionSettings: jest.fn(),
-  loadConfig: jest.fn(),
   listRecordings: jest.fn(),
   onOpenSettings: jest.fn(),
   onTranscriptionProgress: jest.fn(),
@@ -242,7 +221,6 @@ const mockElectronAPI = {
   exportTranscript: jest.fn(),
   showExportedTranscript: jest.fn(),
   showRecordingFiles: jest.fn(),
-  saveConfig: jest.fn(),
   recordingStart: jest.fn(),
   recordingStop: jest.fn(),
   recordingCancel: jest.fn(),
@@ -267,14 +245,6 @@ beforeEach(() => {
     permissions: grantedPermissions(),
   });
   mockElectronAPI.openRecordingPermissionSettings.mockResolvedValue({ success: true });
-  mockElectronAPI.loadConfig.mockResolvedValue({
-    success: true,
-    config: {
-      apiKey: 'existing-key',
-      model: 'whisper-large-v3-turbo',
-      transcriptionProvider: 'local',
-    },
-  });
   mockElectronAPI.listRecordings.mockResolvedValue({ success: true, recordings: [] });
   mockElectronAPI.getLocalModelStatus.mockResolvedValue({ state: 'not-downloaded' });
   mockElectronAPI.installLocalModel.mockResolvedValue({ success: true });
@@ -282,7 +252,6 @@ beforeEach(() => {
   mockElectronAPI.exportTranscript.mockResolvedValue({ success: true });
   mockElectronAPI.showExportedTranscript.mockResolvedValue({ success: true });
   mockElectronAPI.showRecordingFiles.mockResolvedValue({ success: true });
-  mockElectronAPI.saveConfig.mockResolvedValue({ success: true });
   mockElectronAPI.recordingStart.mockResolvedValue({ ok: true, recordingId: 'test-recording-id' });
   mockElectronAPI.recordingStop.mockResolvedValue({ status: 'complete' });
   mockElectronAPI.recordingCancel.mockResolvedValue({ status: 'complete' });
@@ -322,7 +291,7 @@ afterEach(() => {
 describe('recording permission lifecycle', () => {
   it('refreshes on startup and focus without opening System Settings', async () => {
     renderApp();
-    const permissionEffect = mockEffects[2];
+    const permissionEffect = mockEffects[1];
     permissionEffect();
     await Promise.resolve();
 
@@ -344,7 +313,7 @@ describe('recording permission lifecycle', () => {
     });
 
     renderApp();
-    const recordingsEffect = mockEffects[1];
+    const recordingsEffect = mockEffects[0];
     recordingsEffect();
     await Promise.resolve();
     await getControlPanelProps().onStartRecording();
@@ -379,7 +348,7 @@ describe('recording permission lifecycle', () => {
       });
 
     renderApp();
-    mockEffects[2]();
+    mockEffects[1]();
     await Promise.resolve();
     await getControlPanelProps().onStartRecording();
     renderApp();
@@ -399,7 +368,7 @@ describe('recording permission lifecycle', () => {
       permissions: blockedPermissions(),
     });
     renderApp();
-    mockEffects[2]();
+    mockEffects[1]();
     await Promise.resolve();
     renderApp();
 
@@ -416,7 +385,7 @@ describe('recording permission lifecycle', () => {
       error: 'raw IPC query failure',
     });
     renderApp();
-    mockEffects[2]();
+    mockEffects[1]();
     await Promise.resolve();
     renderApp();
 
@@ -542,7 +511,7 @@ describe('transcription IPC lifecycle', () => {
     renderApp();
 
     expect(getErrorMessage()).toBe(
-      'Local transcription stopped responding. Your recording is still saved. Try again, or select Groq in Settings.',
+      'Local transcription stopped responding. Your recording is still saved. Try again.',
     );
     expect(getControlPanelProps().recordings).toEqual([
       { id: 'saved-recording', title: 'Saved interview', duration: 60, transcribed: false },
@@ -643,189 +612,58 @@ describe('transcription IPC lifecycle', () => {
     expect(getErrorMessage()).not.toContain('/private');
   });
 
-  it('saves the selected local provider while preserving Groq values', async () => {
-    renderApp();
-    mockEffects[0]();
-    await Promise.resolve();
-    renderApp();
-    mockEffects[5]();
-    mockElectronAPI.onOpenSettings.mock.calls[0][0]();
-    renderApp();
-
-    await getSettingsProps().onSave({
-      apiKey: 'existing-key',
-      model: 'whisper-large-v3-turbo',
-      transcriptionProvider: 'local',
-    });
-
-    expect(mockElectronAPI.saveConfig).toHaveBeenCalledWith({
-      apiKey: 'existing-key',
-      model: 'whisper-large-v3-turbo',
-      transcriptionProvider: 'local',
-    });
-  });
-
   it('keeps Local selected when its sidecar is unavailable instead of falling back to Groq', () => {
-    mockStateValues[6] = { state: 'unavailable', reason: 'sidecar-missing' };
+    mockStateValues[5] = { state: 'unavailable', reason: 'sidecar-missing' };
     renderApp();
 
     expect(getControlPanelProps().localTranscriptionUnavailable).toBe(true);
   });
 });
 
-describe('transcription provider settings', () => {
+describe('local transcription settings', () => {
   const renderSettings = (
     overrides: Partial<ComponentProps<typeof ActualSettings>> = {},
   ): MockElement => {
     mockStateValues.splice(0);
     mockStateCursor = 0;
     return ActualSettings({
-      apiKey: 'existing-key',
-      model: 'whisper-large-v3-turbo',
-      provider: 'local',
       localModelStatus: { state: 'not-downloaded' },
       onInstallLocalModel: jest.fn().mockResolvedValue({ success: true }),
-      onSave: jest.fn().mockResolvedValue(undefined),
       onBack: jest.fn(),
       ...overrides,
     }) as unknown as MockElement;
   };
 
-  it('defaults missing provider configuration to Local Whisper with local-only privacy copy', () => {
+  it('shows Local Whisper with literal local-only privacy copy', () => {
     const tree = renderSettings();
     const text = renderedText(tree).join(' ');
 
-    expect(findElements(tree, (element) => element.type === mockSelect)[0].props.value).toBe(
-      'local',
-    );
+    expect(text).toContain('Local transcription');
     expect(text).toContain('Large V3 Turbo · about 547 MB');
     expect(text).toContain('Not downloaded');
     expect(text).toContain('Transcription runs on this Mac. Audio is not uploaded.');
     expect(text).not.toContain('Groq API Key');
   });
 
-  it('reveals Groq configuration and its upload boundary only after explicit Groq selection', () => {
-    let tree = renderSettings();
-    const providerSelect = findElements(tree, (element) => element.type === mockSelect)[0];
-    (providerSelect.props.onValueChange as (value: string) => void)('groq');
-    mockStateCursor = 0;
-    tree = ActualSettings({
-      apiKey: 'existing-key',
-      model: 'whisper-large-v3-turbo',
-      provider: 'local',
-      localModelStatus: { state: 'not-downloaded' },
-      onInstallLocalModel: jest.fn().mockResolvedValue({ success: true }),
-      onSave: jest.fn().mockResolvedValue(undefined),
-      onBack: jest.fn(),
-    }) as unknown as MockElement;
+  it('does not expose cloud-provider configuration', () => {
+    const tree = renderSettings();
     const text = renderedText(tree).join(' ');
 
-    expect(text).toContain('Groq API Key');
-    expect(text).toContain('Transcription sends prepared audio to Groq for processing.');
-    expect(text).not.toContain('Transcription runs on this Mac. Audio is not uploaded.');
+    expect(text).not.toContain('Groq');
+    expect(text).not.toContain('API Key');
+    expect(findElements(tree, (element) => element.type === mockSelect)).toHaveLength(0);
+    expect(text).toContain('Transcription runs on this Mac. Audio is not uploaded.');
   });
 
-  it('preserves hidden Groq values when saving Local Whisper', async () => {
-    const onSave = jest.fn().mockResolvedValue(undefined);
-    let tree = renderSettings({ onSave });
-    const providerSelect = findElements(tree, (element) => element.type === mockSelect)[0];
-    (providerSelect.props.onValueChange as (value: string) => void)('groq');
-    mockStateCursor = 0;
-    tree = ActualSettings({
-      apiKey: 'existing-key',
-      model: 'whisper-large-v3-turbo',
-      provider: 'local',
-      localModelStatus: { state: 'not-downloaded' },
-      onInstallLocalModel: jest.fn().mockResolvedValue({ success: true }),
-      onSave,
-      onBack: jest.fn(),
-    }) as unknown as MockElement;
-    const groqInput = findElements(tree, (element) => element.props.id === 'groq-api-key')[0];
-    (groqInput.props.onChange as (event: { target: { value: string } }) => void)({
-      target: { value: 'preserved-key' },
-    });
-    const groqProviderSelect = findElements(tree, (element) => element.type === mockSelect)[0];
-    (groqProviderSelect.props.onValueChange as (value: string) => void)('local');
-    mockStateCursor = 0;
-    tree = ActualSettings({
-      apiKey: 'existing-key',
-      model: 'whisper-large-v3-turbo',
-      provider: 'local',
-      localModelStatus: { state: 'not-downloaded' },
-      onInstallLocalModel: jest.fn().mockResolvedValue({ success: true }),
-      onSave,
-      onBack: jest.fn(),
-    }) as unknown as MockElement;
-
-    const save = findElements(
-      tree,
-      (element) =>
-        element.type === mockButton &&
-        renderedText(element.props.children).includes('Save settings'),
-    )[0];
-    await (save.props.onClick as () => Promise<void>)();
-
-    expect(onSave).toHaveBeenCalledWith({
-      apiKey: 'preserved-key',
-      model: 'whisper-large-v3-turbo',
-      transcriptionProvider: 'local',
-    });
-  });
-
-  it('keeps Local selected and explains when its sidecar is unavailable', () => {
+  it('explains when the local sidecar is unavailable', () => {
     const tree = renderSettings({
       localModelStatus: { state: 'unavailable', reason: 'sidecar-missing' },
     });
     const text = renderedText(tree).join(' ');
 
-    expect(findElements(tree, (element) => element.type === mockSelect)[0].props.value).toBe(
-      'local',
-    );
     expect(text).toContain('Unavailable');
     expect(text).toContain('Local Whisper is unavailable because its sidecar is not installed.');
     expect(text).not.toContain('Groq API Key');
-  });
-
-  it('disables only Save settings while the request is pending', async () => {
-    let resolveSave: (() => void) | undefined;
-    const onSave = jest.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveSave = resolve;
-        }),
-    );
-    let tree = renderSettings({ onSave });
-    let save = findElements(
-      tree,
-      (element) =>
-        element.type === mockButton &&
-        renderedText(element.props.children).includes('Save settings'),
-    )[0];
-
-    (save.props.onClick as () => void)();
-    mockStateCursor = 0;
-    tree = ActualSettings({
-      apiKey: 'existing-key',
-      model: 'whisper-large-v3-turbo',
-      provider: 'local',
-      localModelStatus: { state: 'not-downloaded' },
-      onInstallLocalModel: jest.fn().mockResolvedValue({ success: true }),
-      onSave,
-      onBack: jest.fn(),
-    }) as unknown as MockElement;
-    save = findElements(
-      tree,
-      (element) =>
-        element.type === mockButton &&
-        renderedText(element.props.children).includes('Save settings'),
-    )[0];
-
-    expect(save.props.disabled).toBe(true);
-    expect(save.props['aria-busy']).toBe(true);
-    expect(renderedText(tree).join(' ')).toContain('Saving settings');
-
-    resolveSave?.();
-    await Promise.resolve();
   });
 
   it('uses explicit installation progress, ready state, and retry after a failed download', async () => {
@@ -849,12 +687,8 @@ describe('transcription provider settings', () => {
     await (download.props.onClick as () => Promise<void>)();
     mockStateCursor = 0;
     tree = ActualSettings({
-      apiKey: 'existing-key',
-      model: 'whisper-large-v3-turbo',
-      provider: 'local',
       localModelStatus: { state: 'not-downloaded' },
       onInstallLocalModel: install,
-      onSave: jest.fn().mockResolvedValue(undefined),
       onBack: jest.fn(),
     }) as unknown as MockElement;
 
@@ -1526,7 +1360,7 @@ describe('library card interrupted badge', () => {
       ],
     });
     renderApp();
-    mockEffects[1](); // recordings effect
+    mockEffects[0](); // recordings effect
     await Promise.resolve();
     renderApp();
 
@@ -1560,7 +1394,7 @@ describe('library card interrupted badge', () => {
       ],
     });
     renderApp();
-    mockEffects[1]();
+    mockEffects[0]();
     await Promise.resolve();
     renderApp();
 
@@ -1584,7 +1418,7 @@ describe('library card interrupted badge', () => {
       ],
     });
     renderApp();
-    mockEffects[1]();
+    mockEffects[0]();
     await Promise.resolve();
     renderApp();
 
@@ -1608,7 +1442,7 @@ describe('library card interrupted badge', () => {
       ],
     });
     renderApp();
-    mockEffects[1]();
+    mockEffects[0]();
     await Promise.resolve();
     renderApp();
 

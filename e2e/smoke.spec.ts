@@ -361,43 +361,17 @@ test('navigates to settings and back', async () => {
   try {
     await window.getByRole('button', { name: 'Open settings' }).click();
     await expect(window.getByRole('heading', { name: 'Settings' })).toBeVisible();
-    await expect(window.getByRole('button', { name: 'Save settings' })).toBeVisible();
-    await expect(window.getByRole('combobox', { name: 'Transcription provider' })).toContainText(
-      'Local Whisper',
-    );
+    await expect(window.getByRole('heading', { name: 'Local transcription' })).toBeVisible();
     await expect(
       window.getByText('Transcription runs on this Mac. Audio is not uploaded.'),
     ).toBeVisible();
     await expect(window.getByLabel('Groq API Key')).toHaveCount(0);
+    await expect(window.getByRole('combobox')).toHaveCount(0);
     await expect(window.getByText('Auto-transcribe after recording')).toHaveCount(0);
     await expectScrollableContentTopOpaque(window);
     await expectNoHorizontalOverflow(window);
     await expectAccessible(window);
     await expect(window).toHaveScreenshot('settings-local.png');
-
-    await window.getByRole('combobox', { name: 'Transcription provider' }).click();
-    await window.getByRole('option', { name: 'Groq' }).click();
-    await expect(window.getByLabel('Groq API Key')).toBeVisible();
-    await expect(window.getByLabel('Model')).toBeVisible();
-    await expect(
-      window.getByText('Transcription sends prepared audio to Groq for processing.'),
-    ).toBeVisible();
-    await window.getByLabel('Groq API Key').fill('provider-secret-value');
-
-    await window.getByRole('combobox', { name: 'Transcription provider' }).click();
-    await window.getByRole('option', { name: 'Local Whisper' }).click();
-    await expect(window.getByLabel('Groq API Key')).toHaveCount(0);
-    await expect(
-      window.getByText('Transcription runs on this Mac. Audio is not uploaded.'),
-    ).toBeVisible();
-
-    await window.getByRole('combobox', { name: 'Transcription provider' }).click();
-    await window.getByRole('option', { name: 'Groq' }).click();
-    await expect(window.getByLabel('Groq API Key')).toHaveValue('provider-secret-value');
-
-    await expectNoHorizontalOverflow(window);
-    await expectAccessible(window);
-    await expect(window).toHaveScreenshot('settings-groq.png');
 
     await window.getByRole('button', { name: 'Back' }).click();
     await expect(window.getByRole('button', { name: 'Record', exact: true })).toBeVisible();

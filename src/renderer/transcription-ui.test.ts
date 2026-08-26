@@ -124,7 +124,7 @@ describe('transcription UI copy', () => {
     [
       'LOCAL_UNAVAILABLE',
       undefined,
-      'Local transcription could not start. Your recording is still saved. Retry, or select Groq in Settings.',
+      'Local transcription could not start. Your recording is still saved. Open Settings and check the local model, then try again.',
     ],
     [
       'MODEL_DOWNLOAD_FAILED',
@@ -139,32 +139,12 @@ describe('transcription UI copy', () => {
     [
       'LOCAL_TRANSCRIPTION_FAILED',
       undefined,
-      'Local transcription failed. Your recording is still saved. Try again, or select Groq in Settings.',
+      'Local transcription failed. Your recording is still saved. Try again.',
     ],
     [
       'LOCAL_TRANSCRIPTION_TIMEOUT',
       undefined,
-      'Local transcription stopped responding. Your recording is still saved. Try again, or select Groq in Settings.',
-    ],
-    [
-      'GROQ_KEY_MISSING',
-      undefined,
-      'Transcription needs a Groq API key. Your recording is still saved. Add one in Settings, then try again.',
-    ],
-    [
-      'GROQ_RATE_LIMITED',
-      1080,
-      "Groq's rate limit was reached. Your recording is still saved. Try again in 18 minutes.",
-    ],
-    [
-      'GROQ_TIMEOUT',
-      undefined,
-      'Groq transcription timed out. Your recording is still saved. Check your connection and try again.',
-    ],
-    [
-      'GROQ_REJECTED',
-      undefined,
-      'Groq could not transcribe this recording. Your recording is still saved. Check Settings and try again.',
+      'Local transcription stopped responding. Your recording is still saved. Try again.',
     ],
     [
       'AUDIO_PREPARATION_FAILED',
@@ -178,18 +158,6 @@ describe('transcription UI copy', () => {
     ],
   ] as const)('maps %s to safe recovery copy', (code, retryAfterSeconds, expected) => {
     expect(getTranscriptionErrorMessage({ code, retryAfterSeconds })).toBe(expected);
-  });
-
-  it('rounds rate-limit recovery up and falls back safely for unknown retry values', () => {
-    expect(
-      getTranscriptionErrorMessage({ code: 'GROQ_RATE_LIMITED', retryAfterSeconds: 1.1 }),
-    ).toBe("Groq's rate limit was reached. Your recording is still saved. Try again in 2 seconds.");
-    expect(
-      getTranscriptionErrorMessage({ code: 'GROQ_RATE_LIMITED', retryAfterSeconds: 60.1 }),
-    ).toBe("Groq's rate limit was reached. Your recording is still saved. Try again in 2 minutes.");
-    expect(
-      getTranscriptionErrorMessage({ code: 'GROQ_RATE_LIMITED', retryAfterSeconds: Number.NaN }),
-    ).toBe("Groq's rate limit was reached. Your recording is still saved. Try again later.");
   });
 });
 

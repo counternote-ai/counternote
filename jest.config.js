@@ -8,7 +8,6 @@ module.exports = {
   },
   moduleNameMapper: {
     '^electron$': '<rootDir>/src/__mocks__/electron.ts',
-    '^ffmpeg-static$': '<rootDir>/src/__mocks__/ffmpeg-static.ts',
     '^@/(.*)$': '<rootDir>/src/renderer/$1',
     '\\.(css)$': '<rootDir>/src/__mocks__/style.ts',
   },

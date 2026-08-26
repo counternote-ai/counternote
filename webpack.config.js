@@ -56,9 +56,6 @@ module.exports = [
         },
       ],
     },
-    externals: {
-      'ffmpeg-static': 'commonjs ffmpeg-static',
-    },
     node: {
       __dirname: false,
       __filename: false,

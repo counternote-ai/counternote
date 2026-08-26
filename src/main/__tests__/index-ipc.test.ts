@@ -2,14 +2,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { app, ipcMain, BrowserWindow, shell } from 'electron';
-import { loadConfig, setGroqApiKey } from '../config';
+import { loadConfig } from '../config';
 import { LocalModelManager } from '../transcription/local-model-manager';
 
 jest.mock('../config', () => ({
-  getGroqApiKey: jest.fn(),
   loadConfig: jest.fn(),
-  saveConfig: jest.fn(),
-  setGroqApiKey: jest.fn(),
 }));
 
 jest.mock('../transcription/sidecar-path', () => ({
@@ -270,35 +267,9 @@ describe('sensitive IPC failures', () => {
     consoleError.mockRestore();
   });
 
-  it('returns a typed settings-save failure without safe-storage details', async () => {
-    const rawError = new Error('safeStorage failed for /private/keychain/CounterNote');
-    (setGroqApiKey as jest.MockedFunction<typeof setGroqApiKey>).mockRejectedValueOnce(rawError);
-
-    const result = await getHandler('save-config')(
-      {},
-      {
-        apiKey: 'provider-secret-value',
-        model: 'whisper-large-v3-turbo',
-        transcriptionProvider: 'local',
-      },
-    );
-
-    expect(result).toEqual({ success: false, code: 'SETTINGS_SAVE_FAILED' });
-    expect(consoleError).toHaveBeenCalledWith('Settings config save failed.');
-    expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining(rawError.message));
-  });
-
-  it('returns a typed settings-load failure without filesystem details', async () => {
-    const rawError = new Error('ENOENT: /private/config/counternote.json');
-    (loadConfig as jest.MockedFunction<typeof loadConfig>).mockImplementationOnce(() => {
-      throw rawError;
-    });
-
-    const result = await getHandler('load-config')({});
-
-    expect(result).toEqual({ success: false, code: 'SETTINGS_LOAD_FAILED' });
-    expect(consoleError).toHaveBeenCalledWith('Settings config load failed.');
-    expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining(rawError.message));
+  it('does not register cloud configuration IPC handlers', () => {
+    expect(handlers.has('save-config')).toBe(false);
+    expect(handlers.has('load-config')).toBe(false);
   });
 
   it('rejects renderer-supplied transcript paths before reading the filesystem', async () => {

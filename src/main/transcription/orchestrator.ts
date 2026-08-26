@@ -1,13 +1,11 @@
 import * as path from 'path';
 import { Transcript, TranscriptionSegment } from '../../types/transcript';
 import {
-  TranscriptionProvider,
   TranscriptionStage,
   TranscriptionProgress,
   TranscriptionErrorCode,
 } from '../../types/transcription';
 import { LocalChannelRequest } from './local-whisper-provider';
-import { GroqProviderRequest } from './groq-provider';
 import { TranscriptionError } from './errors';
 import { TranscriptionLogger } from './logger';
 
@@ -20,17 +18,12 @@ const TRANSCRIPTION_ERROR_CODES = new Set<TranscriptionErrorCode>([
   'MODEL_CHECKSUM_FAILED',
   'LOCAL_TRANSCRIPTION_FAILED',
   'LOCAL_TRANSCRIPTION_TIMEOUT',
-  'GROQ_KEY_MISSING',
-  'GROQ_RATE_LIMITED',
-  'GROQ_TIMEOUT',
-  'GROQ_REJECTED',
   'AUDIO_PREPARATION_FAILED',
   'TRANSCRIPT_WRITE_FAILED',
 ]);
 
 export interface TranscriptionOrchestratorRequest {
   recordingId: string;
-  provider?: TranscriptionProvider;
   onProgress?: (progress: TranscriptionProgress) => void;
 }
 
@@ -43,8 +36,6 @@ export interface TranscriptionOrchestratorDependencies {
     resolveRecordingAudio(recordingId: string): string;
     contains(candidate: string): boolean;
   };
-  loadConfig: () => { transcriptionProvider: TranscriptionProvider; groqModel: string };
-  getGroqApiKey: () => Promise<string | null>;
   localProvider: {
     transcribe(
       request: LocalChannelRequest,
@@ -52,14 +43,10 @@ export interface TranscriptionOrchestratorDependencies {
       onInferenceStart: () => void,
     ): Promise<TranscriptionSegment[]>;
   };
-  groqProvider: {
-    transcribe(request: GroqProviderRequest): Promise<TranscriptionSegment[]>;
-  };
   splitChannels: (
     audioPath: string,
     output?: { system?: string; mic?: string },
   ) => Promise<{ system: string; mic: string }>;
-  convertToFlac: (audioPath: string) => Promise<string>;
   getAudioDuration: (audioPath: string) => Promise<number>;
   fs: {
     writeFile: (filePath: string, data: string) => Promise<void>;
@@ -119,7 +106,6 @@ export class TranscriptionOrchestrator {
 
     let currentStage: TranscriptionStage = 'preparing-audio';
     let acquired = false;
-    let activeProvider: TranscriptionProvider | undefined;
 
     try {
       if (!this.deps.coordinator.tryStartTranscription()) {
@@ -141,9 +127,6 @@ export class TranscriptionOrchestrator {
         throw new TranscriptionError('AUDIO_PREPARATION_FAILED');
       }
 
-      const config = this.deps.loadConfig();
-      const provider = request.provider ?? config.transcriptionProvider;
-      activeProvider = provider;
       const finalTranscriptPath = path.join(path.dirname(audioPath), 'transcript.json');
       const registry = new ArtifactRegistry(new Set([audioPath, finalTranscriptPath]), attemptId);
 
@@ -163,30 +146,16 @@ export class TranscriptionOrchestrator {
           mic: micPath,
         });
 
-        let interviewerChannelPath = systemPath;
-        let youChannelPath = micPath;
-
-        if (provider === 'groq') {
-          interviewerChannelPath = await this.deps.convertToFlac(systemPath);
-          registry.add(interviewerChannelPath);
-          youChannelPath = await this.deps.convertToFlac(micPath);
-          registry.add(youChannelPath);
-        }
-
         const segments: TranscriptionSegment[] = [];
-        const apiKey = provider === 'groq' ? await this.deps.getGroqApiKey() : null;
 
         const interviewerSegments = await this.transcribeChannel({
           request: safeRequest,
-          provider,
-          config,
-          channelPath: interviewerChannelPath,
+          channelPath: systemPath,
           speaker: 'Interviewer',
           audioPath,
           attemptId,
           registry,
           durationSeconds: duration,
-          apiKey,
           setCurrentStage: (stage) => {
             currentStage = stage;
           },
@@ -195,22 +164,19 @@ export class TranscriptionOrchestrator {
 
         const youSegments = await this.transcribeChannel({
           request: safeRequest,
-          provider,
-          config,
-          channelPath: youChannelPath,
+          channelPath: micPath,
           speaker: 'You',
           audioPath,
           attemptId,
           registry,
           durationSeconds: duration,
-          apiKey,
           setCurrentStage: (stage) => {
             currentStage = stage;
           },
         });
         segments.push(...youSegments);
 
-        this.validateSegments(segments, provider);
+        this.validateSegments(segments);
         segments.sort((a, b) => a.start - b.start);
 
         const transcript = this.buildTranscript(safeRecordingId, duration, segments);
@@ -238,7 +204,7 @@ export class TranscriptionOrchestrator {
       }
     } catch (err) {
       this.log(safeRecordingId, currentStage, 'failure', startTime, now());
-      throw this.normalizeError(err, currentStage, activeProvider);
+      throw this.normalizeError(err, currentStage);
     } finally {
       if (acquired) {
         this.deps.coordinator.finishTranscription();
@@ -248,75 +214,49 @@ export class TranscriptionOrchestrator {
 
   private async transcribeChannel(options: {
     request: TranscriptionOrchestratorRequest;
-    provider: TranscriptionProvider;
-    config: { transcriptionProvider: TranscriptionProvider; groqModel: string };
     channelPath: string;
     speaker: 'Interviewer' | 'You';
     audioPath: string;
     attemptId: string;
     registry: ArtifactRegistry;
     durationSeconds: number;
-    apiKey: string | null;
     setCurrentStage: (stage: TranscriptionStage) => void;
   }): Promise<TranscriptionSegment[]> {
     const {
       request,
-      provider,
-      config,
       channelPath,
       speaker,
       audioPath,
       attemptId,
       registry,
       durationSeconds,
-      apiKey,
       setCurrentStage,
     } = options;
 
-    if (provider === 'local') {
-      const outputPrefix = path.join(
-        path.dirname(audioPath),
-        `whisper-${attemptId}-${speaker.toLowerCase()}`,
-      );
-      registry.add(`${outputPrefix}.json`);
+    const outputPrefix = path.join(
+      path.dirname(audioPath),
+      `whisper-${attemptId}-${speaker.toLowerCase()}`,
+    );
+    registry.add(`${outputPrefix}.json`);
 
-      const onModelProgress = (percent: number): void => {
-        this.emit(request, 'downloading-model', percent);
-      };
+    const onModelProgress = (percent: number): void => {
+      this.emit(request, 'downloading-model', percent);
+    };
 
-      const channelRequest: LocalChannelRequest = {
-        audioPath: channelPath,
-        speaker,
-        durationSeconds,
-        outputPrefix,
-      };
-
-      const stage = `transcribing-${speaker.toLowerCase()}` as TranscriptionStage;
-      setCurrentStage(stage);
-
-      const segments = await this.deps.localProvider.transcribe(
-        channelRequest,
-        onModelProgress,
-        () => {
-          setCurrentStage(stage);
-          this.emit(request, stage);
-        },
-      );
-
-      return segments;
-    }
-
-    const groqRequest: GroqProviderRequest = {
+    const channelRequest: LocalChannelRequest = {
       audioPath: channelPath,
       speaker,
-      apiKey: apiKey ?? undefined,
-      model: config.groqModel,
+      durationSeconds,
+      outputPrefix,
     };
 
     const stage = `transcribing-${speaker.toLowerCase()}` as TranscriptionStage;
     setCurrentStage(stage);
-    this.emit(request, stage);
-    return this.deps.groqProvider.transcribe(groqRequest);
+
+    return this.deps.localProvider.transcribe(channelRequest, onModelProgress, () => {
+      setCurrentStage(stage);
+      this.emit(request, stage);
+    });
   }
 
   private emit(
@@ -346,11 +286,7 @@ export class TranscriptionOrchestrator {
     this.deps.logger.log(recordingId, stage, category, now - startTime);
   }
 
-  private normalizeError(
-    err: unknown,
-    stage: TranscriptionStage,
-    provider: TranscriptionProvider | undefined,
-  ): TranscriptionError {
+  private normalizeError(err: unknown, stage: TranscriptionStage): TranscriptionError {
     if (err instanceof TranscriptionError) {
       return err;
     }
@@ -359,18 +295,15 @@ export class TranscriptionOrchestrator {
       return new TranscriptionError(err.code, extractSafeErrorDetails(err));
     }
 
-    return new TranscriptionError(this.safeCodeForStage(stage, provider));
+    return new TranscriptionError(this.safeCodeForStage(stage));
   }
 
-  private safeCodeForStage(
-    stage: TranscriptionStage,
-    provider: TranscriptionProvider | undefined,
-  ): TranscriptionErrorCode {
+  private safeCodeForStage(stage: TranscriptionStage): TranscriptionErrorCode {
     if (stage === 'finishing-transcript') {
       return 'TRANSCRIPT_WRITE_FAILED';
     }
     if (stage === 'transcribing-interviewer' || stage === 'transcribing-you') {
-      return provider === 'groq' ? 'GROQ_REJECTED' : 'LOCAL_TRANSCRIPTION_FAILED';
+      return 'LOCAL_TRANSCRIPTION_FAILED';
     }
     return 'AUDIO_PREPARATION_FAILED';
   }
@@ -395,10 +328,7 @@ export class TranscriptionOrchestrator {
     };
   }
 
-  private validateSegments(
-    segments: TranscriptionSegment[],
-    provider: TranscriptionProvider,
-  ): void {
+  private validateSegments(segments: TranscriptionSegment[]): void {
     for (const segment of segments) {
       if (
         typeof segment.start !== 'number' ||
@@ -408,9 +338,7 @@ export class TranscriptionOrchestrator {
         !Number.isFinite(segment.start) ||
         !Number.isFinite(segment.end)
       ) {
-        throw new TranscriptionError(
-          provider === 'local' ? 'LOCAL_TRANSCRIPTION_FAILED' : 'GROQ_REJECTED',
-        );
+        throw new TranscriptionError('LOCAL_TRANSCRIPTION_FAILED');
       }
     }
   }

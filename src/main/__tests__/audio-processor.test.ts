@@ -1,11 +1,8 @@
 import {
   splitChannels,
-  convertToFlac,
   getAudioDuration,
   getAudibleIntervals,
   isChannelSilent,
-  parseSilenceResult,
-  AudioProcessorDependencies,
 } from '../audio-processor';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -21,12 +18,6 @@ describe('AudioProcessor', () => {
   afterEach(() => {
     fs.rmSync(testDir, { recursive: true, force: true });
   });
-
-  const createMockExecFile = (
-    stderr = '',
-    stdout = '',
-  ): jest.MockedFunction<AudioProcessorDependencies['execFile']> =>
-    jest.fn().mockResolvedValue({ stdout, stderr });
 
   const writeWavHeader = (
     filePath: string,
@@ -54,100 +45,169 @@ describe('AudioProcessor', () => {
     fs.writeFileSync(filePath, Buffer.concat([header, Buffer.alloc(dataSize)]));
   };
 
+  const writePcm16Wav = (
+    filePath: string,
+    channels: 1 | 2,
+    frames: ReadonlyArray<ReadonlyArray<number>>,
+  ): void => {
+    const sampleRate = 16000;
+    const bytesPerFrame = channels * 2;
+    const data = Buffer.alloc(frames.length * bytesPerFrame);
+    frames.forEach((frame, frameIndex) => {
+      frame.forEach((sample, channelIndex) => {
+        data.writeInt16LE(sample, frameIndex * bytesPerFrame + channelIndex * 2);
+      });
+    });
+
+    const header = Buffer.alloc(44);
+    header.write('RIFF', 0);
+    header.writeUInt32LE(data.length + 36, 4);
+    header.write('WAVE', 8);
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16);
+    header.writeUInt16LE(1, 20);
+    header.writeUInt16LE(channels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(sampleRate * bytesPerFrame, 28);
+    header.writeUInt16LE(bytesPerFrame, 32);
+    header.writeUInt16LE(16, 34);
+    header.write('data', 36);
+    header.writeUInt32LE(data.length, 40);
+    fs.writeFileSync(filePath, Buffer.concat([header, data]));
+  };
+
+  const readMonoSamples = (filePath: string): number[] => {
+    const wav = fs.readFileSync(filePath);
+    expect(wav.toString('ascii', 0, 4)).toBe('RIFF');
+    expect(wav.toString('ascii', 8, 12)).toBe('WAVE');
+    expect(wav.readUInt16LE(22)).toBe(1);
+    expect(wav.readUInt32LE(24)).toBe(16000);
+    expect(wav.readUInt16LE(34)).toBe(16);
+    const samples: number[] = [];
+    for (let offset = 44; offset < wav.length; offset += 2) {
+      samples.push(wav.readInt16LE(offset));
+    }
+    return samples;
+  };
+
   describe('splitChannels', () => {
-    it('adds non-interactive flags before input', async () => {
-      const execFile = createMockExecFile();
+    it('streams fixed capture PCM into matching mono channel WAVs', async () => {
       const audioPath = path.join(testDir, 'audio.wav');
-      writeWavHeader(audioPath, 1);
+      writePcm16Wav(audioPath, 2, [
+        [1000, -1000],
+        [2000, -2000],
+        [3000, -3000],
+      ]);
 
-      await splitChannels(audioPath, { execFile });
+      const result = await splitChannels(audioPath);
 
-      expect(execFile).toHaveBeenCalledTimes(2);
-      expect(execFile.mock.calls[0][1].slice(0, 4)).toEqual(['-nostdin', '-y', '-i', audioPath]);
-      expect(execFile.mock.calls[1][1].slice(0, 4)).toEqual(['-nostdin', '-y', '-i', audioPath]);
-    });
-  });
-
-  describe('convertToFlac', () => {
-    it('adds non-interactive flags before input', async () => {
-      const execFile = createMockExecFile();
-      const wavPath = path.join(testDir, 'channel.wav');
-      writeWavHeader(wavPath, 1, 16000, 1);
-
-      await convertToFlac(wavPath, { execFile });
-
-      expect(execFile).toHaveBeenCalledTimes(1);
-      expect(execFile.mock.calls[0][1].slice(0, 4)).toEqual(['-nostdin', '-y', '-i', wavPath]);
-    });
-  });
-
-  describe('parseSilenceResult', () => {
-    it('detects full-duration silence', () => {
-      expect(parseSilenceResult('silence_start: 0\nsilence_end: 60.0', 60)).toBe(true);
+      expect(readMonoSamples(result.system)).toEqual([1000, 2000, 3000]);
+      expect(readMonoSamples(result.mic)).toEqual([-1000, -2000, -3000]);
     });
 
-    it('rejects partial silence', () => {
-      expect(parseSilenceResult('silence_start: 0\nsilence_end: 2.0', 60)).toBe(false);
+    it('preserves channel order across the streaming chunk boundary', async () => {
+      const audioPath = path.join(testDir, 'large-audio.wav');
+      const frames = Array.from({ length: 16_386 }, (_, index) => [index, -index]);
+      writePcm16Wav(audioPath, 2, frames);
+
+      const result = await splitChannels(audioPath);
+
+      const system = readMonoSamples(result.system);
+      const mic = readMonoSamples(result.mic);
+      expect(system.slice(16_382)).toEqual([16_382, 16_383, 16_384, 16_385]);
+      expect(mic.slice(16_382)).toEqual([-16_382, -16_383, -16_384, -16_385]);
     });
 
-    it('rejects missing silence markers', () => {
-      expect(parseSilenceResult('', 60)).toBe(false);
-    });
+    it('rejects unsupported WAV input without publishing partial channel files', async () => {
+      const audioPath = path.join(testDir, 'mono.wav');
+      const systemPath = path.join(testDir, 'system.wav');
+      const micPath = path.join(testDir, 'mic.wav');
+      writePcm16Wav(audioPath, 1, [[1000], [2000]]);
 
-    it('rejects silence that does not start near zero', () => {
-      expect(parseSilenceResult('silence_start: 0.2\nsilence_end: 60.0', 60)).toBe(false);
-    });
+      await expect(splitChannels(audioPath, { system: systemPath, mic: micPath })).rejects.toThrow(
+        'Unsupported WAV format',
+      );
 
-    it('rejects silence that does not reach the end', () => {
-      expect(parseSilenceResult('silence_start: 0\nsilence_end: 59.89', 60)).toBe(false);
+      expect(fs.existsSync(systemPath)).toBe(false);
+      expect(fs.existsSync(micPath)).toBe(false);
     });
   });
 
   describe('isChannelSilent', () => {
-    it('runs silencedetect and returns true when silence covers the full track', async () => {
-      const execFile = createMockExecFile('silence_start: 0\nsilence_end: 2.0');
+    it('returns true when silence covers the full track', async () => {
       const audioPath = path.join(testDir, 'silent.wav');
-      writeWavHeader(audioPath, 2, 16000, 1);
+      writePcm16Wav(
+        audioPath,
+        1,
+        Array.from({ length: 16000 }, () => [0]),
+      );
 
-      const result = await isChannelSilent(audioPath, { execFile });
+      const result = await isChannelSilent(audioPath);
 
       expect(result).toBe(true);
-      expect(execFile).toHaveBeenCalledWith('/usr/local/bin/ffmpeg', [
-        '-nostdin',
-        '-y',
-        '-i',
-        audioPath,
-        '-af',
-        'silencedetect=noise=-50dB:d=0.5',
-        '-f',
-        'null',
-        '-',
-      ]);
     });
 
-    it('returns false when silence does not cover the full track', async () => {
-      const execFile = createMockExecFile('silence_start: 0\nsilence_end: 1.0');
+    it('returns false when any audible interval remains', async () => {
       const audioPath = path.join(testDir, 'noisy.wav');
-      writeWavHeader(audioPath, 2, 16000, 1);
+      writePcm16Wav(
+        audioPath,
+        1,
+        Array.from({ length: 16000 }, () => [1000]),
+      );
 
-      const result = await isChannelSilent(audioPath, { execFile });
+      const result = await isChannelSilent(audioPath);
 
       expect(result).toBe(false);
+    });
+
+    it('treats samples at the -50 dB threshold as silent and the next sample as audible', async () => {
+      const silentPath = path.join(testDir, 'threshold-silent.wav');
+      const audiblePath = path.join(testDir, 'threshold-audible.wav');
+      writePcm16Wav(
+        silentPath,
+        1,
+        Array.from({ length: 4000 }, () => [103]),
+      );
+      writePcm16Wav(audiblePath, 1, [...Array.from({ length: 3999 }, () => [103]), [104]]);
+
+      await expect(isChannelSilent(silentPath)).resolves.toBe(true);
+      await expect(isChannelSilent(audiblePath)).resolves.toBe(false);
     });
   });
 
   describe('getAudibleIntervals', () => {
-    it('returns only the audio ranges between detected silence', async () => {
-      const execFile = createMockExecFile(
-        ['silence_start: 0', 'silence_end: 5.0', 'silence_start: 9.0', 'silence_end: 20.0'].join(
-          '\n',
-        ),
+    it('treats an entirely silent short channel as empty audio', async () => {
+      const audioPath = path.join(testDir, 'short-silent.wav');
+      writePcm16Wav(
+        audioPath,
+        1,
+        Array.from({ length: 4000 }, () => [0]),
       );
-      const audioPath = path.join(testDir, 'partly-silent.wav');
-      writeWavHeader(audioPath, 20, 16000, 1);
 
-      await expect(getAudibleIntervals(audioPath, { execFile })).resolves.toEqual([
-        { start: 5, end: 9 },
+      await expect(getAudibleIntervals(audioPath)).resolves.toEqual([]);
+    });
+
+    it('returns audio between leading and trailing half-second silence', async () => {
+      const audioPath = path.join(testDir, 'partly-silent.wav');
+      writePcm16Wav(audioPath, 1, [
+        ...Array.from({ length: 8000 }, () => [0]),
+        ...Array.from({ length: 4000 }, () => [1000]),
+        ...Array.from({ length: 8000 }, () => [0]),
+      ]);
+
+      await expect(getAudibleIntervals(audioPath)).resolves.toEqual([{ start: 0.5, end: 0.75 }]);
+    });
+
+    it('does not split an audible interval for silence shorter than half a second', async () => {
+      const audioPath = path.join(testDir, 'short-silence.wav');
+      writePcm16Wav(audioPath, 1, [
+        ...Array.from({ length: 4000 }, () => [1000]),
+        ...Array.from({ length: 7999 }, () => [0]),
+        ...Array.from({ length: 4000 }, () => [1000]),
+      ]);
+
+      await expect(getAudibleIntervals(audioPath)).resolves.toEqual([
+        { start: 0, end: 15999 / 16000 },
       ]);
     });
   });

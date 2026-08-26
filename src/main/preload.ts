@@ -5,13 +5,7 @@ import {
   type TranscriptionIpcResult,
   type TranscriptionProgress,
 } from '../types/transcription';
-import {
-  type SettingsLoadIpcResult,
-  type SettingsSaveIpcResult,
-  type ShowInFinderIpcResult,
-  type TranscriptExportIpcResult,
-  type TranscriptionSettings,
-} from '../types/settings';
+import { type ShowInFinderIpcResult, type TranscriptExportIpcResult } from '../types/settings';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   listRecordings: () => ipcRenderer.invoke('list-recordings'),
@@ -39,9 +33,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('show-exported-transcript', recordingId),
   showRecordingFiles: (recordingId: string): Promise<ShowInFinderIpcResult> =>
     ipcRenderer.invoke('show-recording-files', recordingId),
-  saveConfig: (config: Partial<TranscriptionSettings>): Promise<SettingsSaveIpcResult> =>
-    ipcRenderer.invoke('save-config', config),
-  loadConfig: (): Promise<SettingsLoadIpcResult> => ipcRenderer.invoke('load-config'),
   getRecordingPermissions: () => ipcRenderer.invoke('get-recording-permissions'),
   openRecordingPermissionSettings: (permission: RecordingPermission) =>
     ipcRenderer.invoke('open-recording-permission-settings', permission),

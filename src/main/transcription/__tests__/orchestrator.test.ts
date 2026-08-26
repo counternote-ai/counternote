@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { TranscriptionSegment } from '../../../types/transcript';
-import { TranscriptionProvider, TranscriptionStage } from '../../../types/transcription';
+import { TranscriptionStage } from '../../../types/transcription';
 import { TranscriptionOrchestrator, TranscriptionOrchestratorRequest } from '../orchestrator';
 import { TranscriptionError } from '../errors';
 import { TranscriptionLogger } from '../logger';
@@ -61,15 +61,10 @@ function createFakeFs(initial: Record<string, Buffer> = {}, order?: string[]): F
 }
 
 interface CreateOrchestratorOverrides {
-  provider?: TranscriptionProvider;
   coordinator?: TranscriptionOrchestrator['deps']['coordinator'];
   recordingsLibrary?: TranscriptionOrchestrator['deps']['recordingsLibrary'];
-  loadConfig?: TranscriptionOrchestrator['deps']['loadConfig'];
-  getGroqApiKey?: TranscriptionOrchestrator['deps']['getGroqApiKey'];
   localProvider?: { transcribe: jest.Mock };
-  groqProvider?: { transcribe: jest.Mock };
   splitChannels?: TranscriptionOrchestrator['deps']['splitChannels'];
-  convertToFlac?: TranscriptionOrchestrator['deps']['convertToFlac'];
   getAudioDuration?: TranscriptionOrchestrator['deps']['getAudioDuration'];
   fs?: FakeFs;
   logger?: TranscriptionLogger;
@@ -104,13 +99,6 @@ function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
     }),
   };
 
-  const groqProvider = overrides.groqProvider ?? {
-    transcribe: jest.fn(async (req: { speaker: string }) => {
-      order.push(req.speaker.toLowerCase());
-      return [];
-    }),
-  };
-
   const splitChannels =
     overrides.splitChannels ??
     jest.fn(async () => {
@@ -118,19 +106,7 @@ function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
       return { system: SYSTEM_PATH, mic: MIC_PATH };
     });
 
-  const convertToFlac =
-    overrides.convertToFlac ?? jest.fn(async (wavPath: string) => wavPath.replace('.wav', '.flac'));
-
   const getAudioDuration = overrides.getAudioDuration ?? jest.fn(async () => 120);
-
-  const loadConfig =
-    overrides.loadConfig ??
-    jest.fn(() => ({
-      transcriptionProvider: 'local' as TranscriptionProvider,
-      groqModel: 'whisper-large-v3-turbo',
-    }));
-
-  const getGroqApiKey = overrides.getGroqApiKey ?? jest.fn(async () => 'decrypted-groq-key');
 
   const logger: TranscriptionLogger = overrides.logger ?? {
     log: jest.fn((_recordingId, _stage, category) => {
@@ -145,12 +121,8 @@ function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
   const orchestrator = new TranscriptionOrchestrator({
     coordinator,
     recordingsLibrary,
-    loadConfig,
-    getGroqApiKey,
     localProvider: localProvider as unknown as TranscriptionOrchestrator['deps']['localProvider'],
-    groqProvider: groqProvider as unknown as TranscriptionOrchestrator['deps']['groqProvider'],
     splitChannels,
-    convertToFlac,
     getAudioDuration,
     fs,
     logger,
@@ -161,7 +133,6 @@ function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
 
   const request: TranscriptionOrchestratorRequest = {
     recordingId: RECORDING_ID,
-    provider: overrides.provider,
     onProgress: (progress) => {
       progressStages.push(progress.stage);
     },
@@ -173,12 +144,8 @@ function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
     deps: {
       coordinator,
       recordingsLibrary,
-      loadConfig,
-      getGroqApiKey,
       localProvider,
-      groqProvider,
       splitChannels,
-      convertToFlac,
       getAudioDuration,
       fs,
       logger,
@@ -247,68 +214,12 @@ describe('TranscriptionOrchestrator', () => {
       expect(finishTranscription).toHaveBeenCalledTimes(1);
     });
 
-    it('uses only Local Whisper when provider is local', async () => {
-      const { orchestrator, request, deps } = createOrchestrator({
-        provider: 'local',
-      });
+    it('uses Local Whisper for both channel WAVs', async () => {
+      const { orchestrator, request, deps } = createOrchestrator();
 
       await orchestrator.transcribe(request);
 
       expect(deps.localProvider.transcribe).toHaveBeenCalledTimes(2);
-      expect(deps.groqProvider.transcribe).not.toHaveBeenCalled();
-      expect(deps.getGroqApiKey).not.toHaveBeenCalled();
-    });
-
-    it('uses only Groq and decrypts the key when provider is groq', async () => {
-      const { orchestrator, request, deps } = createOrchestrator({
-        provider: 'groq',
-      });
-
-      await orchestrator.transcribe(request);
-
-      expect(deps.groqProvider.transcribe).toHaveBeenCalledTimes(2);
-      expect(deps.localProvider.transcribe).not.toHaveBeenCalled();
-      expect(deps.getGroqApiKey).toHaveBeenCalled();
-    });
-
-    it('converts each channel WAV to FLAC before uploading to Groq', async () => {
-      const { orchestrator, request, deps } = createOrchestrator({
-        provider: 'groq',
-      });
-
-      await orchestrator.transcribe(request);
-
-      expect(deps.convertToFlac).toHaveBeenCalledTimes(2);
-      expect(deps.convertToFlac).toHaveBeenNthCalledWith(1, SYSTEM_PATH);
-      expect(deps.convertToFlac).toHaveBeenNthCalledWith(2, MIC_PATH);
-      expect(deps.groqProvider.transcribe).toHaveBeenCalledWith(
-        expect.objectContaining({
-          audioPath: SYSTEM_PATH.replace('.wav', '.flac'),
-          speaker: 'Interviewer',
-        }),
-      );
-      expect(deps.groqProvider.transcribe).toHaveBeenCalledWith(
-        expect.objectContaining({
-          audioPath: MIC_PATH.replace('.wav', '.flac'),
-          speaker: 'You',
-        }),
-      );
-      expect(deps.fs.rm).toHaveBeenCalledWith(SYSTEM_PATH.replace('.wav', '.flac'), {
-        force: true,
-      });
-      expect(deps.fs.rm).toHaveBeenCalledWith(MIC_PATH.replace('.wav', '.flac'), {
-        force: true,
-      });
-    });
-
-    it('keeps channel WAVs unconverted for the local provider', async () => {
-      const { orchestrator, request, deps } = createOrchestrator({
-        provider: 'local',
-      });
-
-      await orchestrator.transcribe(request);
-
-      expect(deps.convertToFlac).not.toHaveBeenCalled();
       expect(deps.localProvider.transcribe).toHaveBeenCalledWith(
         expect.objectContaining({ audioPath: SYSTEM_PATH }),
         expect.any(Function),
@@ -319,6 +230,15 @@ describe('TranscriptionOrchestrator', () => {
         expect.any(Function),
         expect.any(Function),
       );
+    });
+
+    it('ignores a legacy Groq provider property and still uses Local Whisper', async () => {
+      const { orchestrator, request, deps } = createOrchestrator();
+      const legacyRequest = { ...request, provider: 'groq' } as TranscriptionOrchestratorRequest;
+
+      await orchestrator.transcribe(legacyRequest);
+
+      expect(deps.localProvider.transcribe).toHaveBeenCalledTimes(2);
     });
 
     it('processes channels sequentially in Interviewer then You order', async () => {
@@ -344,7 +264,7 @@ describe('TranscriptionOrchestrator', () => {
     it('releases coordinator in finally after every failure', async () => {
       const { orchestrator, request, deps } = createOrchestrator({
         splitChannels: jest.fn(async () => {
-          throw new Error('ffmpeg exploded');
+          throw new Error('audio split failed');
         }),
       });
 
@@ -388,7 +308,6 @@ describe('TranscriptionOrchestrator', () => {
       const tmpTranscriptPath = `${TRANSCRIPT_PATH}.tmp-${ATTEMPT_ID}`;
       const { orchestrator, request } = createOrchestrator({
         fs,
-        provider: 'local',
         localProvider: {
           transcribe: jest.fn(async (req: { speaker: string }) => {
             if (req.speaker === 'Interviewer') {
@@ -421,11 +340,12 @@ describe('TranscriptionOrchestrator', () => {
       const tmpTranscriptPath = `${TRANSCRIPT_PATH}.tmp-${ATTEMPT_ID}`;
       const { orchestrator, request } = createOrchestrator({
         fs,
-        provider: 'groq',
-        groqProvider: {
+        localProvider: {
           transcribe: jest.fn(async (req: { speaker: string }) => {
             if (req.speaker === 'You') {
-              throw Object.assign(new Error('groq failed'), { code: 'GROQ_REJECTED' });
+              throw Object.assign(new Error('local failed'), {
+                code: 'LOCAL_TRANSCRIPTION_FAILED',
+              });
             }
             return [];
           }),
@@ -433,7 +353,7 @@ describe('TranscriptionOrchestrator', () => {
       });
 
       await expect(orchestrator.transcribe(request)).rejects.toMatchObject({
-        code: 'GROQ_REJECTED',
+        code: 'LOCAL_TRANSCRIPTION_FAILED',
       });
 
       expect(fs.files.has(AUDIO_PATH)).toBe(true);
@@ -494,7 +414,6 @@ describe('TranscriptionOrchestrator', () => {
 
       const { orchestrator, request, deps } = createOrchestrator({
         fs,
-        provider: 'local',
         localProvider: {
           transcribe: jest.fn(async (req: { speaker: string }) => {
             if (req.speaker === 'Interviewer') {
@@ -522,7 +441,7 @@ describe('TranscriptionOrchestrator', () => {
 
   describe('progress and safe logging', () => {
     it('keeps transcribing when a progress listener throws', async () => {
-      const { orchestrator, request, deps } = createOrchestrator({ provider: 'groq' });
+      const { orchestrator, request, deps } = createOrchestrator();
 
       await expect(
         orchestrator.transcribe({
@@ -533,10 +452,10 @@ describe('TranscriptionOrchestrator', () => {
         }),
       ).resolves.toMatchObject({ id: RECORDING_ID });
 
-      expect(deps.groqProvider.transcribe).toHaveBeenCalledTimes(2);
+      expect(deps.localProvider.transcribe).toHaveBeenCalledTimes(2);
     });
 
-    it('emits interviewer progress while the Groq provider is still pending', async () => {
+    it('emits interviewer progress while Local Whisper is still pending', async () => {
       let releaseProvider: ((segments: TranscriptionSegment[]) => void) | undefined;
       let signalProviderStarted: (() => void) | undefined;
       const providerStarted = new Promise<void>((resolve) => {
@@ -546,10 +465,10 @@ describe('TranscriptionOrchestrator', () => {
         releaseProvider = resolve;
       });
       const { orchestrator, request } = createOrchestrator({
-        provider: 'groq',
-        groqProvider: {
-          transcribe: jest.fn(() => {
+        localProvider: {
+          transcribe: jest.fn((_request, _onProgress, onInferenceStart) => {
             signalProviderStarted?.();
+            onInferenceStart();
             return providerGate;
           }),
         },
@@ -595,7 +514,6 @@ describe('TranscriptionOrchestrator', () => {
 
     it('returns to local transcription progress after model download before each speaker CPU inference', async () => {
       const { orchestrator, request, progressStages } = createOrchestrator({
-        provider: 'local',
         localProvider: {
           transcribe: jest.fn(
             async (
@@ -626,7 +544,6 @@ describe('TranscriptionOrchestrator', () => {
 
     it('emits model download and transcription progress only for an audible second channel', async () => {
       const { orchestrator, request, progressStages } = createOrchestrator({
-        provider: 'local',
         localProvider: {
           transcribe: jest.fn(
             async (
@@ -657,7 +574,6 @@ describe('TranscriptionOrchestrator', () => {
 
     it('preserves local error classification without emitting transcription progress before inference starts', async () => {
       const { orchestrator, request } = createOrchestrator({
-        provider: 'local',
         localProvider: {
           transcribe: jest.fn(async () => {
             throw new Error('model loading failed');
@@ -680,7 +596,6 @@ describe('TranscriptionOrchestrator', () => {
 
     it('scopes local inference progress to the requested recording ID', async () => {
       const { orchestrator, request } = createOrchestrator({
-        provider: 'local',
         localProvider: {
           transcribe: jest.fn(
             async (
@@ -727,8 +642,8 @@ describe('TranscriptionOrchestrator', () => {
       }
     });
 
-    it('logs stage, category, status, and elapsed without API key or full paths', async () => {
-      const { orchestrator, request, deps } = createOrchestrator({ provider: 'groq' });
+    it('logs stage, category, status, and elapsed without full paths', async () => {
+      const { orchestrator, request, deps } = createOrchestrator();
 
       await orchestrator.transcribe(request);
 
@@ -749,20 +664,17 @@ describe('TranscriptionOrchestrator', () => {
       }
 
       const logString = JSON.stringify(logs);
-      expect(logString).not.toContain('decrypted-groq-key');
       expect(logString).not.toContain(ROOT);
       expect(logString).not.toContain(AUDIO_PATH);
     });
 
-    it('normalizes a recognized provider failure into a typed error with safe retry details', async () => {
+    it('normalizes a recognized local provider failure into a typed error with safe details', async () => {
       const providerFailure = Object.assign(new Error('provider response body'), {
-        code: 'GROQ_RATE_LIMITED',
-        retryAfterSeconds: 42,
-        status: 429,
+        code: 'LOCAL_TRANSCRIPTION_TIMEOUT',
+        exitCode: 9,
       });
       const { orchestrator, request } = createOrchestrator({
-        provider: 'groq',
-        groqProvider: {
+        localProvider: {
           transcribe: jest.fn(async () => {
             throw providerFailure;
           }),
@@ -778,15 +690,14 @@ describe('TranscriptionOrchestrator', () => {
 
       expect(thrown).toBeInstanceOf(TranscriptionError);
       expect(thrown).toMatchObject({
-        code: 'GROQ_RATE_LIMITED',
-        details: { retryAfterSeconds: 42, status: 429 },
+        code: 'LOCAL_TRANSCRIPTION_TIMEOUT',
+        details: { exitCode: 9 },
       });
     });
 
-    it('maps an unknown Groq provider failure to a typed safe Groq error', async () => {
+    it('maps an unknown local provider failure to a typed safe local error', async () => {
       const { orchestrator, request } = createOrchestrator({
-        provider: 'groq',
-        groqProvider: {
+        localProvider: {
           transcribe: jest.fn(async () => {
             throw new Error('untrusted provider body');
           }),
@@ -801,7 +712,7 @@ describe('TranscriptionOrchestrator', () => {
       }
 
       expect(thrown).toBeInstanceOf(TranscriptionError);
-      expect(thrown).toMatchObject({ code: 'GROQ_REJECTED' });
+      expect(thrown).toMatchObject({ code: 'LOCAL_TRANSCRIPTION_FAILED' });
     });
   });
 });

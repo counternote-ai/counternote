@@ -1,5 +1,3 @@
-export type TranscriptionProvider = 'local' | 'groq';
-
 export type TranscriptionStage =
   | 'preparing-audio'
   | 'downloading-model'
@@ -29,10 +27,6 @@ export type TranscriptionErrorCode =
   | 'MODEL_CHECKSUM_FAILED'
   | 'LOCAL_TRANSCRIPTION_FAILED'
   | 'LOCAL_TRANSCRIPTION_TIMEOUT'
-  | 'GROQ_KEY_MISSING'
-  | 'GROQ_RATE_LIMITED'
-  | 'GROQ_TIMEOUT'
-  | 'GROQ_REJECTED'
   | 'AUDIO_PREPARATION_FAILED'
   | 'TRANSCRIPT_WRITE_FAILED';
 
