@@ -28,7 +28,7 @@ if [[ ! -x "$CLI_PATH" ]]; then
   exit 1
 fi
 
-for tool in file otool; do
+for tool in file nm otool; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "ERROR: required tool '$tool' is not installed" >&2
     exit 1
@@ -47,6 +47,16 @@ if [[ "$FILE_INFO" != *'arm64'* ]]; then
   exit 1
 fi
 
+MINIMUM_SYSTEM_VERSION="$(otool -l "$CLI_PATH" | awk '
+  /LC_BUILD_VERSION/ { in_build_version = 1; next }
+  in_build_version && $1 == "minos" { print $2; exit }
+')"
+
+if [[ "$MINIMUM_SYSTEM_VERSION" != '13.0' ]]; then
+  echo "ERROR: '${CLI_PATH}' targets macOS ${MINIMUM_SYSTEM_VERSION:-unknown}; expected 13.0" >&2
+  exit 1
+fi
+
 "$CLI_PATH" --help >/dev/null
 
 LINKS="$(otool -L "$CLI_PATH")"
@@ -58,6 +68,11 @@ fi
 
 if [[ "$LINKS" == *'libggml'* ]]; then
   echo "ERROR: '${CLI_PATH}' links dynamically against libggml" >&2
+  exit 1
+fi
+
+if nm -u "$CLI_PATH" | grep -q 'cblas_'; then
+  echo "ERROR: '${CLI_PATH}' imports BLAS symbols unavailable on macOS 13.0" >&2
   exit 1
 fi
 

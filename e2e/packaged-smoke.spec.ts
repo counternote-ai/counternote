@@ -36,9 +36,8 @@ test('launches a 400x600 window titled CounterNote and shows Local Whisper setti
     await window.getByRole('button', { name: 'Open settings' }).click();
     await expect(window.getByRole('heading', { name: 'Settings' })).toBeVisible();
 
-    await expect(window.getByRole('combobox', { name: 'Transcription provider' })).toContainText(
-      'Local Whisper',
-    );
+    await expect(window.getByRole('heading', { name: 'Local transcription' })).toBeVisible();
+    await expect(window.getByRole('combobox')).toHaveCount(0);
 
     await expect(window.getByText('Not downloaded', { exact: true })).toBeVisible();
 

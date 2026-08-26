@@ -1,17 +1,36 @@
 appId: app.counternote
 productName: CounterNote
+artifactName: CounterNote-${version}-${arch}.${ext}
+publish: null
 directories:
   output: release
   buildResources: build
 files:
   - dist/**/*
   - package.json
+  - '!dist/**/*.d.ts'
+  - '!dist/**/*.d.ts.map'
+  - '!dist/**/*.map'
+  - '!dist/**/__tests__/**'
+  - '!node_modules/**/*'
 extraResources:
+  - from: LICENSE
+    to: LICENSE.txt
+  - from: node_modules/electron/dist/LICENSE
+    to: LICENSE.electron.txt
+  - from: node_modules/electron/dist/LICENSES.chromium.html
+    to: LICENSES.chromium.html
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
   - from: build/whisper/darwin-arm64/whisper-cli
     to: whisper/bin/whisper-cli
   - from: build/audio-capture/darwin-arm64/counternote-audio-capture
     to: audio-capture/bin/counternote-audio-capture
 mac:
+  minimumSystemVersion: '13.0'
+  target:
+    - target: dmg
+      arch: arm64
   category: public.app-category.productivity
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
@@ -21,3 +40,5 @@ mac:
     NSScreenCaptureUsageDescription: CounterNote needs screen capture access to record meeting audio.
   binaries:
     - audio-capture/bin/counternote-audio-capture
+dmg:
+  sign: false

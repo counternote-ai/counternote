@@ -18,6 +18,8 @@ describe('packaging configuration', () => {
     expect(buildScript).toContain('-DBUILD_SHARED_LIBS=OFF');
     expect(buildScript).toContain('-DGGML_METAL=ON');
     expect(buildScript).toContain('-DGGML_METAL_EMBED_LIBRARY=ON');
+    expect(buildScript).toContain('-DGGML_BLAS=OFF');
+    expect(buildScript).toContain('-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0');
     expect(buildScript).toContain('-DWHISPER_BUILD_EXAMPLES=ON');
     expect(buildScript).toContain('--target whisper-cli');
     expect(buildScript).toContain('build/whisper/darwin-arm64/whisper-cli');
@@ -27,8 +29,11 @@ describe('packaging configuration', () => {
     const verifyScript = readRepoFile('scripts/verify-whisper-sidecar.sh');
 
     expect(verifyScript).toContain('otool -L');
+    expect(verifyScript).toContain('nm -u');
+    expect(verifyScript).toContain('cblas_');
     expect(verifyScript).toContain('libwhisper');
     expect(verifyScript).toContain('libggml');
+    expect(verifyScript).toContain('expected 13.0');
   });
 
   it('ignores the build output and release directories', () => {
@@ -48,13 +53,19 @@ describe('packaging configuration', () => {
     expect(packageJson.directories).toBeUndefined();
     expect(packageJson.dependencies.electron).toBeUndefined();
     expect(packageJson.devDependencies.electron).toBe('43.1.0');
-    expect(packageJson.scripts.dist).toBeUndefined();
+    expect(packageJson.version).toBe('0.1.0-beta.1');
+    expect(packageJson.license).toBe('GPL-3.0-only');
     expect(packageJson.scripts['build:whisper']).toBe('bash scripts/build-whisper-sidecar.sh');
     expect(packageJson.scripts['verify:whisper']).toBe(
       'bash scripts/verify-whisper-sidecar.sh build/whisper/darwin-arm64/whisper-cli',
     );
     expect(packageJson.devDependencies['@electron-forge/cli']).toBeUndefined();
     expect(builderYaml).toContain('output: release');
+    expect(builderYaml).toContain('artifactName: CounterNote-${version}-${arch}.${ext}');
+    expect(builderYaml).toContain("minimumSystemVersion: '13.0'");
+    expect(builderYaml).toContain('publish: null');
+    expect(builderYaml).toContain('target: dmg');
+    expect(builderYaml).toContain('arch: arm64');
     expect(builderYaml).toContain('from: build/whisper/darwin-arm64/whisper-cli');
     expect(builderYaml).toContain('to: whisper/bin/whisper-cli');
     expect(builderYaml).toContain('NSMicrophoneUsageDescription:');
@@ -62,13 +73,27 @@ describe('packaging configuration', () => {
     expect(builderYaml).not.toMatch(/^linux:/m);
   });
 
+  it('cleans production output and excludes build-only artifacts from app.asar', () => {
+    const packageJson = JSON.parse(readRepoFile('package.json'));
+    const builderYaml = readRepoFile('electron-builder.yml');
+
+    expect(packageJson.scripts.build).toBe('npm run clean && webpack --mode production');
+    expect(builderYaml).toContain('!dist/**/*.d.ts');
+    expect(builderYaml).toContain('!dist/**/*.d.ts.map');
+    expect(builderYaml).toContain('!dist/**/*.map');
+    expect(builderYaml).toContain('!dist/**/__tests__/**');
+    expect(builderYaml).toContain('!node_modules/**/*');
+  });
+
   it('orchestrates packaged verification and smoke without development overrides', () => {
     const packageJson = JSON.parse(readRepoFile('package.json'));
     const packagedSmoke = readRepoFile('e2e/packaged-smoke.spec.ts');
+    const developmentPlaywrightConfig = readRepoFile('playwright.config.ts');
 
     expect(packageJson.scripts['test:packaged']).toBe(
       'playwright test --config playwright.packaged.config.ts',
     );
+    expect(developmentPlaywrightConfig).toContain("testIgnore: 'packaged-smoke.spec.ts'");
 
     const checkPack = packageJson.scripts['check:pack'];
     expect(checkPack).toContain(
@@ -77,6 +102,7 @@ describe('packaging configuration', () => {
     expect(checkPack.indexOf('verify-whisper-sidecar.sh')).toBeLessThan(
       checkPack.indexOf('npm run test:packaged'),
     );
+    expect(checkPack).toContain('npm run verify:release-artifact');
 
     expect(packagedSmoke).toContain('delete env.COUNTERNOTE_E2E;');
     expect(packagedSmoke).toContain('delete env.COUNTERNOTE_WHISPER_CLI;');
@@ -141,6 +167,22 @@ describe('packaging configuration', () => {
     expect(builderYaml).toContain('to: audio-capture/bin/counternote-audio-capture');
   });
 
+  it('ships project and third-party license notices outside app.asar', () => {
+    const builderYaml = readRepoFile('electron-builder.yml');
+    const notices = readRepoFile('THIRD_PARTY_NOTICES.md');
+
+    expect(builderYaml).toContain('from: LICENSE');
+    expect(builderYaml).toContain('to: LICENSE.txt');
+    expect(builderYaml).toContain('from: node_modules/electron/dist/LICENSE');
+    expect(builderYaml).toContain('to: LICENSE.electron.txt');
+    expect(builderYaml).toContain('from: node_modules/electron/dist/LICENSES.chromium.html');
+    expect(builderYaml).toContain('from: THIRD_PARTY_NOTICES.md');
+    expect(builderYaml).toContain('to: THIRD_PARTY_NOTICES.md');
+    expect(notices).toContain('Electron 43.1.0');
+    expect(notices).toContain('whisper.cpp');
+    expect(notices).toContain('Whisper large-v3-turbo-q5_0 model');
+  });
+
   it('adds build:capture and verify:capture scripts', () => {
     const packageJson = JSON.parse(readRepoFile('package.json'));
 
@@ -150,6 +192,7 @@ describe('packaging configuration', () => {
     expect(packageJson.scripts['verify:capture']).toBe(
       'bash scripts/verify-audio-capture-sidecar.sh build/audio-capture/darwin-arm64/counternote-audio-capture',
     );
+    expect(readRepoFile('scripts/verify-audio-capture-sidecar.sh')).toContain('expected 13.0');
   });
 
   it('adds verify:capture:release script that invokes signing verifier', () => {
@@ -168,13 +211,36 @@ describe('packaging configuration', () => {
     expect(builderYaml).not.toMatch(/identity:\s*null/);
   });
 
-  it('sets CSC_IDENTITY_AUTO_DISCOVERY=false only in the local pack script', () => {
+  it('builds the unsigned Apple Silicon beta as a DMG', () => {
     const packageJson = JSON.parse(readRepoFile('package.json'));
 
     const packScript = packageJson.scripts['pack'];
     expect(packScript).toContain('CSC_IDENTITY_AUTO_DISCOVERY=false');
+    expect(packScript).toContain('electron-builder --mac dmg --arm64');
+    expect(packageJson.scripts['pack:release']).toBeUndefined();
+  });
 
-    const packReleaseScript = packageJson.scripts['pack:release'];
-    expect(packReleaseScript).not.toContain('CSC_IDENTITY_AUTO_DISCOVERY=false');
+  it('verifies release identity, platform, package contents, and license files', () => {
+    const packageJson = JSON.parse(readRepoFile('package.json'));
+    const verifyScript = readRepoFile('scripts/verify-release-artifact.sh');
+
+    expect(packageJson.scripts['verify:release-artifact']).toContain(
+      'CounterNote-0.1.0-beta.1-arm64.dmg',
+    );
+    expect(verifyScript).toContain('CFBundleShortVersionString');
+    expect(verifyScript).toContain('LSMinimumSystemVersion');
+    expect(verifyScript).toContain('Mach-O 64-bit executable arm64');
+    expect(verifyScript).toContain('THIRD_PARTY_NOTICES.md');
+    expect(verifyScript).toContain('LICENSES.chromium.html');
+    expect(verifyScript).toContain('app-update.yml');
+    expect(verifyScript).toContain('Groq integration');
+  });
+
+  it('does not reference FFmpeg in production dependencies or Jest configuration', () => {
+    const packageJson = JSON.parse(readRepoFile('package.json'));
+    const jestConfig = readRepoFile('jest.config.js');
+
+    expect(packageJson.dependencies['ffmpeg-static']).toBeUndefined();
+    expect(jestConfig).not.toContain('ffmpeg-static');
   });
 });

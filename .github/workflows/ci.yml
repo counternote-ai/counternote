@@ -9,6 +9,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test:
     # macOS is required: the unit suite builds the Swift audio-capture helper.
@@ -23,7 +26,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: npm run notices:check
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm test
       - run: npm run build
+      - run: npm run verify:production

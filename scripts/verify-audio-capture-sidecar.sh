@@ -52,13 +52,13 @@ if [[ "$FILE_INFO" != *'arm64'* ]]; then
   exit 1
 fi
 
-# Check minimum macOS 13 load command
-if otool -l "$HELPER_PATH" | grep -A5 'LC_BUILD_VERSION' | grep -q 'minos.*1[3-9]\.'; then
-  : # minos 13+ found
-elif otool -l "$HELPER_PATH" | grep -A5 'LC_BUILD_VERSION' | grep -q 'minos.*[2-9][0-9]\.'; then
-  : # minos 20+ found
-else
-  echo "ERROR: '${HELPER_PATH}' does not have a minimum macOS 13 load command" >&2
+MINIMUM_SYSTEM_VERSION="$(otool -l "$HELPER_PATH" | awk '
+  /LC_BUILD_VERSION/ { in_build_version = 1; next }
+  in_build_version && $1 == "minos" { print $2; exit }
+')"
+
+if [[ "$MINIMUM_SYSTEM_VERSION" != '13.0' ]]; then
+  echo "ERROR: '${HELPER_PATH}' targets macOS ${MINIMUM_SYSTEM_VERSION:-unknown}; expected 13.0" >&2
   exit 1
 fi
 
