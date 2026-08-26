@@ -9,7 +9,7 @@ Use calm, direct, literal language. Write for someone who needs a dependable rec
 - Use sentence case in controls and headings.
 - Avoid hype, cuteness, blame, and anthropomorphic claims.
 - Do not claim “AI speaker detection” or “diarization”; labels come from audio channels.
-- Do not say data is private or local without stating the Groq transcription boundary.
+- State local processing literally; distinguish the speech-model download from recording and transcript data.
 
 ## Canonical product language
 
@@ -18,13 +18,12 @@ Use calm, direct, literal language. Write for someone who needs a dependable rec
 - Generated text: `transcript`
 - Remote/system channel: `Meeting audio`
 - Microphone channel: `You`
-- Provider: `Groq`
 
 ## Status language
 
 - `Ready` — transcript exists and can be opened.
 - `Needs transcript` — audio is saved but no transcript exists.
-- `Transcribing` — cloud transcription is active.
+- `Transcribing` — local transcription is active.
 - `Recording` — audio capture is active.
 
 Do not use success language until the underlying operation has completed.
@@ -34,7 +33,7 @@ Do not use success language until the underlying operation has completed.
 An error should state what failed, what was preserved, and the next useful action when known.
 
 - Weak: `Something went wrong.`
-- Better: `Transcription failed. Your recording is still saved. Check your Groq API key and try again.`
+- Better: `Local transcription failed. Your recording is still saved. Try again.`
 - Weak: `Permission error.`
 - Better: `Microphone access is off. Allow CounterNote in System Settings, then start recording again.`
 

@@ -20,9 +20,8 @@
 
 - Explain which permission is required and where the user can recover after denial.
 - Never imply the app can bypass macOS permission controls.
-- State the data boundary literally: audio stays on the Mac until transcription; transcription sends audio to Groq.
+- State the data boundary literally: recording audio and transcript text stay on the Mac; the speech model is downloaded separately.
 - Transcription begins only from the explicit `Transcribe audio` action; documentation and copy must describe that upload boundary.
-- API keys are sensitive. Mask them, never echo them in errors, and preserve safe-storage behavior.
 
 ## Content extremes
 

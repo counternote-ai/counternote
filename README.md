@@ -1,80 +1,72 @@
 # CounterNote
 
-CounterNote is a private, local-first meeting companion for macOS. It records system audio and your microphone, transcribes locally with Whisper or through Groq when selected, and presents timestamped channel-labeled transcripts for review.
+**Your side of the conversation.**
 
-## Features
+CounterNote is a local-first macOS meeting recorder and transcription app. It captures meeting audio and your microphone as separate channels, creates a timestamped transcript with Local Whisper, and keeps the supported workflow on your Mac.
 
-- Separate system-audio and microphone capture
-- Menu-bar recording controls and a local recordings library
-- Local Whisper transcription by default, with optional Groq transcription
-- Channel-based Meeting audio and You labels
-- Timestamped transcript review
-- Plain-text transcript export
+> CounterNote is beta software. The first public build is unsigned and unnotarized, supports Apple Silicon only, and may contain bugs. Keep a backup of important recordings.
 
-## Requirements
+## Download
 
+Download the latest beta from [GitHub Releases](https://github.com/counternote-ai/counternote/releases). The first release is `v0.1.0-beta.1`:
+
+`CounterNote-0.1.0-beta.1-arm64.dmg`
+
+Requirements:
+
+- Apple Silicon Mac
 - macOS 13 or newer
-- Node.js 22.12 or newer
-- An Apple Silicon Mac for Local Whisper
-- A [Groq API key](https://console.groq.com) only when using Groq
+- About 547 MB of additional disk space for the Local Whisper model
 
-## Local setup
+## Install the unsigned beta
 
-```bash
-npm ci
-npm run build:whisper
-npm run build
-npm start
-```
+1. Download and open the DMG.
+2. Drag CounterNote to Applications.
+3. Try to open CounterNote from Applications.
+4. If macOS blocks it, open **System Settings → Privacy & Security**, find the CounterNote message, then select **Open Anyway**.
+5. Return to Applications and open CounterNote again.
 
-Open **Settings** and download the Local Whisper model. To use Groq instead,
-select Groq, enter your API key, then select **Save settings**.
+This beta is not notarized. Only download it from this repository's GitHub Releases page and compare its SHA-256 checksum with the release notes.
 
-## Use CounterNote
+## Record and transcribe
 
-1. Select **Record** and allow Screen Recording and Microphone access when macOS asks.
-2. Select **Stop** when the conversation ends. The recording appears in Recordings.
-3. Select **Transcribe audio** on a saved recording to create its transcript.
-4. Select a transcribed recording to review timestamped segments, then select **Export transcript** to write a plain-text export beside the recording.
-5. Use **Show in Finder** after export, or **Show recording files** at any time, to open the recording's local files.
+1. Open CounterNote and select **Record**.
+2. Allow Screen Recording and Microphone access when macOS asks. Restart CounterNote if macOS requests it.
+3. Select **Stop** when the meeting ends. The finalized recording appears in Recordings.
+4. Open **Settings** and download the Local Whisper model the first time you use transcription.
+5. Select **Transcribe audio** on a saved recording.
+6. Open the completed transcript to review or export it.
 
-Local Whisper keeps prepared audio on your Mac. Audio is sent to Groq only when
-you explicitly select Groq as the provider and then select **Transcribe audio**.
+`Meeting audio` and `You` identify the two recorded audio channels. They are not inferred speaker identities or diarization.
 
-## Local data
+## Local data and privacy
 
-```text
-~/CounterNote/
-├── recordings/
-│   └── <timestamp>/
-│       ├── audio.wav
-│       ├── transcript.json       # Created after transcription
-│       └── transcript.txt        # Created after export
-├── config.json                   # Non-secret settings
-└── secrets.enc                   # Encrypted Groq API key
-```
+Recordings and transcripts remain on your Mac in `~/CounterNote/recordings`. Local Whisper runs on the Mac; CounterNote does not upload recording audio or transcript text. Downloading the speech model requires an internet connection.
 
-## Documentation
+See [Privacy](PRIVACY.md) for the exact data flow and storage locations.
 
+## Recording consent
+
+You are responsible for following applicable recording and consent laws, workplace rules, and meeting policies. CounterNote does not provide legal advice.
+
+## Known limitations
+
+- Apple Silicon only; Intel Macs are not supported.
+- macOS 13 or newer is required.
+- The beta is unsigned and unnotarized.
+- Transcription is post-recording and local only.
+- The Local Whisper model is a separate first-use download.
+- There is no automatic update mechanism yet.
+
+## Build from source
+
+Development requires Node.js 22.12+, npm, Xcode 15+, CMake, and an Apple Silicon Mac. Start with [Development](docs/development.md) and [Contributing](CONTRIBUTING.md).
+
+## Help and security
+
+- [Support and issue reporting](SUPPORT.md)
+- [Security policy](SECURITY.md)
 - [Architecture](docs/architecture.md)
-- [Development](docs/development.md)
-- [Privacy and local data](docs/privacy.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security](SECURITY.md)
-- [License](LICENSE)
+- [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-## Troubleshooting
-
-### Recording permissions
-
-If recording is blocked, use **Open System Settings** on the recordings screen to grant Screen Recording or Microphone access, then restart the app if macOS requests it.
-
-### Worklet build error
-
-If the app cannot load the audio worklet, run `npm run build` before `npm start`.
-
-### Missing Groq API key
-
-If Groq is selected, open **Settings**, add a Groq API key, and select
-**Save settings** before selecting **Transcribe audio**. Local Whisper does not
-require a Groq API key.
+CounterNote is licensed under [GNU GPLv3 only](LICENSE).

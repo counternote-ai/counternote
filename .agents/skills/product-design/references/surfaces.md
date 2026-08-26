@@ -31,12 +31,12 @@ Reachable states: populated transcript, empty segments, long title, long segment
 **Job:** configure transcription deliberately and understand data handling.
 
 - Keep Back and the screen title in a simple toolbar.
-- Group API key and model settings in a transcription card.
+- Keep Local Whisper model status and download/retry in one transcription card.
 - Keep the privacy explanation calm and precise; it is not an error alert.
 - Keep Save at the bottom as the main commitment action.
 - Preserve entered values through validation or save failure.
 
-Reachable states: loading saved config, empty API key, valid input, save in progress, validation failure, save failure, saved.
+Reachable states: model status loading, not downloaded, downloading, ready, invalid, unavailable, and download failure/retry.
 
 ## Tray and system prompts
 

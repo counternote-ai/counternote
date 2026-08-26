@@ -1,60 +1,29 @@
 # Security Policy
 
-## Reporting a vulnerability
+## Supported version
 
-CounterNote is not yet publicly released, and a private security-reporting address has not been published.
+Security fixes currently target the latest public CounterNote beta.
 
-Do not include sensitive vulnerability details in a public issue. The maintainer will add a private reporting email here before public release.
+## Report a vulnerability privately
 
-## Security measures
+Use GitHub's private vulnerability reporting for this repository:
 
-For the detailed local-data and upload boundary, see [Privacy and Local Data](docs/privacy.md).
+[Report a vulnerability](https://github.com/counternote-ai/counternote/security/advisories/new)
 
-### Data storage
+Do not include vulnerability details, recordings, transcripts, credentials, or personal data in a public issue. If private vulnerability reporting is not yet enabled, open a public issue containing only the request for a private contact channel; this is a release-setup action the maintainer must complete before publication.
 
-- The Groq API key is encrypted with Electron `safeStorage`.
-- Audio recordings, transcripts, and text exports are stored locally under `~/CounterNote`.
-- Non-secret settings are stored locally in `~/CounterNote/config.json`.
+## Security and privacy boundaries
 
-### Network communication
+- Local transcription does not upload recording audio or transcript text.
+- The Local Whisper model is downloaded from a pinned URL and verified by size and SHA-256.
+- Recordings, transcripts, exports, configuration, and diagnostics are stored locally.
+- CounterNote has no telemetry or analytics.
+- Electron context isolation is enabled and renderer Node integration is disabled.
+- The preload bridge exposes narrow IPC operations rather than raw filesystem or Electron APIs.
+- macOS Screen Recording and Microphone permissions are required for capture.
 
-- Audio is sent to Groq only when the user selects Groq as the transcription
-  provider and then explicitly selects **Transcribe audio**. Local Whisper keeps
-  prepared audio on the Mac.
-- Groq API requests use HTTPS.
-- CounterNote does not include telemetry or analytics.
+See [PRIVACY.md](PRIVACY.md) for the complete data boundary.
 
-### Electron security
+## Beta distribution
 
-- Context isolation is enabled.
-- Renderer Node integration is disabled.
-- IPC communication is exposed through the preload bridge.
-- The app does not use Electron's remote module.
-
-### Permissions
-
-The app uses macOS Screen Recording access for system audio and Microphone access for the user's microphone. These permissions support recording and can be reopened from the recordings screen when macOS reports that access is blocked.
-
-## User guidance
-
-- Keep your Groq API key private.
-- Review transcripts before sharing them.
-- Delete recordings you no longer need.
-
-## Developer guidance
-
-- Do not commit API keys or other secrets.
-- Use Electron `safeStorage` for sensitive values.
-- Keep dependencies updated and apply least-privilege design.
-
-## Security auditing
-
-Run dependency audits regularly:
-
-```bash
-npm audit
-```
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
+The first beta is unsigned and unnotarized. Download it only from this repository's GitHub Releases page and verify the SHA-256 checksum published with the release.

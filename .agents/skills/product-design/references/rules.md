@@ -50,11 +50,11 @@ Rules here are accepted standards. Proposals remain in `coverage-gaps.md` until 
 ## `rule/privacy-names-boundary`
 
 - **Scope:** settings, transcription, onboarding, and errors involving data transfer.
-- **Rule:** State that audio remains local until transcription and is sent to Groq when transcription runs.
+- **Rule:** State that recording audio and transcript text remain on the Mac; identify the separate speech-model download when network use matters.
 - **Rationale:** users need an accurate data boundary to make an informed choice.
 - **Source:** product privacy model and accepted settings design.
 - **Bad:** `Your interviews stay private.`
-- **Good:** `Audio stays local until transcription runs. When transcription starts, audio is sent to Groq for processing.`
+- **Good:** `Transcription runs on this Mac. Audio is not uploaded.`
 
 ## Adding a rule
 

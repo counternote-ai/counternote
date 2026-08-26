@@ -118,7 +118,7 @@ npm run check:pack
 
 ## Packaging
 
-Build and verify both sidecars, then create and check an unsigned local package:
+Build and verify both sidecars, then create and check the unsigned Apple Silicon beta DMG:
 
 ```bash
 npm run build:capture
@@ -128,8 +128,9 @@ npm run verify:whisper
 npm run check:pack
 ```
 
-`check:pack` creates an unsigned local arm64 app, verifies the nested sidecars,
-and runs the packaged smoke test. It is not a signed or notarized release package.
+`check:pack` creates `release/CounterNote-0.1.0-beta.1-arm64.dmg`, verifies the
+nested sidecars, and runs the packaged smoke test. It is not Developer ID signed
+or notarized.
 
 ## Permissions
 

@@ -4,7 +4,7 @@
 
 - **Primary user:** someone conducting and reviewing an important remote conversation.
 - **Primary job:** reliably capture both sides of a meeting, turn the recording into a readable transcript, and revisit what was said.
-- **Trust model:** local-first capture with explicit cloud transcription through Groq.
+- **Trust model:** local capture and Local Whisper transcription; recording audio and transcript text stay on the Mac.
 - **Core objects:** recording, transcript, transcript segment, speaker, transcription configuration.
 - **Current surfaces:** recordings home, transcript reader, settings, tray/menu-bar entry points, and system permission prompts.
 - **Hard platform constraint:** starting system-audio capture requires a visible, focused user gesture. Do not imply that a tray or background action can silently begin recording.
@@ -14,7 +14,7 @@
 1. **Capture must feel dependable.** Recording state and stop access outrank visual novelty.
 2. **Review is the destination.** Optimize completed transcripts for calm reading and scanning.
 3. **System truth must remain visible.** Distinguish recording, saved audio, transcribing, ready transcript, and failure.
-4. **Privacy claims must be literal.** Audio is local until transcription runs; transcription sends audio to Groq.
+4. **Privacy claims must be literal.** Recording audio and transcript text remain on the Mac; only the pinned speech-model download uses the network.
 5. **Speaker labels describe channels, not identity inference.** “Meeting audio” is system audio and “You” is microphone audio; do not present it as true diarization.
 6. **Keep the utility lightweight.** Prefer strong defaults and direct actions over dashboard complexity or settings proliferation.
 7. **Preserve recovery.** A failed transcription must not imply that the underlying recording is lost.

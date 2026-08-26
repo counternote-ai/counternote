@@ -49,4 +49,4 @@ For bugs, include reproduction steps, expected and actual behavior, and your mac
 
 ## License
 
-Contributions are licensed under the [MIT License](LICENSE).
+Contributions are licensed under [GNU GPLv3 only](LICENSE).

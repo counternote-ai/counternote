@@ -1,52 +1,41 @@
 # Architecture
 
-CounterNote is a macOS Electron menu-bar app with an isolated React renderer.
+CounterNote is a macOS Electron menu-bar app with an isolated React renderer and two local native sidecars.
 
 ## Process boundaries
 
-- The renderer owns user interaction and command/status presentation.
+- The renderer owns user interaction and status presentation.
 - The preload script exposes the narrow `window.electronAPI` bridge.
-- The main process owns application lifecycle, the tray, IPC handlers, native capture supervision, WAV persistence, local configuration, transcription orchestration, and exports.
-- The Swift audio capture helper owns real-time audio capture, host-clock framing, and protocol encoding.
-- `contextIsolation` is enabled and renderer `nodeIntegration` is disabled.
+- The main process owns app lifecycle, tray, IPC validation, capture supervision, WAV persistence, local transcription orchestration, and exports.
+- The Swift audio-capture helper owns real-time system and microphone capture, timestamp framing, and protocol encoding.
+- The `whisper-cli` sidecar owns local speech inference.
+- Electron context isolation is enabled and renderer Node integration is disabled.
 
 ## Recording flow
 
 1. The visible Record action checks macOS Screen Recording and Microphone permissions.
-2. The main process spawns the Swift audio capture helper with inherited pipes and a minimal sanitized environment.
-3. The helper captures system audio and microphone audio using CoreAudio, frames PCM with host-clock timestamps, and writes binary protocol frames to stdout.
-4. The main process decodes protocol frames, mixes channels, detects gaps and interruptions, and persists `audio.wav` through the native WAV writer.
-5. Stop closes capture, finalizes the WAV header, and refreshes the recordings library.
+2. The main process spawns the Swift helper with inherited pipes and a sanitized environment.
+3. The helper captures both channels and writes framed PCM to stdout.
+4. The main process decodes frames, tracks gaps and interruptions, and writes a stereo 16 kHz, 16-bit PCM WAV.
+5. Stop finalizes the WAV and refreshes the recordings library.
 
 ## Transcription flow
 
-1. The user selects Transcribe audio for a saved recording.
-2. The main process splits the stereo WAV into system and microphone channels.
-3. Local Whisper verifies or downloads its model, then processes each audible
-   channel sequentially with one CPU-only `whisper-cli` process on the Mac.
-   Groq uploads prepared audio only when the user explicitly selects Groq as
-   the provider.
-4. Returned segments are labeled Meeting audio for system audio and You for microphone audio.
-5. Segments are merged by timestamp and saved as `transcript.json`; failures keep
-   the original recording intact.
+1. The user selects **Transcribe audio** for a saved recording.
+2. The main process streams the stereo WAV into temporary mono system and microphone WAV files without FFmpeg or another media subprocess.
+3. Local silence analysis identifies audible intervals.
+4. The pinned Local Whisper sidecar processes audible intervals sequentially on the Mac.
+5. Returned segments are labeled `Meeting audio` and `You`, sorted by timestamp, and atomically saved as `transcript.json`.
+6. Temporary channel and partial transcript files are removed; failures preserve the original recording and any previously published transcript.
 
-The labels describe audio channels; they are not inferred speaker identities or diarization.
+The labels describe audio channels, not inferred human identities or diarization. The public beta has no cloud-transcription production path. Dormant cloud-provider source is not imported by the production entry point or included in the packaged application.
 
-The sidecar is a child-process executable owned by the main process. It is
-not renderer code, a local HTTP service, or a Node native addon. Packaging
-distributes it through two gates: an unsigned local package verifies the static
-binary with `file`, `--help`, and `otool -L`; a release package adds nested code
-signing, a hardened runtime, and Apple notarization once credentials are
-configured.
+## Packaging
+
+The release is an Apple Silicon DMG targeting macOS 13. The app bundle contains the three webpack runtime bundles, the Swift capture helper, and a pinned statically built `whisper-cli`. Tests, declarations, source maps, and build tooling are excluded from `app.asar`.
+
+The beta is unsigned and unnotarized. Developer ID signing, notarization, automatic updates, and Intel builds are intentionally out of scope.
 
 ## Local storage
 
-The current library is stored under `~/CounterNote/recordings`. Each timestamped directory contains `audio.wav`, optional `transcript.json`, and optional `transcript.txt`.
-
-`~/CounterNote/config.json` stores non-secret settings. `~/CounterNote/secrets.enc` stores the Groq API key encrypted through Electron `safeStorage`.
-
-Local Whisper models live under `app.getPath('userData')/models`, separate from
-recordings. Changing or moving the recordings root does not automatically move
-the model cache.
-
-The configured `outputDir` is reserved for the recordings-library migration work and is not yet user-selectable.
+The recordings library is under `~/CounterNote/recordings`. The Local Whisper model is under Electron's CounterNote user-data directory. See [privacy.md](privacy.md) for the exact data boundary.

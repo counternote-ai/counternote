@@ -1,55 +1,31 @@
 # Changelog
 
-All notable changes to CounterNote will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [1.0.0] - 2026-07-08
-
-### Added
-
-- Dual-channel audio capture (system audio + microphone)
-- Menu bar tray with dynamic context menu
-- Control panel UI with recording list
-- Transcript view with timestamps and speaker labels
-- Settings panel with Groq API key configuration
-- Post-interview transcription via Groq Whisper API
-- Channel-based speaker labeling ("Meeting audio" / "You")
-- Export transcripts as plain text
-- WAV recording at 16kHz sample rate
-- Automatic FLAC conversion for transcription uploads
-- Secure API key storage via macOS Keychain
-- Unit tests for core modules
-- Comprehensive documentation
-
-### Technical
-
-- Electron + TypeScript + React architecture
-- Web Audio API with AudioWorkletNode for PCM capture
-- ChannelMergerNode for proper dual-channel routing
-- ffmpeg-static for audio processing
-- webpack for bundling (separate entries for main, renderer, preload, worklet)
+All notable CounterNote changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
+## [0.1.0-beta.1] - 2026-08-26
 
-- Standardized the supported development runtime on Node.js 22.
-- Reorganized repository documentation around current architecture, development, and privacy guidance.
-- Removed the nonfunctional auto-transcribe setting; transcription remains explicitly user initiated.
+### Added
 
-### Removed
+- First public macOS beta for Apple Silicon and macOS 13+
+- Separate meeting-audio and microphone capture
+- Local Whisper transcription with timestamped channel labels
+- Local recordings library, transcript review, and plain-text export
+- Recovery handling for interrupted recordings
 
-- Removed generated agent execution artifacts and an unrelated workflow proposal from version control.
+### Security and privacy
 
-### Planned
+- Local-only audio processing and transcription
+- No telemetry or analytics
+- Narrow Electron preload bridge with context isolation
 
-- Real-time transcription display
-- Speaker diarization for multiple speakers
-- Search across transcripts
-- Export to SRT, PDF, Markdown
-- AI-powered interview feedback
-- Browser extension for Meet/Zoom/Teams
-- Interview prep mode with question generation
-- Analytics (talk time ratio, filler words, pacing)
+### Known limitations
+
+- Unsigned and unnotarized distribution
+- Apple Silicon only
+- No automatic updates
+- Local speech model requires a separate first-use download
+
+[Unreleased]: https://github.com/counternote-ai/counternote/compare/v0.1.0-beta.1...HEAD
+[0.1.0-beta.1]: https://github.com/counternote-ai/counternote/releases/tag/v0.1.0-beta.1

@@ -1,66 +1,41 @@
 # Privacy and Local Data
 
-## What stays on the Mac
+This document describes the implementation-level data flow for CounterNote `v0.1.0-beta.1`. The public summary is [PRIVACY.md](../PRIVACY.md).
 
-- Raw recordings
-- Generated transcripts and text exports
-- Non-secret configuration
-- The encrypted Groq API key
-- Local Whisper model files cached under Electron `app.getPath('userData')`
+## Local storage
 
-Local sidecar lifecycle and failure diagnostics may be written to the terminal.
-Transcript stdout is never logged. Stderr diagnostics are shape-validated
-(known level, kebab-case code), rate-limited, and never carry transcript-shaped
-lines, secrets, or absolute paths; they are also persisted locally under the
-recordings root's `.diagnostics/` directory (see below).
+- `~/CounterNote/recordings/<recording-id>/audio.wav` stores finalized stereo PCM audio.
+- `transcript.json` and exported `transcript.txt` are stored beside the recording.
+- In-progress and recovery artifacts remain under the recordings root until finalized, recovered, or removed by the user.
+- Capture diagnostics are stored under `~/CounterNote/recordings/.diagnostics/`.
+- The Local Whisper model is cached under Electron's `app.getPath('userData')/models` directory.
+- `~/CounterNote/config.json` may store the recordings directory. Legacy cloud-provider fields are ignored.
 
-CounterNote does not include telemetry or analytics.
+An obsolete encrypted `~/CounterNote/secrets.enc` file may remain from a private development build. The beta does not read, decrypt, or transmit it.
 
-## Audio capture helper
+## Capture process
 
-The Swift audio capture helper receives local audio only. It captures system
-audio and microphone audio using CoreAudio, frames PCM with host-clock timestamps,
-and writes binary protocol frames to inherited pipes (stdout). The helper has no
-network access and receives a minimal sanitized environment that never includes
-parent credentials, paths, Node options, or dynamic-loader overrides.
+The bundled Swift helper receives local system and microphone audio through macOS APIs. It frames PCM with host-clock timestamps and writes protocol frames to inherited local pipes. The helper receives a minimal sanitized environment and has no network feature.
 
-The helper never receives recording paths, transcript text, or credentials. It
-writes framed PCM to stdout; the main process owns all file persistence.
+The main Electron process owns WAV persistence. In-progress recordings use `.in-progress`; clean finalization publishes `audio.wav` atomically. Interrupted data uses a `.recovery` artifact so a failed capture does not appear as a completed recording.
 
-## Recording artifacts
+## Transcription process
 
-In-progress recordings use a `.in-progress` extension and are renamed to `.wav`
-on clean finalization. Interrupted recordings use a `.recovery` extension and are
-available for user-controlled recovery or Trash disposal.
+1. The user explicitly selects **Transcribe audio**.
+2. The main process streams the stereo 16 kHz, 16-bit PCM WAV and creates two temporary mono WAV channel files using Node file APIs.
+3. Silence analysis reads PCM samples locally.
+4. The bundled `whisper-cli` sidecar processes audible intervals sequentially on the Mac.
+5. The main process merges channel-labeled segments and atomically publishes `transcript.json`.
+6. Temporary channel and partial transcript files are removed. The original `audio.wav` survives every transcription failure.
 
-Capture diagnostics are written to a local `.diagnostics/` directory inside the
-recordings root as JSONL files: capture lifecycle events (spawn, ready, stop,
-finalize) and allow-listed helper diagnostics (source failures, restart
-attempts, outcomes). They contain no audio, no transcript text, and no
-credentials, and they never leave the Mac.
+No supported transcription path uploads audio or transcript text.
 
-No public recording appears before atomic publication. No failed artifact appears
-in the normal recordings library.
+## Network activity
 
-## When audio leaves the Mac
+When the user selects **Download model**, CounterNote downloads the pinned `ggml-large-v3-turbo-q5_0.bin` model from the `ggerganov/whisper.cpp` Hugging Face repository. CounterNote verifies the expected byte size and SHA-256 digest before publishing the model locally.
 
-Local Whisper keeps recording and prepared audio on the Mac. It runs the bundled
-`whisper-cli` sidecar locally; it is not renderer code or a native Node addon.
+CounterNote contains no telemetry or analytics.
 
-Groq receives prepared system and microphone audio only when the user explicitly
-selects Groq as the transcription provider and starts transcription. Groq's own
-data handling is governed by the user's relationship with Groq.
+## Diagnostics
 
-The original `audio.wav` recording survives every transcription failure. Temporary
-prepared-audio and partial-transcript artifacts are cleaned up separately.
-
-## Credentials
-
-The Groq API key is encrypted with Electron `safeStorage`. On macOS, `safeStorage` uses operating-system-backed encryption. The encrypted value is stored in `~/CounterNote/secrets.enc`.
-
-## Permissions
-
-CounterNote uses macOS Screen Recording access for system audio capture and
-Microphone access for the user's microphone. These permissions are attributed to
-the audio capture helper binary. Permission recovery is available from the
-recordings screen when macOS reports a blocked permission.
+Local capture and sidecar diagnostics are shape-validated, rate-limited, and written locally. They exclude audio, transcript text, credentials, absolute paths, and unstructured sidecar stdout.
