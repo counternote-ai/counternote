@@ -209,6 +209,7 @@ function blockedPermissions() {
 }
 
 const mockElectronAPI = {
+  requestRecordingPermissions: jest.fn(),
   getRecordingPermissions: jest.fn(),
   openRecordingPermissionSettings: jest.fn(),
   listRecordings: jest.fn(),
@@ -241,6 +242,10 @@ beforeEach(() => {
   mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
   mockElectronAPI.getRecordingPermissions.mockResolvedValue({
+    success: true,
+    permissions: grantedPermissions(),
+  });
+  mockElectronAPI.requestRecordingPermissions.mockResolvedValue({
     success: true,
     permissions: grantedPermissions(),
   });
@@ -289,7 +294,7 @@ afterEach(() => {
 });
 
 describe('recording permission lifecycle', () => {
-  it('refreshes on startup and focus without opening System Settings', async () => {
+  it('requests once on startup and only refreshes on focus', async () => {
     renderApp();
     const permissionEffect = mockEffects[1];
     permissionEffect();
@@ -298,8 +303,35 @@ describe('recording permission lifecycle', () => {
     mockEventListeners.get('focus')?.();
     await Promise.resolve();
 
-    expect(mockElectronAPI.getRecordingPermissions).toHaveBeenCalledTimes(2);
+    expect(mockElectronAPI.requestRecordingPermissions).toHaveBeenCalledTimes(1);
+    expect(mockElectronAPI.getRecordingPermissions).toHaveBeenCalledTimes(1);
     expect(mockElectronAPI.openRecordingPermissionSettings).not.toHaveBeenCalled();
+  });
+
+  it('waits for the startup permission request before attempting Record', async () => {
+    let finishRequest: ((result: unknown) => void) | undefined;
+    mockElectronAPI.requestRecordingPermissions.mockReturnValue(
+      new Promise((resolve) => {
+        finishRequest = resolve;
+      }),
+    );
+
+    renderApp();
+    mockEffects[1]();
+    const startPromise = getControlPanelProps().onStartRecording();
+    await Promise.resolve();
+
+    expect(mockElectronAPI.getRecordingPermissions).not.toHaveBeenCalled();
+    expect(mockElectronAPI.recordingStart).not.toHaveBeenCalled();
+
+    mockElectronAPI.getRecordingPermissions.mockResolvedValue({
+      success: true,
+      permissions: blockedPermissions(),
+    });
+    finishRequest?.({ success: true, permissions: blockedPermissions() });
+    await startPromise;
+
+    expect(mockElectronAPI.recordingStart).not.toHaveBeenCalled();
   });
 
   it('refreshes before Record, blocks capture, and keeps the recordings library available after dismissal', async () => {
@@ -311,15 +343,21 @@ describe('recording permission lifecycle', () => {
       success: true,
       permissions: blockedPermissions(),
     });
+    mockElectronAPI.requestRecordingPermissions.mockResolvedValueOnce({
+      success: true,
+      permissions: blockedPermissions(),
+    });
 
     renderApp();
     const recordingsEffect = mockEffects[0];
     recordingsEffect();
+    mockEffects[1]();
     await Promise.resolve();
     await getControlPanelProps().onStartRecording();
     renderApp();
 
     expect(mockElectronAPI.getRecordingPermissions).toHaveBeenCalledTimes(1);
+    expect(mockElectronAPI.requestRecordingPermissions).toHaveBeenCalledTimes(1);
     expect(mockElectronAPI.recordingStart).not.toHaveBeenCalled();
     expect(getControlPanelProps().permissionNotice?.tone).toBe('info');
     expect(getControlPanelProps().permissionEscalated).toBe(true);
@@ -337,15 +375,14 @@ describe('recording permission lifecycle', () => {
   });
 
   it('clears the escalated permission warning once permissions become usable again', async () => {
-    mockElectronAPI.getRecordingPermissions
-      .mockResolvedValueOnce({
-        success: true,
-        permissions: blockedPermissions(),
-      })
-      .mockResolvedValueOnce({
-        success: true,
-        permissions: blockedPermissions(),
-      });
+    mockElectronAPI.requestRecordingPermissions.mockResolvedValueOnce({
+      success: true,
+      permissions: blockedPermissions(),
+    });
+    mockElectronAPI.getRecordingPermissions.mockResolvedValueOnce({
+      success: true,
+      permissions: blockedPermissions(),
+    });
 
     renderApp();
     mockEffects[1]();
@@ -363,7 +400,7 @@ describe('recording permission lifecycle', () => {
   });
 
   it('only opens settings from the explicit recovery action', async () => {
-    mockElectronAPI.getRecordingPermissions.mockResolvedValue({
+    mockElectronAPI.requestRecordingPermissions.mockResolvedValue({
       success: true,
       permissions: blockedPermissions(),
     });
@@ -380,7 +417,7 @@ describe('recording permission lifecycle', () => {
   });
 
   it('uses the inline unknown-permission notice without an additional error banner when the query fails', async () => {
-    mockElectronAPI.getRecordingPermissions.mockResolvedValue({
+    mockElectronAPI.requestRecordingPermissions.mockResolvedValue({
       success: false,
       error: 'raw IPC query failure',
     });

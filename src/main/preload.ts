@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showRecordingFiles: (recordingId: string): Promise<ShowInFinderIpcResult> =>
     ipcRenderer.invoke('show-recording-files', recordingId),
   getRecordingPermissions: () => ipcRenderer.invoke('get-recording-permissions'),
+  requestRecordingPermissions: () => ipcRenderer.invoke('request-recording-permissions'),
   openRecordingPermissionSettings: (permission: RecordingPermission) =>
     ipcRenderer.invoke('open-recording-permission-settings', permission),
   onOpenSettings: (callback: () => void) => ipcRenderer.on('open-settings', callback),

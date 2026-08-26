@@ -135,7 +135,8 @@ notarized.
 
 ## Permissions
 
-The audio capture helper requires macOS Screen Recording access for system audio
-and Microphone access for the user's microphone. These permissions are attributed
-to the helper binary, not the Electron app. Permission recovery is available from
-the recordings screen when macOS reports a blocked permission.
+CounterNote requires macOS Screen Recording access for system audio and
+Microphone access for the user's microphone. On first launch, the visible app
+requests any missing recording permissions once. Permission recovery remains
+available from the recordings screen when macOS reports a blocked permission;
+later focus and Record actions refresh state without repeating the native request.

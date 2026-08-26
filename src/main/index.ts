@@ -11,6 +11,7 @@ import { hasTranscriptSegments, RecordingsLibrary } from './recordings-library';
 import {
   getRecordingPermissionSnapshot,
   openRecordingPermissionSettings,
+  requestRecordingPermissions,
 } from './recording-permissions';
 import { type RecordingPermission } from '../types/recording-permissions';
 import {
@@ -402,6 +403,11 @@ function isRecoveryIdArgs(value: unknown): value is { id: string } {
 ipcMain.handle('get-recording-permissions', () => ({
   success: true,
   permissions: getRecordingPermissionSnapshot(),
+}));
+
+ipcMain.handle('request-recording-permissions', async () => ({
+  success: true,
+  permissions: await requestRecordingPermissions(),
 }));
 
 ipcMain.handle(

@@ -103,6 +103,11 @@ interface ElectronAPI {
     permissions?: RecordingPermissionSnapshot;
     error?: string;
   }>;
+  requestRecordingPermissions: () => Promise<{
+    success: boolean;
+    permissions?: RecordingPermissionSnapshot;
+    error?: string;
+  }>;
   openRecordingPermissionSettings: (
     permission: RecordingPermission,
   ) => Promise<{ success: boolean; error?: string }>;

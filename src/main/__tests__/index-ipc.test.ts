@@ -103,6 +103,23 @@ describe('single-instance startup', () => {
   });
 });
 
+describe('recording permission IPC', () => {
+  it('exposes the bounded startup permission request', async () => {
+    await expect(getHandler('request-recording-permissions')({})).resolves.toEqual({
+      success: true,
+      permissions: expect.objectContaining({ canAttemptRecording: true }),
+    });
+  });
+
+  it('keeps the startup request behind the narrow preload bridge', () => {
+    const preloadSource = fs.readFileSync(path.join(__dirname, '../preload.ts'), 'utf-8');
+
+    expect(preloadSource).toContain(
+      "requestRecordingPermissions: () => ipcRenderer.invoke('request-recording-permissions')",
+    );
+  });
+});
+
 describe('quit coordination', () => {
   it('registers a before-quit handler', () => {
     const onCalls = (app.on as jest.Mock).mock.calls;

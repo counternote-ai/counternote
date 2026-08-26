@@ -63,11 +63,14 @@ export default function App() {
 
   const activeTranscriptionIdRef = useRef<string | null>(null);
   const recordingWasActiveRef = useRef(false);
+  const startupPermissionRequestRef = useRef<Promise<RecordingPermissionSnapshot> | null>(null);
 
-  const refreshRecordingPermissions =
-    useCallback(async (): Promise<RecordingPermissionSnapshot> => {
+  const updateRecordingPermissions = useCallback(
+    async (
+      operation: () => ReturnType<ElectronAPI['getRecordingPermissions']>,
+    ): Promise<RecordingPermissionSnapshot> => {
       try {
-        const result = await window.electronAPI.getRecordingPermissions();
+        const result = await operation();
         if (!result.success || !result.permissions) {
           throw new Error(result.error || 'Unable to check recording permissions');
         }
@@ -87,7 +90,21 @@ export default function App() {
         setPermissions(unknownPermissions);
         return unknownPermissions;
       }
-    }, []);
+    },
+    [],
+  );
+
+  const refreshRecordingPermissions = useCallback(
+    () => updateRecordingPermissions(() => window.electronAPI.getRecordingPermissions()),
+    [updateRecordingPermissions],
+  );
+
+  const requestStartupRecordingPermissions = useCallback(() => {
+    startupPermissionRequestRef.current ??= updateRecordingPermissions(() =>
+      window.electronAPI.requestRecordingPermissions(),
+    );
+    return startupPermissionRequestRef.current;
+  }, [updateRecordingPermissions]);
 
   // Load recordings on mount
   useEffect(() => {
@@ -95,7 +112,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void refreshRecordingPermissions();
+    void requestStartupRecordingPermissions();
 
     const handleFocus = () => {
       void refreshRecordingPermissions();
@@ -103,7 +120,7 @@ export default function App() {
     window.addEventListener('focus', handleFocus);
 
     return () => window.removeEventListener('focus', handleFocus);
-  }, [refreshRecordingPermissions]);
+  }, [refreshRecordingPermissions, requestStartupRecordingPermissions]);
 
   useEffect(() => {
     const unsubscribe = window.electronAPI.onTranscriptionProgress((progress) => {
@@ -178,6 +195,7 @@ export default function App() {
 
   const handleStartRecording = async () => {
     setError(null);
+    await requestStartupRecordingPermissions();
     const currentPermissions = await refreshRecordingPermissions();
     if (!currentPermissions.canAttemptRecording) {
       setPermissionNoticeDismissed(false);

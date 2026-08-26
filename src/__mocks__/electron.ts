@@ -51,6 +51,11 @@ export const safeStorage = {
 
 export const systemPreferences = {
   getMediaAccessStatus: jest.fn().mockReturnValue('granted'),
+  askForMediaAccess: jest.fn().mockResolvedValue(true),
+};
+
+export const desktopCapturer = {
+  getSources: jest.fn().mockResolvedValue([]),
 };
 
 export const shell = {
