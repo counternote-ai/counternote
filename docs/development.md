@@ -128,7 +128,7 @@ npm run verify:whisper
 npm run check:pack
 ```
 
-`check:pack` creates `release/CounterNote-0.1.0-beta.2-arm64.dmg`, verifies the
+`check:pack` creates `release/CounterNote-0.1.0-beta.3-arm64.dmg`, verifies the
 app embedded in the DMG, its structural ad-hoc signature, and both nested
 sidecars, then runs the packaged smoke test. It is not Developer ID signed or
 notarized.

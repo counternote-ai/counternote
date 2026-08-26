@@ -4,6 +4,21 @@ All notable CounterNote changes are documented here. The format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.1.0-beta.3] - 2026-08-27
+
+### Fixed
+
+- Request missing Screen Recording and Microphone permissions once on first launch
+- Restore window dragging through the hidden macOS title-bar area
+- Match the Screen & System Audio Recording label used by macOS System Settings
+- Resolve the native audio-capture helper correctly in development worktrees
+
+### Known limitations
+
+- Not Developer ID signed or notarized; first launch may require **Open Anyway** in macOS Privacy & Security
+- Apple Silicon only
+- No automatic updates
+
 ## [0.1.0-beta.2] - 2026-08-26
 
 ### Fixed
@@ -40,6 +55,7 @@ All notable CounterNote changes are documented here. The format follows [Keep a 
 - No automatic updates
 - Local speech model requires a separate first-use download
 
-[Unreleased]: https://github.com/counternote-ai/counternote/compare/v0.1.0-beta.2...HEAD
+[Unreleased]: https://github.com/counternote-ai/counternote/compare/v0.1.0-beta.3...HEAD
+[0.1.0-beta.3]: https://github.com/counternote-ai/counternote/releases/tag/v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/counternote-ai/counternote/releases/tag/v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/counternote-ai/counternote/releases/tag/v0.1.0-beta.1

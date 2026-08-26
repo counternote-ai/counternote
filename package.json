@@ -1,7 +1,7 @@
 {
   "name": "counternote",
   "productName": "CounterNote",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "description": "A private, local-first meeting companion that records audio and creates timestamped transcripts.",
   "main": "dist/main/index.js",
   "scripts": {
@@ -22,7 +22,7 @@
     "verify:whisper": "bash scripts/verify-whisper-sidecar.sh build/whisper/darwin-arm64/whisper-cli",
     "build:capture": "bash scripts/build-audio-capture-sidecar.sh",
     "verify:capture": "bash scripts/verify-audio-capture-sidecar.sh build/audio-capture/darwin-arm64/counternote-audio-capture",
-    "verify:release-artifact": "bash scripts/verify-release-artifact.sh \"release/mac-arm64/CounterNote.app\" \"release/CounterNote-0.1.0-beta.2-arm64.dmg\"",
+    "verify:release-artifact": "bash scripts/verify-release-artifact.sh \"release/mac-arm64/CounterNote.app\" \"release/CounterNote-0.1.0-beta.3-arm64.dmg\"",
     "pack": "npm run prepare:electron && npm run build:whisper && npm run verify:whisper && npm run build:capture && npm run verify:capture && CSC_IDENTITY_AUTO_DISCOVERY=false npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --arm64",
     "test:packaged": "playwright test --config playwright.packaged.config.ts",
     "check:pack": "npm run notices:check && npm run pack && npm run verify:production && bash scripts/verify-whisper-sidecar.sh \"release/mac-arm64/CounterNote.app/Contents/Resources/whisper/bin/whisper-cli\" && bash scripts/verify-audio-capture-sidecar.sh \"release/mac-arm64/CounterNote.app/Contents/Resources/audio-capture/bin/counternote-audio-capture\" && npm run verify:release-artifact && npm run test:packaged"
