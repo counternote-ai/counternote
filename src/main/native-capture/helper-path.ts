@@ -4,7 +4,7 @@ import * as path from 'path';
 export interface AudioCaptureHelperOptions {
   isPackaged: boolean;
   resourcesPath: string;
-  projectRoot: string;
+  mainDirectory: string;
   platform: string;
   arch: string;
   env?: NodeJS.ProcessEnv;
@@ -44,7 +44,7 @@ export function resolveAudioCaptureHelper(options: AudioCaptureHelperOptions): s
   const resolved = options.isPackaged
     ? path.join(options.resourcesPath, 'audio-capture', 'bin', 'counternote-audio-capture')
     : path.join(
-        options.projectRoot,
+        path.resolve(options.mainDirectory, '../..'),
         'build',
         'audio-capture',
         `${options.platform}-${options.arch}`,

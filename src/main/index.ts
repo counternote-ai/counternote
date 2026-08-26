@@ -68,7 +68,7 @@ function getNativeCaptureController(): NativeCaptureController {
         const helperPath = resolveAudioCaptureHelper({
           isPackaged: app.isPackaged,
           resourcesPath: process.resourcesPath ?? '',
-          projectRoot: __dirname,
+          mainDirectory: __dirname,
           platform: process.platform,
           arch: process.arch,
         });

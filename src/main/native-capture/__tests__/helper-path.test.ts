@@ -13,7 +13,7 @@ function makeOptions(
   return {
     isPackaged: false,
     resourcesPath: '/Applications/CounterNote.app/Contents/Resources',
-    projectRoot: '/repo',
+    mainDirectory: '/repo/dist/main',
     platform: 'darwin',
     arch: 'arm64',
     ...overrides,
@@ -99,15 +99,17 @@ describe('resolveAudioCaptureHelper', () => {
     ).toThrow(/not executable/);
   });
 
-  it('resolves from development build output when not packaged', async () => {
+  it('resolves development output relative to the compiled main directory', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'helper-path-'));
+    const mainDirectory = path.join(dir, 'dist', 'main');
     const buildDir = path.join(dir, 'build', 'audio-capture', 'darwin-arm64');
+    await fs.mkdir(mainDirectory, { recursive: true });
     await fs.mkdir(buildDir, { recursive: true });
     const helperPath = path.join(buildDir, 'counternote-audio-capture');
     await fs.writeFile(helperPath, 'fake binary');
     await fs.chmod(helperPath, 0o755);
 
-    const resolved = resolveAudioCaptureHelper(makeOptions({ projectRoot: dir }));
+    const resolved = resolveAudioCaptureHelper(makeOptions({ mainDirectory }));
     expect(resolved).toBe(helperPath);
 
     await fs.rm(dir, { recursive: true });
@@ -130,12 +132,12 @@ describe('resolveAudioCaptureHelper', () => {
   });
 
   it('throws when helper is missing', () => {
-    expect(() => resolveAudioCaptureHelper(makeOptions({ projectRoot: '/nonexistent' }))).toThrow(
-      AudioCaptureHelperError,
-    );
-    expect(() => resolveAudioCaptureHelper(makeOptions({ projectRoot: '/nonexistent' }))).toThrow(
-      /missing or not executable/,
-    );
+    expect(() =>
+      resolveAudioCaptureHelper(makeOptions({ mainDirectory: '/nonexistent/dist/main' })),
+    ).toThrow(AudioCaptureHelperError);
+    expect(() =>
+      resolveAudioCaptureHelper(makeOptions({ mainDirectory: '/nonexistent/dist/main' })),
+    ).toThrow(/missing or not executable/);
   });
 
   it('throws when helper exists but is not executable', async () => {
@@ -146,9 +148,9 @@ describe('resolveAudioCaptureHelper', () => {
     await fs.writeFile(helperPath, 'fake binary');
     // Not chmod +x
 
-    expect(() => resolveAudioCaptureHelper(makeOptions({ projectRoot: dir }))).toThrow(
-      /missing or not executable/,
-    );
+    expect(() =>
+      resolveAudioCaptureHelper(makeOptions({ mainDirectory: path.join(dir, 'dist', 'main') })),
+    ).toThrow(/missing or not executable/);
 
     await fs.rm(dir, { recursive: true });
   });
@@ -161,9 +163,9 @@ describe('resolveAudioCaptureHelper', () => {
     const helperPath = path.join(buildDir, 'counternote-audio-capture');
     await fs.mkdir(helperPath);
 
-    expect(() => resolveAudioCaptureHelper(makeOptions({ projectRoot: dir }))).toThrow(
-      /missing or not executable/,
-    );
+    expect(() =>
+      resolveAudioCaptureHelper(makeOptions({ mainDirectory: path.join(dir, 'dist', 'main') })),
+    ).toThrow(/missing or not executable/);
 
     await fs.rm(dir, { recursive: true });
   });
