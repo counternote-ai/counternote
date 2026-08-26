@@ -93,6 +93,11 @@ select {
   flex-direction: column;
   gap: 12px;
   padding: 48px 18px 18px;
+  -webkit-app-region: drag;
+}
+
+.app-frame > * {
+  -webkit-app-region: no-drag;
 }
 
 .app-shell {

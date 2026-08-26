@@ -306,6 +306,28 @@ test('launches a 400x600 window titled CounterNote', async () => {
   }
 });
 
+test('keeps the hidden title-bar area draggable', async () => {
+  const { electronApp, window } = await launchTestApp('default');
+
+  try {
+    const appRegion = await window
+      .locator('.app-frame')
+      .evaluate((element) =>
+        window.getComputedStyle(element).getPropertyValue('-webkit-app-region'),
+      );
+    expect(appRegion).toBe('drag');
+
+    const contentRegion = await window
+      .locator('.app-shell')
+      .evaluate((element) =>
+        window.getComputedStyle(element).getPropertyValue('-webkit-app-region'),
+      );
+    expect(contentRegion).toBe('no-drag');
+  } finally {
+    await electronApp.close();
+  }
+});
+
 test('recordings home renders primary controls', async () => {
   const { electronApp, window } = await launchTestApp('default');
 

@@ -23,7 +23,7 @@ describe('getRecordingPermissionNotice', () => {
     ).toEqual({
       tone: 'info',
       message:
-        'Screen and system audio access is off. Allow Electron in System Settings, then restart the app.',
+        'Screen & System Audio Recording access is off. Allow Electron in System Settings, then restart the app.',
       settingsPermission: 'screen',
     });
   });

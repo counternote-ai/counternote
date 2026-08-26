@@ -28,7 +28,7 @@ export function getRecordingPermissionNotice(
   if (screenBlocked) {
     return {
       tone: 'info',
-      message: `Screen and system audio access is off. Allow ${snapshot.permissionOwnerName} in System Settings, then restart the app.`,
+      message: `Screen & System Audio Recording access is off. Allow ${snapshot.permissionOwnerName} in System Settings, then restart the app.`,
       settingsPermission: 'screen',
     };
   }
