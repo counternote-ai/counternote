@@ -107,6 +107,7 @@ const generate = () => {
     .trim();
   const whisperCppLicense = mitLicense('Copyright (c) 2023-2026 The ggml authors');
   const whisperModelLicense = mitLicense('Copyright (c) 2022 OpenAI');
+  const vadModelLicense = mitLicense('Copyright (c) 2020-present Silero Team');
 
   return `# Third-Party Notices
 
@@ -122,6 +123,7 @@ CounterNote's own code.
 | Electron | 43.1.0 | MIT and bundled Chromium/Node third-party licenses | https://github.com/electron/electron | The packaged app includes Electron's \`LICENSE.electron.txt\` and \`LICENSES.chromium.html\` in \`Contents/Resources\`. |
 | whisper.cpp / whisper-cli | commit \`f049fff95a089aa9969deb009cdd4892b3e74916\` | MIT | https://github.com/ggml-org/whisper.cpp | Copyright and permission notice must accompany redistributed binaries. CounterNote builds without FFmpeg support. |
 | Whisper large-v3-turbo-q5_0 model | model file \`ggml-large-v3-turbo-q5_0.bin\` | MIT | https://huggingface.co/ggerganov/whisper.cpp | Downloaded on user request and verified by size and SHA-256. OpenAI states that Whisper code and model weights are MIT licensed. |
+| Silero VAD model | model file \`ggml-silero-v5.1.2.bin\` | MIT | https://huggingface.co/ggml-org/whisper-vad | Downloaded on user request and verified by size and SHA-256. ggml conversion of the MIT-licensed Silero VAD used for speech activity filtering. |
 
 The Swift audio-capture helper and CounterNote artwork are project-owned and do
 not add a third-party package. The helper links only to macOS system frameworks,
@@ -158,6 +160,12 @@ ${whisperCppLicense}
 
 \`\`\`text
 ${whisperModelLicense}
+\`\`\`
+
+### Silero VAD model weights
+
+\`\`\`text
+${vadModelLicense}
 \`\`\`
 
 ${licenseSections}

@@ -201,6 +201,7 @@ describe('WhisperProcessRunner', () => {
   const baseInput = {
     cliPath: '/bin/whisper-cli',
     modelPath: '/models/model.bin',
+    vadModelPath: '/models/ggml-silero-v5.1.2.bin',
     channelPath: '/audio/channel.wav',
     outputPrefix: '/out/attempt-1',
     channelDurationMs: 60_000,
@@ -271,6 +272,9 @@ describe('WhisperProcessRunner', () => {
         '-nth',
         '0.60',
         '-ng',
+        '--vad',
+        '--vad-model',
+        baseInput.vadModelPath,
       ],
       expect.objectContaining({ stdio: ['ignore', 'pipe', 'pipe'] }),
     );

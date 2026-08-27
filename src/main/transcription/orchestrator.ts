@@ -57,6 +57,7 @@ export interface TranscriptionOrchestratorDependencies {
   attemptIdGenerator?: () => string;
   now?: () => number;
   dateFactory?: () => string;
+  timeZone?: string;
 }
 
 class ArtifactRegistry {
@@ -314,9 +315,17 @@ export class TranscriptionOrchestrator {
     segments: TranscriptionSegment[],
   ): Transcript {
     const dateFactory = this.deps.dateFactory ?? (() => new Date().toISOString());
+    const recordedAt = new Date(
+      recordingId.replace(/T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/, 'T$1:$2:$3.$4Z'),
+    );
     return {
       id: recordingId,
-      title: `Meeting — ${new Date(recordingId).toLocaleDateString()}`,
+      title: `Meeting — ${recordedAt.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        timeZone: this.deps.timeZone,
+      })}`,
       duration,
       audioFile: 'audio.wav',
       createdAt: dateFactory(),

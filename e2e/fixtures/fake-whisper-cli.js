@@ -8,9 +8,10 @@ const valueFor = (flag) => {
 
 const outputPrefix = valueFor('-of');
 const audioFile = valueFor('-f');
+const vadModel = valueFor('--vad-model');
 
-if (!outputPrefix || !audioFile) {
-  console.error('fake whisper-cli requires -of and -f');
+if (!outputPrefix || !audioFile || !vadModel || !args.includes('--vad')) {
+  console.error('fake whisper-cli requires -of, -f, --vad, and --vad-model');
   process.exitCode = 2;
 } else {
   console.error('fake whisper-cli: 50%');

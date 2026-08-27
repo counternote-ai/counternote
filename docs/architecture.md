@@ -24,7 +24,7 @@ CounterNote is a macOS Electron menu-bar app with an isolated React renderer and
 1. The user selects **Transcribe audio** for a saved recording.
 2. The main process streams the stereo WAV into temporary mono system and microphone WAV files without FFmpeg or another media subprocess.
 3. Local silence analysis identifies audible intervals.
-4. The pinned Local Whisper sidecar processes audible intervals sequentially on the Mac.
+4. The pinned Local Whisper sidecar filters speech with the Silero voice-activity-detection model and processes the audible intervals sequentially on the Mac.
 5. Returned segments are labeled `Meeting audio` and `You`, sorted by timestamp, and atomically saved as `transcript.json`.
 6. Temporary channel and partial transcript files are removed; failures preserve the original recording and any previously published transcript.
 
@@ -38,4 +38,4 @@ The beta is structurally ad-hoc signed but not Developer ID signed or notarized.
 
 ## Local storage
 
-The recordings library is under `~/CounterNote/recordings`. The Local Whisper model is under Electron's CounterNote user-data directory. See [privacy.md](privacy.md) for the exact data boundary.
+The recordings library is under `~/CounterNote/recordings`. The Local Whisper and Silero VAD models are under Electron's CounterNote user-data directory. See [privacy.md](privacy.md) for the exact data boundary.

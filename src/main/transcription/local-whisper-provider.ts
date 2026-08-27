@@ -14,7 +14,10 @@ export interface LocalChannelRequest {
 
 export interface LocalWhisperProviderDependencies {
   cliPath: string;
+  modelByteSize: number;
+  vadModelByteSize: number;
   ensureModel: (onProgress: (percent: number) => void) => Promise<string>;
+  ensureVadModel: (onProgress: (percent: number) => void) => Promise<string>;
   runProcess: (input: WhisperProcessInput) => Promise<unknown>;
   getAudibleIntervals: (audioPath: string) => Promise<AudioInterval[]>;
 }
@@ -42,13 +45,31 @@ export class LocalWhisperProvider {
       return [];
     }
 
-    const modelPath = await this.deps.ensureModel(onModelProgress);
+    const totalModelBytes = this.deps.modelByteSize + this.deps.vadModelByteSize;
+    let reportedModelProgress = false;
+    const reportWeightedProgress = (completedBytes: number, byteSize: number) => {
+      return (percent: number): void => {
+        reportedModelProgress = true;
+        const boundedPercent = Math.max(0, Math.min(100, percent));
+        const receivedBytes = completedBytes + (byteSize * boundedPercent) / 100;
+        onModelProgress(Math.min(99, Math.floor((receivedBytes / totalModelBytes) * 100)));
+      };
+    };
+
+    const modelPath = await this.deps.ensureModel(
+      reportWeightedProgress(0, this.deps.modelByteSize),
+    );
+    const vadModelPath = await this.deps.ensureVadModel(
+      reportWeightedProgress(this.deps.modelByteSize, this.deps.vadModelByteSize),
+    );
+    if (reportedModelProgress) onModelProgress(100);
 
     onInferenceStart();
 
     const raw = await this.deps.runProcess({
       cliPath: this.deps.cliPath,
       modelPath,
+      vadModelPath,
       channelPath: request.audioPath,
       outputPrefix: request.outputPrefix,
       channelDurationMs: request.durationSeconds * 1000,

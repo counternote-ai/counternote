@@ -75,7 +75,7 @@ export function Settings({
               <div>
                 <h2 className="text-sm font-semibold">Local transcription</h2>
                 <p className="text-xs text-muted-foreground">
-                  Download the model once to transcribe recordings locally.
+                  Download the models once to transcribe recordings locally.
                 </p>
               </div>
 
@@ -85,8 +85,10 @@ export function Settings({
                 <div className="rounded-md bg-secondary/70 p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium">Large V3 Turbo · about 547 MB</p>
-                      <p className="text-xs text-muted-foreground">Whisper model</p>
+                      <p className="text-sm font-medium">Large V3 Turbo · about 548 MB</p>
+                      <p className="text-xs text-muted-foreground">
+                        Whisper and speech detection models
+                      </p>
                     </div>
                     <Badge variant={localModelStatus.state === 'ready' ? 'ready' : 'pending'}>
                       {getLocalModelLabel(localModelStatus)}

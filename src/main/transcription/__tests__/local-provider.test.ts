@@ -12,13 +12,20 @@ const onInferenceStart = (): void => undefined;
 
 describe('LocalWhisperProvider', () => {
   const createProvider = (overrides: {
-    ensureModel?: jest.MockedFunction<() => Promise<string>>;
+    ensureModel?: jest.MockedFunction<(_onProgress: (percent: number) => void) => Promise<string>>;
+    ensureVadModel?: jest.MockedFunction<
+      (_onProgress: (percent: number) => void) => Promise<string>
+    >;
     runProcess?: jest.MockedFunction<(_input: WhisperProcessInput) => Promise<unknown>>;
     getAudibleIntervals?: jest.MockedFunction<() => Promise<AudioInterval[]>>;
   }) =>
     new LocalWhisperProvider({
       cliPath: '/bin/whisper-cli',
+      modelByteSize: 1_000,
+      vadModelByteSize: 10,
       ensureModel: overrides.ensureModel ?? jest.fn().mockResolvedValue('/models/model.bin'),
+      ensureVadModel:
+        overrides.ensureVadModel ?? jest.fn().mockResolvedValue('/models/ggml-silero-v5.1.2.bin'),
       runProcess: overrides.runProcess ?? jest.fn().mockResolvedValue({ transcription: [] }),
       getAudibleIntervals:
         overrides.getAudibleIntervals ??
@@ -27,9 +34,11 @@ describe('LocalWhisperProvider', () => {
 
   it('returns an empty array for silent channels without loading the model', async () => {
     const ensureModel = jest.fn();
+    const ensureVadModel = jest.fn();
     const runProcess = jest.fn();
     const provider = createProvider({
       ensureModel,
+      ensureVadModel,
       runProcess,
       getAudibleIntervals: jest.fn().mockResolvedValue([]),
     });
@@ -41,15 +50,50 @@ describe('LocalWhisperProvider', () => {
     );
 
     expect(ensureModel).not.toHaveBeenCalled();
+    expect(ensureVadModel).not.toHaveBeenCalled();
     expect(runProcess).not.toHaveBeenCalled();
     expect(onProgress).not.toHaveBeenCalled();
     expect(onInferenceStart).not.toHaveBeenCalled();
   });
 
+  it('ensures the VAD model and passes its path to the whisper process', async () => {
+    const ensureVadModel = jest.fn().mockResolvedValue('/models/ggml-silero-v5.1.2.bin');
+    const runProcess = jest.fn().mockResolvedValue({ transcription: [] });
+    const provider = createProvider({ ensureVadModel, runProcess });
+
+    await provider.transcribe(baseRequest, jest.fn(), onInferenceStart);
+
+    expect(ensureVadModel).toHaveBeenCalledTimes(1);
+    expect(runProcess).toHaveBeenCalledWith(
+      expect.objectContaining({ vadModelPath: '/models/ggml-silero-v5.1.2.bin' }),
+    );
+  });
+
+  it('reports monotonic model progress and reaches 100 only after both models are ready', async () => {
+    const progress: number[] = [];
+    const ensureModel = jest.fn(async (onProgress: (percent: number) => void) => {
+      onProgress(50);
+      onProgress(100);
+      return '/models/model.bin';
+    });
+    const ensureVadModel = jest.fn(async (onProgress: (percent: number) => void) => {
+      onProgress(0);
+      onProgress(100);
+      return '/models/ggml-silero-v5.1.2.bin';
+    });
+    const provider = createProvider({ ensureModel, ensureVadModel });
+
+    await provider.transcribe(baseRequest, (percent) => progress.push(percent), onInferenceStart);
+
+    expect(progress).toEqual([...progress].sort((left, right) => left - right));
+    expect(progress.slice(0, -1)).not.toContain(100);
+    expect(progress[progress.length - 1]).toBe(100);
+  });
+
   it('signals inference immediately after the model is ready and before starting the CPU process', async () => {
     const order: string[] = [];
     const provider = createProvider({
-      ensureModel: jest.fn(async () => {
+      ensureModel: jest.fn(async (_onProgress: (percent: number) => void) => {
         order.push('model-ready');
         return '/models/model.bin';
       }),
@@ -115,11 +159,12 @@ describe('LocalWhisperProvider', () => {
       },
     ]);
 
-    expect(ensureModel).toHaveBeenCalledWith(onProgress);
+    expect(ensureModel).toHaveBeenCalledWith(expect.any(Function));
     expect(runProcess).toHaveBeenCalledTimes(1);
     expect(runProcess).toHaveBeenCalledWith({
       cliPath: '/bin/whisper-cli',
       modelPath: '/models/model.bin',
+      vadModelPath: '/models/ggml-silero-v5.1.2.bin',
       channelPath: baseRequest.audioPath,
       outputPrefix: baseRequest.outputPrefix,
       channelDurationMs: 10_000,

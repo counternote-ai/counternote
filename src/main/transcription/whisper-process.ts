@@ -16,6 +16,7 @@ const KILL_DELAY_MS = 5_000;
 export interface WhisperProcessInput {
   cliPath: string;
   modelPath: string;
+  vadModelPath: string;
   channelPath: string;
   outputPrefix: string;
   channelDurationMs: number;
@@ -70,6 +71,9 @@ export class WhisperProcessRunner {
       '-nth',
       '0.60',
       '-ng',
+      '--vad',
+      '--vad-model',
+      input.vadModelPath,
     ];
 
     const startedAt = this.deps.now();

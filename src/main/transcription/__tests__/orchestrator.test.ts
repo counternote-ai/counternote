@@ -68,6 +68,7 @@ interface CreateOrchestratorOverrides {
   getAudioDuration?: TranscriptionOrchestrator['deps']['getAudioDuration'];
   fs?: FakeFs;
   logger?: TranscriptionLogger;
+  timeZone?: string;
 }
 
 function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
@@ -129,6 +130,7 @@ function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
     attemptIdGenerator: () => ATTEMPT_ID,
     now: () => 0,
     dateFactory: () => '2026-07-27T12:00:00.000Z',
+    timeZone: overrides.timeZone,
   });
 
   const request: TranscriptionOrchestratorRequest = {
@@ -157,6 +159,19 @@ function createOrchestrator(overrides: CreateOrchestratorOverrides = {}) {
 
 describe('TranscriptionOrchestrator', () => {
   describe('single-flight and routing', () => {
+    it('formats the recording date in the local time zone using the US date format', async () => {
+      const { orchestrator, request } = createOrchestrator({
+        timeZone: 'Australia/Sydney',
+      });
+
+      const result = await orchestrator.transcribe({
+        ...request,
+        recordingId: '2026-07-27T15-30-00-000Z',
+      });
+
+      expect(result.title).toBe('Meeting — Jul 28, 2026');
+    });
+
     it('acquires coordinator before preparation and releases in finally on success', async () => {
       const { orchestrator, request, order, deps } = createOrchestrator();
 

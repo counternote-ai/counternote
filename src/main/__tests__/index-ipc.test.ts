@@ -3,7 +3,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { app, ipcMain, BrowserWindow, shell } from 'electron';
 import { loadConfig } from '../config';
-import { LocalModelManager } from '../transcription/local-model-manager';
+import { LocalModelManager, ModelInstallError } from '../transcription/local-model-manager';
+import { type LocalModelStatus } from '../../types/transcription';
 
 jest.mock('../config', () => ({
   loadConfig: jest.fn(),
@@ -274,6 +275,12 @@ describe('legacy capture removal', () => {
 
 describe('sensitive IPC failures', () => {
   let consoleError: jest.SpiedFunction<typeof console.error>;
+  let mainWindowInstance: { webContents: { send: jest.Mock } };
+
+  beforeAll(async () => {
+    await (app.whenReady as jest.Mock).mock.results[0].value;
+    mainWindowInstance = (BrowserWindow as unknown as jest.Mock).mock.results[0].value;
+  });
 
   beforeEach(() => {
     consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -400,7 +407,8 @@ describe('sensitive IPC failures', () => {
   it('derives invalid-model recovery from a fresh main-process status', async () => {
     const getStatus = jest
       .spyOn(LocalModelManager.prototype, 'getStatus')
-      .mockResolvedValueOnce({ state: 'invalid' });
+      .mockResolvedValueOnce({ state: 'invalid' })
+      .mockResolvedValueOnce({ state: 'ready' });
     const ensureModel = jest
       .spyOn(LocalModelManager.prototype, 'ensureModel')
       .mockResolvedValueOnce('/app-managed/models/model.bin');
@@ -409,7 +417,7 @@ describe('sensitive IPC failures', () => {
       const result = await getHandler('install-local-model')({}, { recoverInvalidModel: false });
 
       expect(result).toEqual({ success: true });
-      expect(getStatus).toHaveBeenCalledTimes(1);
+      expect(getStatus).toHaveBeenCalledTimes(2);
       expect(ensureModel).toHaveBeenCalledWith(expect.any(Function), { recoverInvalidModel: true });
     } finally {
       getStatus.mockRestore();
@@ -420,7 +428,8 @@ describe('sensitive IPC failures', () => {
   it('does not grant invalid-model recovery from renderer input', async () => {
     const getStatus = jest
       .spyOn(LocalModelManager.prototype, 'getStatus')
-      .mockResolvedValueOnce({ state: 'not-downloaded' });
+      .mockResolvedValueOnce({ state: 'not-downloaded' })
+      .mockResolvedValueOnce({ state: 'ready' });
     const ensureModel = jest
       .spyOn(LocalModelManager.prototype, 'ensureModel')
       .mockResolvedValueOnce('/app-managed/models/model.bin');
@@ -429,10 +438,116 @@ describe('sensitive IPC failures', () => {
       const result = await getHandler('install-local-model')({}, { recoverInvalidModel: true });
 
       expect(result).toEqual({ success: true });
-      expect(getStatus).toHaveBeenCalledTimes(1);
+      expect(getStatus).toHaveBeenCalledTimes(2);
       expect(ensureModel).toHaveBeenCalledWith(expect.any(Function), {
         recoverInvalidModel: false,
       });
+    } finally {
+      getStatus.mockRestore();
+      ensureModel.mockRestore();
+    }
+  });
+
+  it('reports the local model bundle as not downloaded when VAD is missing', async () => {
+    const getStatus = jest
+      .spyOn(LocalModelManager.prototype, 'getStatus')
+      .mockResolvedValueOnce({ state: 'ready' })
+      .mockResolvedValueOnce({ state: 'not-downloaded' });
+
+    try {
+      await expect(getHandler('get-local-model-status')({})).resolves.toEqual({
+        state: 'not-downloaded',
+      });
+    } finally {
+      getStatus.mockRestore();
+    }
+  });
+
+  it('authorizes recovery when the VAD model is invalid', async () => {
+    const getStatus = jest
+      .spyOn(LocalModelManager.prototype, 'getStatus')
+      .mockResolvedValueOnce({ state: 'ready' })
+      .mockResolvedValueOnce({ state: 'invalid' });
+    const ensureModel = jest
+      .spyOn(LocalModelManager.prototype, 'ensureModel')
+      .mockResolvedValue('/app-managed/models/model.bin');
+
+    try {
+      const result = await getHandler('install-local-model')({});
+
+      expect(result).toEqual({ success: true });
+      expect(ensureModel).toHaveBeenCalledTimes(1);
+      expect(ensureModel).toHaveBeenCalledWith(expect.any(Function), {
+        recoverInvalidModel: true,
+      });
+    } finally {
+      getStatus.mockRestore();
+      ensureModel.mockRestore();
+    }
+  });
+
+  it('reports monotonic bundle progress and reaches 100 only after both models finish', async () => {
+    const send = mainWindowInstance.webContents.send;
+    send.mockClear();
+
+    const getStatus = jest
+      .spyOn(LocalModelManager.prototype, 'getStatus')
+      .mockResolvedValueOnce({ state: 'not-downloaded' })
+      .mockResolvedValueOnce({ state: 'not-downloaded' });
+    let installIndex = 0;
+    const ensureModel = jest
+      .spyOn(LocalModelManager.prototype, 'ensureModel')
+      .mockImplementation(async (onProgress) => {
+        installIndex += 1;
+        if (installIndex === 1) onProgress(50);
+        onProgress(100);
+        return `/app-managed/models/model-${installIndex}.bin`;
+      });
+
+    try {
+      await expect(getHandler('install-local-model')({})).resolves.toEqual({ success: true });
+
+      const percents = send.mock.calls
+        .map(([, payload]) => payload as LocalModelStatus)
+        .filter(({ state }) => state === 'downloading')
+        .map(({ percent }) => percent as number);
+      expect(percents).toEqual([...percents].sort((left, right) => left - right));
+      expect(percents.slice(0, -1)).not.toContain(100);
+      expect(percents[percents.length - 1]).toBe(100);
+    } finally {
+      getStatus.mockRestore();
+      ensureModel.mockRestore();
+    }
+  });
+
+  it('does not report 100 percent when final model verification fails', async () => {
+    const send = mainWindowInstance.webContents.send;
+    send.mockClear();
+
+    const getStatus = jest
+      .spyOn(LocalModelManager.prototype, 'getStatus')
+      .mockResolvedValueOnce({ state: 'ready' })
+      .mockResolvedValueOnce({ state: 'not-downloaded' })
+      .mockResolvedValueOnce({ state: 'ready' })
+      .mockResolvedValueOnce({ state: 'not-downloaded' });
+    const ensureModel = jest
+      .spyOn(LocalModelManager.prototype, 'ensureModel')
+      .mockImplementationOnce(async (onProgress) => {
+        onProgress(100);
+        throw new ModelInstallError('MODEL_CHECKSUM_FAILED', 'fixture verification failed');
+      });
+
+    try {
+      await expect(getHandler('install-local-model')({})).resolves.toEqual({
+        success: false,
+        code: 'MODEL_CHECKSUM_FAILED',
+      });
+
+      const percents = send.mock.calls
+        .map(([, payload]) => payload as LocalModelStatus)
+        .filter(({ state }) => state === 'downloading')
+        .map(({ percent }) => percent as number);
+      expect(percents).not.toContain(100);
     } finally {
       getStatus.mockRestore();
       ensureModel.mockRestore();

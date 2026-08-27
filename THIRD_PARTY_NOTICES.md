@@ -7,11 +7,12 @@ CounterNote's own code.
 
 ## Native runtime components
 
-| Component                         | Version                                           | License                                            | Upstream                                     | Redistribution notes                                                                                                             |
-| --------------------------------- | ------------------------------------------------- | -------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Electron                          | 43.1.0                                            | MIT and bundled Chromium/Node third-party licenses | https://github.com/electron/electron         | The packaged app includes Electron's `LICENSE.electron.txt` and `LICENSES.chromium.html` in `Contents/Resources`.                |
-| whisper.cpp / whisper-cli         | commit `f049fff95a089aa9969deb009cdd4892b3e74916` | MIT                                                | https://github.com/ggml-org/whisper.cpp      | Copyright and permission notice must accompany redistributed binaries. CounterNote builds without FFmpeg support.                |
-| Whisper large-v3-turbo-q5_0 model | model file `ggml-large-v3-turbo-q5_0.bin`         | MIT                                                | https://huggingface.co/ggerganov/whisper.cpp | Downloaded on user request and verified by size and SHA-256. OpenAI states that Whisper code and model weights are MIT licensed. |
+| Component                         | Version                                           | License                                            | Upstream                                     | Redistribution notes                                                                                                                            |
+| --------------------------------- | ------------------------------------------------- | -------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Electron                          | 43.1.0                                            | MIT and bundled Chromium/Node third-party licenses | https://github.com/electron/electron         | The packaged app includes Electron's `LICENSE.electron.txt` and `LICENSES.chromium.html` in `Contents/Resources`.                               |
+| whisper.cpp / whisper-cli         | commit `f049fff95a089aa9969deb009cdd4892b3e74916` | MIT                                                | https://github.com/ggml-org/whisper.cpp      | Copyright and permission notice must accompany redistributed binaries. CounterNote builds without FFmpeg support.                               |
+| Whisper large-v3-turbo-q5_0 model | model file `ggml-large-v3-turbo-q5_0.bin`         | MIT                                                | https://huggingface.co/ggerganov/whisper.cpp | Downloaded on user request and verified by size and SHA-256. OpenAI states that Whisper code and model weights are MIT licensed.                |
+| Silero VAD model                  | model file `ggml-silero-v5.1.2.bin`               | MIT                                                | https://huggingface.co/ggml-org/whisper-vad  | Downloaded on user request and verified by size and SHA-256. ggml conversion of the MIT-licensed Silero VAD used for speech activity filtering. |
 
 The Swift audio-capture helper and CounterNote artwork are project-owned and do
 not add a third-party package. The helper links only to macOS system frameworks,
@@ -140,6 +141,32 @@ SOFTWARE.
 MIT License
 
 Copyright (c) 2022 OpenAI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Silero VAD model weights
+
+```text
+MIT License
+
+Copyright (c) 2020-present Silero Team
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

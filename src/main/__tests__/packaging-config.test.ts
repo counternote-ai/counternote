@@ -107,6 +107,7 @@ describe('packaging configuration', () => {
     expect(packagedSmoke).toContain('delete env.COUNTERNOTE_E2E;');
     expect(packagedSmoke).toContain('delete env.COUNTERNOTE_WHISPER_CLI;');
     expect(packagedSmoke).toContain('delete env.COUNTERNOTE_MODEL_MANIFEST;');
+    expect(packagedSmoke).toContain('delete env.COUNTERNOTE_VAD_MODEL_MANIFEST;');
   });
 
   it('configures hardened runtime and entitlements for audio capture helper', () => {

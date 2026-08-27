@@ -676,7 +676,8 @@ describe('local transcription settings', () => {
     const text = renderedText(tree).join(' ');
 
     expect(text).toContain('Local transcription');
-    expect(text).toContain('Large V3 Turbo · about 547 MB');
+    expect(text).toContain('Large V3 Turbo · about 548 MB');
+    expect(text).toContain('Whisper and speech detection models');
     expect(text).toContain('Not downloaded');
     expect(text).toContain('Transcription runs on this Mac. Audio is not uploaded.');
     expect(text).not.toContain('Groq API Key');

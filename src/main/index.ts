@@ -24,7 +24,11 @@ import { TranscriptionOrchestrator } from './transcription/orchestrator';
 import { TranscriptionError } from './transcription/errors';
 import { ConsoleTranscriptionLogger } from './transcription/logger';
 import { LocalModelManager, ModelInstallError } from './transcription/local-model-manager';
-import { PRODUCTION_MODEL_ARTIFACT, type ModelArtifactSpec } from './transcription/model-artifact';
+import {
+  PRODUCTION_MODEL_ARTIFACT,
+  VAD_MODEL_ARTIFACT,
+  type ModelArtifactSpec,
+} from './transcription/model-artifact';
 import { HttpsModelDownloadTransport } from './transcription/model-download';
 import { LocalWhisperProvider } from './transcription/local-whisper-provider';
 import { WhisperProcessRunner } from './transcription/whisper-process';
@@ -46,6 +50,7 @@ let trayManager: TrayManager | null = null;
 const activity = new AppActivityCoordinator();
 const recordingsLibrary = new RecordingsLibrary(() => loadConfig().outputDir);
 let modelService: LocalModelManager | null = null;
+let vadModelService: LocalModelManager | null = null;
 let transcriptionService: TranscriptionOrchestrator | null = null;
 let localUnavailableStatus: LocalModelStatus | null = null;
 let quitCoordinator: QuitCoordinator | null = null;
@@ -144,19 +149,29 @@ function e2eEnabled(): boolean {
   return !app.isPackaged && process.env.COUNTERNOTE_E2E === '1';
 }
 
-function modelArtifact(): ModelArtifactSpec {
-  const manifestPath = e2eEnabled() ? process.env.COUNTERNOTE_MODEL_MANIFEST : undefined;
-  if (!manifestPath) return PRODUCTION_MODEL_ARTIFACT;
+function manifestArtifact(
+  manifestPath: string | undefined,
+  fallback: ModelArtifactSpec,
+): ModelArtifactSpec {
+  if (!e2eEnabled() || !manifestPath) return fallback;
 
   try {
     const artifact = parseModelArtifact(
       JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as unknown,
     );
-    return artifact ?? PRODUCTION_MODEL_ARTIFACT;
+    return artifact ?? fallback;
   } catch {
     console.error('E2E model manifest could not be loaded.');
-    return PRODUCTION_MODEL_ARTIFACT;
+    return fallback;
   }
+}
+
+function modelArtifact(): ModelArtifactSpec {
+  return manifestArtifact(process.env.COUNTERNOTE_MODEL_MANIFEST, PRODUCTION_MODEL_ARTIFACT);
+}
+
+function vadModelArtifact(): ModelArtifactSpec {
+  return manifestArtifact(process.env.COUNTERNOTE_VAD_MODEL_MANIFEST, VAD_MODEL_ARTIFACT);
 }
 
 function parseModelArtifact(value: unknown): ModelArtifactSpec | null {
@@ -208,9 +223,21 @@ function getModelService(): LocalModelManager {
   return modelService;
 }
 
-function getLocalModelStatus(): Promise<LocalModelStatus> {
-  if (localUnavailableStatus) return Promise.resolve(localUnavailableStatus);
+function getVadModelService(): LocalModelManager {
+  if (vadModelService === null) {
+    const artifact = vadModelArtifact();
+    const transport = new HttpsModelDownloadTransport(artifact.byteSize);
+    vadModelService = new LocalModelManager(
+      path.join(app.getPath('userData'), 'models'),
+      artifact,
+      transport.download.bind(transport),
+    );
+  }
+  return vadModelService;
+}
 
+function getLocalUnavailableStatus(): LocalModelStatus | null {
+  if (localUnavailableStatus) return localUnavailableStatus;
   try {
     resolveWhisperCliPath({
       isPackaged: app.isPackaged,
@@ -227,10 +254,67 @@ function getLocalModelStatus(): Promise<LocalModelStatus> {
           ? 'sidecar-missing'
           : 'unsupported-platform',
     };
-    return Promise.resolve(localUnavailableStatus);
+    return localUnavailableStatus;
   }
 
-  return getModelService().getStatus();
+  return null;
+}
+
+interface ManagedLocalModel {
+  readonly manager: LocalModelManager;
+  readonly status: LocalModelStatus;
+  readonly byteSize: number;
+}
+
+async function getManagedLocalModels(): Promise<ManagedLocalModel[]> {
+  const models = [
+    { manager: getModelService(), byteSize: modelArtifact().byteSize },
+    { manager: getVadModelService(), byteSize: vadModelArtifact().byteSize },
+  ];
+  const statuses = await Promise.all(models.map(({ manager }) => manager.getStatus()));
+  return models.map((model, index) => ({ ...model, status: statuses[index] }));
+}
+
+function combineLocalModelStatuses(models: ManagedLocalModel[]): LocalModelStatus {
+  if (models.some(({ status }) => status.state === 'invalid')) return { state: 'invalid' };
+  if (models.some(({ status }) => status.state !== 'ready')) return { state: 'not-downloaded' };
+  return { state: 'ready' };
+}
+
+async function installManagedLocalModels(models: ManagedLocalModel[]): Promise<void> {
+  const pending = models.filter(({ status }) => status.state !== 'ready');
+  const totalBytes = pending.reduce((total, { byteSize }) => total + byteSize, 0);
+  let completedBytes = 0;
+
+  for (const { manager, status, byteSize } of pending) {
+    await manager.ensureModel(
+      (percent) => {
+        const boundedPercent = Math.max(0, Math.min(100, percent));
+        const receivedBytes = completedBytes + (byteSize * boundedPercent) / 100;
+        const bundlePercent = Math.min(99, Math.floor((receivedBytes / totalBytes) * 100));
+        mainWindow?.webContents.send('local-model-status', {
+          state: 'downloading',
+          percent: bundlePercent,
+        } satisfies LocalModelStatus);
+      },
+      { recoverInvalidModel: status.state === 'invalid' },
+    );
+    completedBytes += byteSize;
+  }
+
+  if (pending.length > 0) {
+    mainWindow?.webContents.send('local-model-status', {
+      state: 'downloading',
+      percent: 100,
+    } satisfies LocalModelStatus);
+  }
+}
+
+async function getLocalModelStatus(): Promise<LocalModelStatus> {
+  const unavailable = getLocalUnavailableStatus();
+  if (unavailable) return unavailable;
+
+  return combineLocalModelStatuses(await getManagedLocalModels());
 }
 
 function getTranscriptionService(): TranscriptionOrchestrator {
@@ -247,9 +331,33 @@ function getTranscriptionService(): TranscriptionOrchestrator {
     });
     const runner = new WhisperProcessRunner();
     const manager = getModelService();
+    const vadManager = getVadModelService();
+    const reportModelFailure = async (error: unknown): Promise<never> => {
+      mainWindow?.webContents.send('local-model-status', await getLocalModelStatus());
+      throw error;
+    };
     localProvider = new LocalWhisperProvider({
       cliPath,
-      ensureModel: manager.ensureModel.bind(manager),
+      modelByteSize: modelArtifact().byteSize,
+      vadModelByteSize: vadModelArtifact().byteSize,
+      ensureModel: async (onProgress): Promise<string> => {
+        try {
+          return await manager.ensureModel(onProgress);
+        } catch (error) {
+          return reportModelFailure(error);
+        }
+      },
+      ensureVadModel: async (onProgress): Promise<string> => {
+        try {
+          const vadModelPath = await vadManager.ensureModel(onProgress);
+          mainWindow?.webContents.send('local-model-status', {
+            state: 'ready',
+          } satisfies LocalModelStatus);
+          return vadModelPath;
+        } catch (error) {
+          return reportModelFailure(error);
+        }
+      },
       runProcess: runner.run.bind(runner),
       getAudibleIntervals,
     });
@@ -516,27 +624,19 @@ ipcMain.handle(
 ipcMain.handle('get-local-model-status', (): Promise<LocalModelStatus> => getLocalModelStatus());
 
 ipcMain.handle('install-local-model', async (): Promise<TranscriptionIpcResult> => {
-  const status = await getLocalModelStatus();
-  if (status.state === 'unavailable') {
+  if (getLocalUnavailableStatus()) {
     return { success: false, code: 'LOCAL_UNAVAILABLE' };
   }
 
   try {
-    await getModelService().ensureModel(
-      (percent) => {
-        mainWindow?.webContents.send('local-model-status', {
-          state: 'downloading',
-          percent,
-        } satisfies LocalModelStatus);
-      },
-      { recoverInvalidModel: status.state === 'invalid' },
-    );
+    const models = await getManagedLocalModels();
+    await installManagedLocalModels(models);
     mainWindow?.webContents.send('local-model-status', {
       state: 'ready',
     } satisfies LocalModelStatus);
     return { success: true };
   } catch (error) {
-    const latestStatus = await getModelService().getStatus();
+    const latestStatus = await getLocalModelStatus();
     mainWindow?.webContents.send('local-model-status', latestStatus);
     return transcriptionFailure(error, 'MODEL_DOWNLOAD_FAILED');
   }

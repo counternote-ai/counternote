@@ -12,6 +12,7 @@ test('launches a 400x600 window titled CounterNote and shows Local Whisper setti
   delete env.COUNTERNOTE_E2E;
   delete env.COUNTERNOTE_WHISPER_CLI;
   delete env.COUNTERNOTE_MODEL_MANIFEST;
+  delete env.COUNTERNOTE_VAD_MODEL_MANIFEST;
 
   let electronApp: ElectronApplication | undefined;
 
@@ -78,6 +79,7 @@ test('packaged audio capture helper exists, is executable, and exchanges a valid
   delete env.COUNTERNOTE_E2E;
   delete env.COUNTERNOTE_WHISPER_CLI;
   delete env.COUNTERNOTE_MODEL_MANIFEST;
+  delete env.COUNTERNOTE_VAD_MODEL_MANIFEST;
 
   // Launch the helper and exchange a valid protocol frame within bounded timeout.
   // Send an invalid control command to trigger an error frame (valid protocol response).

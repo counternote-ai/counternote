@@ -25,10 +25,13 @@ process.env.TZ = 'UTC';
 
 let modelServer: http.Server;
 let modelServerUrl: string;
+let vadModelUrl: string;
 let releaseSecondModelChunk: (() => void) | undefined;
 const modelRequests: string[] = [];
 let sharedModel: Buffer;
 let sharedModelSha256: string;
+let sharedVadModel: Buffer;
+let sharedVadModelSha256: string;
 
 const testHomes: string[] = [];
 
@@ -125,12 +128,22 @@ function createRecoveryFixture(
 async function startModelServer(): Promise<void> {
   sharedModel = fs.readFileSync(path.resolve('e2e/fixtures/model.bin'));
   sharedModelSha256 = createHash('sha256').update(sharedModel).digest('hex');
+  sharedVadModel = fs.readFileSync(path.resolve('e2e/fixtures/vad.bin'));
+  sharedVadModelSha256 = createHash('sha256').update(sharedVadModel).digest('hex');
   const firstChunkLength = Math.floor(sharedModel.length / 2);
   const secondChunk = new Promise<void>((resolve) => {
     releaseSecondModelChunk = resolve;
   });
   modelServer = http.createServer(async (request, response) => {
     modelRequests.push(request.url ?? '');
+    if (request.url === '/vad.bin') {
+      response.writeHead(200, {
+        'Content-Length': sharedVadModel.length,
+        'Content-Type': 'application/octet-stream',
+      });
+      response.end(sharedVadModel);
+      return;
+    }
     if (request.url !== '/model.bin') {
       response.writeHead(404).end();
       return;
@@ -155,6 +168,7 @@ async function startModelServer(): Promise<void> {
     throw new Error('E2E model server did not bind to a TCP port');
   }
   modelServerUrl = `http://127.0.0.1:${address.port}/model.bin`;
+  vadModelUrl = `http://127.0.0.1:${address.port}/vad.bin`;
 }
 
 async function stopModelServer(): Promise<void> {
@@ -172,6 +186,7 @@ async function launchTestApp(
   testHomes.push(testHome);
 
   const modelManifestPath = path.join(testHome, 'model-manifest.json');
+  const vadModelManifestPath = path.join(testHome, 'vad-model-manifest.json');
   const recordingsDir = path.join(testHome, 'CounterNote', 'recordings');
   const fakeCaptureHelperPath = path.join(testHome, `fake-audio-capture-helper__${scenario}.js`);
 
@@ -189,6 +204,15 @@ async function launchTestApp(
       sha256: sharedModelSha256,
     }),
   );
+  fs.writeFileSync(
+    vadModelManifestPath,
+    JSON.stringify({
+      url: vadModelUrl,
+      fileName: 'vad.bin',
+      byteSize: sharedVadModel.length,
+      sha256: sharedVadModelSha256,
+    }),
+  );
   const fakeCaptureHelper = fs
     .readFileSync(path.resolve('e2e/fixtures/fake-audio-capture-helper.js'), 'utf8')
     .replace(/^#!\/usr\/bin\/env node/, `#!${process.execPath}`);
@@ -198,13 +222,14 @@ async function launchTestApp(
   extraSetup?.(testHome);
 
   const electronApp = await electron.launch({
-    args: ['.', `--user-data-dir=${testHome}`],
+    args: ['.', '--lang=en-US', `--user-data-dir=${testHome}`],
     env: {
       ...process.env,
       HOME: testHome,
       COUNTERNOTE_E2E: '1',
       COUNTERNOTE_WHISPER_CLI: path.resolve('e2e/fixtures/fake-whisper-cli.js'),
       COUNTERNOTE_MODEL_MANIFEST: modelManifestPath,
+      COUNTERNOTE_VAD_MODEL_MANIFEST: vadModelManifestPath,
       COUNTERNOTE_AUDIO_CAPTURE_HELPER: fakeCaptureHelperPath,
     },
   });
@@ -293,6 +318,7 @@ test('launches a 400x600 window titled CounterNote', async () => {
 
   try {
     expect(await window.title()).toBe('CounterNote');
+    expect(await window.evaluate(() => navigator.language)).toBe('en-US');
 
     const windowSize = await electronApp.evaluate(({ BrowserWindow }) => {
       const [win] = BrowserWindow.getAllWindows();
@@ -356,7 +382,7 @@ test('transcribes a local recording through the loopback model server and fake s
     releaseSecondModelChunk?.();
 
     await expect(window.getByText('Ready', { exact: true })).toBeVisible();
-    expect(modelRequests).toEqual(['/model.bin']);
+    expect(modelRequests).toEqual(['/model.bin', '/vad.bin']);
     const transcript = JSON.parse(
       fs.readFileSync(
         path.join(
@@ -372,6 +398,10 @@ test('transcribes a local recording through the loopback model server and fake s
     expect(transcript.segments.map(({ speaker }) => speaker)).toEqual(['Meeting audio', 'You']);
     await expectNoHorizontalOverflow(window);
     await expect(window).toHaveScreenshot('local-transcription-ready.png');
+
+    await window.getByRole('button', { name: 'Open settings' }).click();
+    await expect(window.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    await expect(window.getByText('Ready', { exact: true })).toBeVisible();
   } finally {
     await electronApp.close();
   }
@@ -384,6 +414,7 @@ test('navigates to settings and back', async () => {
     await window.getByRole('button', { name: 'Open settings' }).click();
     await expect(window.getByRole('heading', { name: 'Settings' })).toBeVisible();
     await expect(window.getByRole('heading', { name: 'Local transcription' })).toBeVisible();
+    await expect(window.getByText('Whisper and speech detection models')).toBeVisible();
     await expect(
       window.getByText('Transcription runs on this Mac. Audio is not uploaded.'),
     ).toBeVisible();
