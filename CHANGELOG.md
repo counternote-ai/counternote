@@ -4,6 +4,20 @@ All notable CounterNote changes are documented here. The format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.1.0-beta.4] - 2026-08-27
+
+### Fixed
+
+- Preserve microphone-only speech in mostly silent recordings by filtering locally with a pinned Silero voice-activity-detection model
+- Require both the Whisper and speech detection models to pass verification before local transcription is reported as ready
+- Format generated transcript dates in the Mac's local time zone with a consistent US date format
+
+### Known limitations
+
+- Not Developer ID signed or notarized; first launch may require **Open Anyway** in macOS Privacy & Security
+- Apple Silicon only
+- No automatic updates
+
 ## [0.1.0-beta.3] - 2026-08-27
 
 ### Fixed
@@ -55,7 +69,8 @@ All notable CounterNote changes are documented here. The format follows [Keep a 
 - No automatic updates
 - Local speech model requires a separate first-use download
 
-[Unreleased]: https://github.com/counternote-ai/counternote/compare/v0.1.0-beta.3...HEAD
+[Unreleased]: https://github.com/counternote-ai/counternote/compare/v0.1.0-beta.4...HEAD
+[0.1.0-beta.4]: https://github.com/counternote-ai/counternote/releases/tag/v0.1.0-beta.4
 [0.1.0-beta.3]: https://github.com/counternote-ai/counternote/releases/tag/v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/counternote-ai/counternote/releases/tag/v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/counternote-ai/counternote/releases/tag/v0.1.0-beta.1

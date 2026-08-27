@@ -8,15 +8,15 @@ CounterNote is a local-first macOS meeting recorder and transcription app. It ca
 
 ## Download
 
-Download the latest beta from [GitHub Releases](https://github.com/counternote-ai/counternote/releases). The current release is `v0.1.0-beta.3`:
+Download the latest beta from [GitHub Releases](https://github.com/counternote-ai/counternote/releases). The current release is `v0.1.0-beta.4`:
 
-`CounterNote-0.1.0-beta.3-arm64.dmg`
+`CounterNote-0.1.0-beta.4-arm64.dmg`
 
 Requirements:
 
 - Apple Silicon Mac
 - macOS 13 or newer
-- About 547 MB of additional disk space for the Local Whisper model
+- About 548 MB of additional disk space for the Local Whisper and speech detection models
 
 ## Install the unnotarized beta
 
@@ -33,7 +33,7 @@ This beta is ad-hoc signed but is not Developer ID signed or notarized. Only dow
 1. Open CounterNote and select **Record**.
 2. Allow Screen Recording and Microphone access when macOS asks. Restart CounterNote if macOS requests it.
 3. Select **Stop** when the meeting ends. The finalized recording appears in Recordings.
-4. Open **Settings** and download the Local Whisper model the first time you use transcription.
+4. Open **Settings** and download the Local Whisper and speech detection models the first time you use transcription.
 5. Select **Transcribe audio** on a saved recording.
 6. Open the completed transcript to review or export it.
 
@@ -41,7 +41,7 @@ This beta is ad-hoc signed but is not Developer ID signed or notarized. Only dow
 
 ## Local data and privacy
 
-Recordings and transcripts remain on your Mac in `~/CounterNote/recordings`. Local Whisper runs on the Mac; CounterNote does not upload recording audio or transcript text. Downloading the speech model requires an internet connection.
+Recordings and transcripts remain on your Mac in `~/CounterNote/recordings`. Local Whisper runs on the Mac; CounterNote does not upload recording audio or transcript text. Downloading the speech and speech detection models requires an internet connection.
 
 See [Privacy](PRIVACY.md) for the exact data flow and storage locations.
 
@@ -55,7 +55,7 @@ You are responsible for following applicable recording and consent laws, workpla
 - macOS 13 or newer is required.
 - The beta is ad-hoc signed but not Developer ID signed or notarized.
 - Transcription is post-recording and local only.
-- The Local Whisper model is a separate first-use download.
+- The Local Whisper and speech detection models are a separate first-use download.
 - There is no automatic update mechanism yet.
 
 ## Build from source

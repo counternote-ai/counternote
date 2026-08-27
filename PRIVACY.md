@@ -1,6 +1,6 @@
 # CounterNote Privacy
 
-CounterNote `v0.1.0-beta.3` supports local transcription only.
+CounterNote `v0.1.0-beta.4` supports local transcription only.
 
 ## Data stored on your Mac
 
@@ -8,13 +8,13 @@ CounterNote `v0.1.0-beta.3` supports local transcription only.
 - Transcripts: `~/CounterNote/recordings/<recording-id>/transcript.json`
 - Text exports: `~/CounterNote/recordings/<recording-id>/transcript.txt`
 - Capture diagnostics: `~/CounterNote/recordings/.diagnostics/`
-- Local Whisper model: Electron's CounterNote user-data directory under `models/`
+- Local Whisper and speech detection models: Electron's CounterNote user-data directory under `models/`
 
 Capture diagnostics contain local lifecycle and allow-listed error information. They do not contain audio, transcript text, credentials, or telemetry.
 
 ## Network activity
 
-CounterNote downloads a pinned Local Whisper model from the `ggerganov/whisper.cpp` repository on Hugging Face when you explicitly select **Download model**. The download is checked for its expected size and SHA-256 digest.
+CounterNote downloads pinned Local Whisper and Silero speech detection models from Hugging Face when you explicitly select **Download model**. Each download is checked for its expected size and SHA-256 digest.
 
 The supported beta does not upload recordings, prepared audio, transcripts, or exports. It contains no telemetry or analytics.
 
@@ -28,6 +28,6 @@ CounterNote requests macOS Screen Recording access for meeting audio and Microph
 
 ## Deleting data
 
-You can delete individual recording directories under `~/CounterNote/recordings`. Removing CounterNote does not automatically remove recordings, transcripts, exports, diagnostics, or the downloaded model.
+You can delete individual recording directories under `~/CounterNote/recordings`. Removing CounterNote does not automatically remove recordings, transcripts, exports, diagnostics, or the downloaded models.
 
 For implementation-level detail, see [docs/privacy.md](docs/privacy.md).

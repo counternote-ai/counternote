@@ -53,7 +53,7 @@ describe('packaging configuration', () => {
     expect(packageJson.directories).toBeUndefined();
     expect(packageJson.dependencies.electron).toBeUndefined();
     expect(packageJson.devDependencies.electron).toBe('43.1.0');
-    expect(packageJson.version).toBe('0.1.0-beta.3');
+    expect(packageJson.version).toBe('0.1.0-beta.4');
     expect(packageJson.license).toBe('GPL-3.0-only');
     expect(packageJson.scripts['build:whisper']).toBe('bash scripts/build-whisper-sidecar.sh');
     expect(packageJson.scripts['verify:whisper']).toBe(
@@ -230,7 +230,7 @@ describe('packaging configuration', () => {
     const verifyScript = readRepoFile('scripts/verify-release-artifact.sh');
 
     expect(packageJson.scripts['verify:release-artifact']).toContain(
-      'CounterNote-0.1.0-beta.3-arm64.dmg',
+      'CounterNote-0.1.0-beta.4-arm64.dmg',
     );
     expect(verifyScript).toContain('CFBundleShortVersionString');
     expect(verifyScript).toContain('LSMinimumSystemVersion');
