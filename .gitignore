@@ -24,3 +24,4 @@ test-results/
 docs/superpowers/plans/
 .worktrees/
 native/audio-capture/.build/
+.playwright-cli/

@@ -8,7 +8,7 @@ CounterNote is a local-first macOS meeting recorder and transcription app. It ca
 
 ## Download
 
-Download the latest beta from [GitHub Releases](https://github.com/counternote-ai/counternote/releases). The current release is `v0.1.0-beta.4`:
+Download the latest beta from [GitHub Releases](https://github.com/counternote-ai/counternote/releases). Learn more at the [project home page](https://counternote-ai.github.io/counternote/). The current release is `v0.1.0-beta.4`:
 
 `CounterNote-0.1.0-beta.4-arm64.dmg`
 

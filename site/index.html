@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CounterNote — the candidate's counter-notetaker</title>
+    <meta
+      name="description"
+      content="Their AI notetaker is in the interview room. Where's yours? CounterNote records the conversation and transcribes it locally on your Mac, so you leave every round with every question — word for word."
+    />
+    <link rel="canonical" href="https://counternote-ai.github.io/counternote/" />
+    <meta name="theme-color" content="#f6efe3" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="CounterNote — the candidate's counter-notetaker" />
+    <meta
+      property="og:description"
+      content="Companies run AI notetakers on your interviews. CounterNote is your side of the record: local-first recording and transcription on your Mac."
+    />
+    <meta
+      property="og:image"
+      content="https://counternote-ai.github.io/counternote/assets/icon.png"
+    />
+    <meta property="og:url" content="https://counternote-ai.github.io/counternote/" />
+    <meta name="twitter:card" content="summary" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <nav class="nav container" aria-label="Main">
+        <a class="brand" href="#top" aria-label="CounterNote home">
+          <svg
+            class="brand-mark"
+            viewBox="0 0 48 48"
+            width="30"
+            height="30"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <rect
+              x="1.5"
+              y="1.5"
+              width="45"
+              height="45"
+              rx="11"
+              fill="#f8f2e7"
+              stroke="#e0d2b8"
+              stroke-width="1.5"
+            />
+            <rect x="9" y="20" width="4" height="8" rx="2" fill="#5d4a3a" />
+            <rect x="15" y="15" width="4.5" height="18" rx="2.25" fill="#c47f74" />
+            <rect x="21.5" y="10" width="5" height="28" rx="2.5" fill="#c9a676" />
+            <rect x="28.5" y="15" width="4.5" height="18" rx="2.25" fill="#c47f74" />
+            <rect x="35" y="20" width="4" height="8" rx="2" fill="#5d4a3a" />
+          </svg>
+          <span class="brand-name">CounterNote</span>
+        </a>
+        <div class="nav-links">
+          <a href="#why">Why</a>
+          <a href="#how">How it works</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#faq">FAQ</a>
+          <a
+            class="button button-small button-primary"
+            href="https://github.com/counternote-ai/counternote/releases/latest"
+            >Download</a
+          >
+        </div>
+      </nav>
+    </header>
+
+    <main id="main">
+      <!-- ============================== HERO ============================== -->
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <div class="container hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">The counter-notetaker for job interviews</p>
+            <h1 id="hero-title">
+              Their AI notetaker is in the room.
+              <span class="accent">Where&rsquo;s yours?</span>
+            </h1>
+            <p class="lede">
+              Companies increasingly run AI notetakers on interviews &mdash; every round ends with a
+              written report on you. You&rsquo;re expected to walk out with nothing but your memory
+              of the questions. CounterNote is your side of the record: it captures the conversation
+              and transcribes it locally on your Mac, so you leave every round with every question
+              you were asked &mdash; word for word.
+            </p>
+            <div class="hero-actions">
+              <a
+                class="button button-primary"
+                href="https://github.com/counternote-ai/counternote/releases/latest"
+                >Download the beta</a
+              >
+              <a class="button button-ghost" href="https://github.com/counternote-ai/counternote"
+                >View on GitHub</a
+              >
+            </div>
+            <p class="fineprint">Free while in beta &middot; Apple Silicon &middot; macOS 13+</p>
+          </div>
+
+          <figure class="hero-demo" aria-label="Preview of the CounterNote transcript view">
+            <div class="app-window">
+              <div class="app-titlebar">
+                <span class="traffic-light red"></span>
+                <span class="traffic-light yellow"></span>
+                <span class="traffic-light green"></span>
+                <span class="app-title">CounterNote</span>
+              </div>
+              <div class="app-body">
+                <div class="app-status">
+                  <span class="rec-title">Onsite &mdash; product round 2</span>
+                  <span class="app-duration">42:17</span>
+                  <span class="local-chip">Local only</span>
+                </div>
+                <div class="app-channels">
+                  <div class="channel">
+                    <span class="channel-dot rose"></span>
+                    <span class="channel-name">Meeting audio</span>
+                    <span class="channel-meter" aria-hidden="true">
+                      <i style="--h: 40%"></i><i style="--h: 75%"></i><i style="--h: 55%"></i
+                      ><i style="--h: 85%"></i><i style="--h: 45%"></i>
+                    </span>
+                  </div>
+                  <div class="channel">
+                    <span class="channel-dot tan"></span>
+                    <span class="channel-name">You</span>
+                    <span class="channel-meter" aria-hidden="true">
+                      <i style="--h: 60%"></i><i style="--h: 35%"></i><i style="--h: 80%"></i
+                      ><i style="--h: 50%"></i><i style="--h: 70%"></i>
+                    </span>
+                  </div>
+                </div>
+                <div class="app-transcript">
+                  <p class="line">
+                    <span class="stamp">00:12:04</span><span class="speaker">Meeting audio</span>
+                    Walk me through how you&rsquo;d debug a flaky end-to-end test.
+                  </p>
+                  <p class="line">
+                    <span class="stamp">00:12:31</span><span class="speaker">You</span>
+                    I&rsquo;d start by isolating whether the test or the product is at fault &mdash;
+                  </p>
+                  <p class="line">
+                    <span class="stamp">00:14:52</span><span class="speaker">Meeting audio</span>
+                    What would you redesign, looking back?
+                  </p>
+                </div>
+              </div>
+            </div>
+            <figcaption class="demo-caption">
+              Preview of the beta transcript view &mdash; meeting audio and your microphone stay as
+              separate channels, transcribed locally on your Mac.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <div class="wave-divider" aria-hidden="true">
+        <svg viewBox="0 0 120 24" width="120" height="24" focusable="false">
+          <rect x="2" y="9" width="4" height="6" rx="2" fill="#5d4a3a" />
+          <rect x="12" y="6" width="4.5" height="12" rx="2.25" fill="#c47f74" />
+          <rect x="22" y="2" width="5" height="20" rx="2.5" fill="#c9a676" />
+          <rect x="33" y="6" width="4.5" height="12" rx="2.25" fill="#c47f74" />
+          <rect x="43" y="9" width="4" height="6" rx="2" fill="#5d4a3a" />
+          <rect x="73" y="9" width="4" height="6" rx="2" fill="#5d4a3a" />
+          <rect x="83" y="6" width="4.5" height="12" rx="2.25" fill="#c47f74" />
+          <rect x="93" y="2" width="5" height="20" rx="2.5" fill="#c9a676" />
+          <rect x="104" y="6" width="4.5" height="12" rx="2.25" fill="#c47f74" />
+          <rect x="114" y="9" width="4" height="6" rx="2" fill="#5d4a3a" />
+        </svg>
+      </div>
+
+      <!-- ============================== WHY ============================== -->
+      <section class="why" id="why" aria-labelledby="why-title">
+        <div class="container">
+          <h2 id="why-title">Interviews are being recorded. Just not for&nbsp;you.</h2>
+          <p class="section-lede">
+            The tools at the table stopped being symmetrical. CounterNote is about closing that gap
+            &mdash; for your own preparation, not anyone else&rsquo;s report.
+          </p>
+          <div class="card-grid three">
+            <article class="card">
+              <h3>Their side of the table</h3>
+              <p>
+                AI notetakers sit in on interviews, capture every word, and hand the hiring team a
+                structured report after every round &mdash; answers, follow-ups, impressions.
+              </p>
+            </article>
+            <article class="card">
+              <h3>Your side of the table</h3>
+              <p>
+                You get your memory. By tonight, the exact phrasing of each question has already
+                blurred into the other interviews you had this week.
+              </p>
+            </article>
+            <article class="card emphasized">
+              <h3>The counter-notetaker</h3>
+              <p>
+                CounterNote evens the scale. It records both sides of the conversation and
+                transcribes it privately, so the questions they asked are on your record too &mdash;
+                timestamped and ready to review.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================== FEATURES ============================== -->
+      <section class="features" id="features" aria-labelledby="features-title">
+        <div class="container">
+          <h2 id="features-title">A notetaker that works for you, not on&nbsp;you.</h2>
+          <div class="card-grid two">
+            <article class="feature">
+              <h3>Two channels, no guesswork</h3>
+              <p>
+                Meeting audio and your microphone are captured as separate tracks, so
+                <em>what they asked</em> and <em>what you answered</em>
+                stay distinct in the transcript.
+              </p>
+            </article>
+            <article class="feature">
+              <h3>Transcribed on your Mac</h3>
+              <p>
+                Local Whisper turns the recording into text after you stop &mdash; entirely offline.
+                No audio and no text is ever uploaded.
+              </p>
+            </article>
+            <article class="feature">
+              <h3>Timestamped transcript</h3>
+              <p>
+                Every segment carries a timestamp and its channel, so you can trace how the
+                conversation unfolded and revisit each exchange &mdash; including exactly how a
+                question was phrased.
+              </p>
+            </article>
+            <article class="feature">
+              <h3>Export and level up</h3>
+              <p>
+                Export the transcript as plain text and turn each interview into a study guide: what
+                they asked, how you answered, what you&rsquo;d do differently.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================== HOW ============================== -->
+      <section class="how" id="how" aria-labelledby="how-title">
+        <div class="container">
+          <h2 id="how-title">
+            From &ldquo;thanks, we&rsquo;ll be in touch&rdquo; to a study&nbsp;guide.
+          </h2>
+          <p class="section-lede">
+            The best preparation for the next round is an honest look at the last one.
+          </p>
+          <ol class="steps">
+            <li class="step">
+              <span class="step-num" aria-hidden="true">1</span>
+              <div>
+                <h3>Record</h3>
+                <p>
+                  Open CounterNote before the interview and press Record. macOS asks for Screen
+                  Recording and Microphone access once.
+                </p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num" aria-hidden="true">2</span>
+              <div>
+                <h3>Stop</h3>
+                <p>
+                  When the interview ends, stop the recording. It&rsquo;s saved straight to your
+                  Recordings library on your Mac.
+                </p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num" aria-hidden="true">3</span>
+              <div>
+                <h3>Transcribe</h3>
+                <p>
+                  Once, download the local Whisper model in Settings (~548&nbsp;MB). Then select
+                  Transcribe audio on the recording &mdash; it runs entirely on your Mac.
+                </p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num" aria-hidden="true">4</span>
+              <div>
+                <h3>Review &amp; export</h3>
+                <p>
+                  Read the timestamped transcript, export it as text, and note what you&rsquo;d
+                  answer differently in the next round.
+                </p>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- ============================== PRIVACY ============================== -->
+      <section class="privacy" id="privacy" aria-labelledby="privacy-title">
+        <div class="container">
+          <h2 id="privacy-title">Nothing leaves your Mac.</h2>
+          <p class="section-lede">
+            CounterNote is local-first by design: recordings and transcripts are plain files under
+            <code>~/CounterNote/recordings</code>, transcription runs on-device, and the app ships
+            with no telemetry and no accounts.
+          </p>
+          <ul class="privacy-list">
+            <li>No uploads &mdash; audio and transcripts never leave your machine</li>
+            <li>No telemetry, no analytics, no sign-in</li>
+            <li>Local Whisper transcription, on-device</li>
+            <li>Your data is plain files &mdash; delete them whenever you like</li>
+          </ul>
+          <aside class="consent-note">
+            <h3>Play it straight</h3>
+            <p>
+              CounterNote records audio. Recording and consent laws &mdash; and company policies
+              &mdash; are yours to follow; the app doesn&rsquo;t give legal advice. Where consent is
+              required, ask plainly:
+            </p>
+            <p>
+              &ldquo;I&rsquo;d like to record this interview and keep it locally for my own review
+              &mdash; is that okay?&rdquo;
+            </p>
+            <p>
+              <a href="https://github.com/counternote-ai/counternote/blob/main/PRIVACY.md"
+                >Read the full privacy notes &rarr;</a
+              >
+            </p>
+          </aside>
+          <p class="privacy-postscript">
+            Even this website loads no trackers, no webfonts, no analytics &mdash; what you see came
+            straight from this page.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================== BETA ============================== -->
+      <section class="beta" id="beta" aria-labelledby="beta-title">
+        <div class="container beta-grid">
+          <div>
+            <h2 id="beta-title">Free while in beta. Honest about it, too.</h2>
+            <p>CounterNote is a young, openly developed beta. What that means for you today:</p>
+            <ul class="beta-list">
+              <li>Apple Silicon Macs only, on macOS 13 or newer</li>
+              <li>
+                Ad-hoc signed, not notarized &mdash; first launch may need System&nbsp;Settings
+                &rarr; Privacy &amp; Security &rarr; &ldquo;Open Anyway&rdquo;
+              </li>
+              <li>
+                Transcription uses a local Whisper model &mdash; one ~548&nbsp;MB download from
+                Settings
+              </li>
+              <li>No automatic updates yet &mdash; check Releases for new betas</li>
+            </ul>
+            <p>
+              <a href="https://github.com/counternote-ai/counternote#install-the-unnotarized-beta"
+                >Full install steps in the README &rarr;</a
+              >
+            </p>
+          </div>
+          <div class="beta-cta card emphasized">
+            <img
+              class="beta-icon"
+              src="assets/icon.png"
+              alt=""
+              width="84"
+              height="84"
+              aria-hidden="true"
+            />
+            <h3>Get the beta</h3>
+            <p>
+              The beta is free and installs from a DMG. Only download it from this
+              repository&rsquo;s GitHub Releases page.
+            </p>
+            <a
+              class="button button-primary button-block"
+              href="https://github.com/counternote-ai/counternote/releases/latest"
+              >Download the latest beta</a
+            >
+            <p class="fineprint">
+              arm64 DMG &middot; macOS 13+ &middot; compare the SHA-256 checksum in the release
+              notes
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================== FAQ ============================== -->
+      <section class="faq" id="faq" aria-labelledby="faq-title">
+        <div class="container narrow">
+          <h2 id="faq-title">Questions, answered</h2>
+          <details class="faq-item">
+            <summary>Is my audio or transcript uploaded anywhere?</summary>
+            <p>
+              No. Transcription runs locally with Whisper and the app has no upload path. The exact
+              data flow and storage locations are documented in
+              <a href="https://github.com/counternote-ai/counternote/blob/main/PRIVACY.md"
+                >PRIVACY.md</a
+              >.
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary>Should I tell the interviewer I&rsquo;m recording?</summary>
+            <p>
+              CounterNote isn&rsquo;t legal advice, and rules differ by jurisdiction and employer.
+              Follow the recording and consent laws that apply to you and the company&rsquo;s
+              policies. Where you ask, say what it is: &ldquo;I&rsquo;d like to record this
+              interview and keep it locally for my own review &mdash; is that okay?&rdquo;
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary>Does it work on Windows or Intel Macs?</summary>
+            <p>Not yet. The beta supports Apple Silicon Macs on macOS 13 or newer.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Does it transcribe live, like captions?</summary>
+            <p>
+              No. Transcription runs after you stop recording. That&rsquo;s deliberate: it keeps
+              everything on-device and keeps your attention on the conversation, not on a screen.
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary>How do I get a transcript?</summary>
+            <p>
+              Stop the recording and it&rsquo;s saved to Recordings. Once, download the local
+              Whisper model in Settings (~548&nbsp;MB), then select Transcribe audio on the
+              recording. The transcript is created entirely on your Mac.
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary>How do I delete my data?</summary>
+            <p>
+              Recordings and transcripts are plain files under
+              <code>~/CounterNote/recordings</code>. Delete a folder and it&rsquo;s gone &mdash; no
+              accounts, no cloud copies.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <!-- ============================== FINAL CTA ============================== -->
+      <section class="final-cta" aria-labelledby="final-cta-title">
+        <div class="container narrow">
+          <h2 id="final-cta-title">
+            The next interview is already scheduled.<br />
+            <span class="accent">Bring your own notetaker.</span>
+          </h2>
+          <a
+            class="button button-primary button-large"
+            href="https://github.com/counternote-ai/counternote/releases/latest"
+            >Download CounterNote</a
+          >
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div class="footer-brand">
+          <span class="brand-name">CounterNote</span>
+          <p>Your side of the conversation.</p>
+        </div>
+        <nav class="footer-links" aria-label="Footer">
+          <a href="https://github.com/counternote-ai/counternote">GitHub</a>
+          <a href="https://github.com/counternote-ai/counternote/releases/latest">Releases</a>
+          <a href="https://github.com/counternote-ai/counternote/blob/main/PRIVACY.md">Privacy</a>
+          <a href="https://github.com/counternote-ai/counternote/blob/main/SECURITY.md">Security</a>
+          <a href="https://github.com/counternote-ai/counternote/blob/main/SUPPORT.md">Support</a>
+          <a href="https://github.com/counternote-ai/counternote/blob/main/LICENSE">GPLv3</a>
+        </nav>
+      </div>
+      <div class="container footer-postscript">
+        <p>&copy; 2026 CounterNote contributors. This site makes zero third-party requests.</p>
+      </div>
+    </footer>
+  </body>
+</html>
